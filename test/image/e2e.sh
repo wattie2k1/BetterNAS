@@ -12,6 +12,7 @@ INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-5400}"
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-1800}"
 SSH_PORT="${SSH_PORT:-2222}"
 HTTPS_PORT="${HTTPS_PORT:-8443}"
+SMB_PORT="${SMB_PORT:-4445}"
 PASSWORD="ittest-passwort"
 
 rm -rf "$WORK"
@@ -48,6 +49,8 @@ esac
 
 # --- Datenträger -------------------------------------------------------------------------
 qemu-img create -q -f qcow2 "$WORK/disk.qcow2" 48G
+# Zweite Platte für die Speicher-Szenarien; wird erst beim Boot des installierten Systems angeschlossen.
+qemu-img create -q -f qcow2 "$WORK/data.qcow2" 8G
 ssh-keygen -q -t ed25519 -N "" -C "e2e" -f "$WORK/id_ed25519"
 cat > "$WORK/answers.json" <<EOF
 {
@@ -101,20 +104,26 @@ wait "$QPID" || true
 echo "[e2e] Installation abgeschlossen"
 
 # --- 2. Boot des installierten Systems ---------------------------------------------------
-# shellcheck disable=SC2086
-$QEMU -serial "file:$WORK/boot.log" \
-	-drive file="$WORK/disk.qcow2",if=virtio \
-	-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22,hostfwd=tcp:127.0.0.1:$HTTPS_PORT-:443 &
-QPID=$!
+BOOTN=0
+boot_vm() {
+	BOOTN=$((BOOTN + 1))
+	# shellcheck disable=SC2086
+	$QEMU -serial "file:$WORK/boot$BOOTN.log" \
+		-drive file="$WORK/disk.qcow2",if=virtio \
+		-drive file="$WORK/data.qcow2",if=virtio,serial=bnas-e2e-data \
+		-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22,hostfwd=tcp:127.0.0.1:$HTTPS_PORT-:443,hostfwd=tcp:127.0.0.1:$SMB_PORT-:445 &
+	QPID=$!
+	if ! wait_for "$WORK/boot$BOOTN.log" "BetterNAS ist bereit" "$BOOT_TIMEOUT" "$QPID"; then
+		echo "[e2e] FEHLER: System nicht bereit"; tail -20 "$WORK/boot$BOOTN.log"; exit 1
+	fi
+	echo "[e2e] System gestartet: $(grep -a 'BetterNAS ist bereit' "$WORK/boot$BOOTN.log" | tail -1 | tr -d '\r')"
+	for _ in $(seq 1 30); do $SSH true 2>/dev/null && break; sleep 10; done
+}
+SSH="ssh -i $WORK/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR ittest@127.0.0.1"
 trap 'kill $QPID 2>/dev/null || true' EXIT
-if ! wait_for "$WORK/boot.log" "BetterNAS ist bereit" "$BOOT_TIMEOUT" "$QPID"; then
-	echo "[e2e] FEHLER: System nicht bereit"; tail -20 "$WORK/boot.log"; exit 1
-fi
-echo "[e2e] System gestartet: $(grep -a 'BetterNAS ist bereit' "$WORK/boot.log" | tail -1 | tr -d '\r')"
+boot_vm
 
 # --- 3. Prüfungen per SSH ----------------------------------------------------------------
-SSH="ssh -i $WORK/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR ittest@127.0.0.1"
-for _ in $(seq 1 30); do $SSH true 2>/dev/null && break; sleep 10; done
 fail=0
 check() { if $SSH "$2" >/dev/null 2>&1; then echo "[e2e] OK   $1"; else echo "[e2e] FEHL $1"; fail=1; fi; }
 check "machine-id erzeugt"          'test -s /etc/machine-id'
@@ -130,5 +139,68 @@ if [ "$code" = 200 ]; then echo "[e2e] OK   Weboberfläche per HTTPS"; else echo
 code="$(curl -sk -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
 	-d "{\"username\":\"ittest\",\"password\":\"$PASSWORD\"}" "https://127.0.0.1:$HTTPS_PORT/api/v1/auth/login" || true)"
 if [ "$code" = 200 ]; then echo "[e2e] OK   Anmeldung mit Installer-Admin"; else echo "[e2e] FEHL Anmeldung mit Installer-Admin ($code)"; fail=1; fi
+
+# --- 4. Daten-Szenario über die API: Platte, Pool, Benutzer, Freigabe, SMB ---------------
+API="https://127.0.0.1:$HTTPS_PORT"
+JAR="$WORK/cookies.txt"
+USERPW="e2e-user-passwort-1"
+curl -sk -c "$JAR" -H 'Content-Type: application/json' -d "{\"username\":\"ittest\",\"password\":\"$PASSWORD\"}" "$API/api/v1/auth/login" > "$WORK/login.json"
+CSRF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["csrfToken"])' "$WORK/login.json")"
+api() { # Methode Pfad [Body] → Antworttext; Statuscode landet in $WORK/status
+	curl -sk -b "$JAR" -X "$1" -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+		-w '%{http_code}' -o "$WORK/body.json" ${3:+-d "$3"} "$API$2" > "$WORK/status"
+	cat "$WORK/body.json"
+}
+jget() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1]))' "$1"; }
+wait_job() { # Antwort mit jobId
+	id="$(printf '%s' "$1" | jget 'd["jobId"]')"
+	for _ in $(seq 1 120); do
+		st="$(curl -sk -b "$JAR" "$API/api/v1/jobs/$id" | jget 'd["status"]')"
+		[ "$st" = succeeded ] && return 0
+		[ "$st" = failed ] && { curl -sk -b "$JAR" "$API/api/v1/jobs/$id" | jget 'd["log"]'; return 1; }
+		sleep 2
+	done
+	return 1
+}
+step() { # Name Befehl…
+	name="$1"; shift
+	if "$@"; then echo "[e2e] OK   $name"; else echo "[e2e] FEHL $name"; fail=1; fi
+}
+
+DISK="$(api GET /api/v1/disks | jget '[x["id"] for x in d if x["serial"]=="bnas-e2e-data"][0]')"
+step "Datenplatte erkannt" test -n "$DISK"
+PREVIEW="$(api POST "/api/v1/disks/$DISK/format/preview")"
+TOKEN="$(printf '%s' "$PREVIEW" | jget 'd["confirmToken"]')"
+JOB="$(api POST "/api/v1/disks/$DISK/format" "{\"fsType\":\"ext4\",\"confirmSerial\":\"bnas-e2e-data\",\"confirmToken\":\"$TOKEN\"}")"
+step "Datenplatte formatieren" wait_job "$JOB"
+JOB="$(api POST /api/v1/pools "{\"name\":\"e2e\",\"branches\":[\"$DISK\"]}")"
+step "Pool anlegen" wait_job "$JOB"
+api POST /api/v1/users "{\"name\":\"e2euser\",\"fullName\":\"E2E\",\"password\":\"$USERPW\",\"groups\":[],\"admin\":false}" >/dev/null
+step "Benutzer anlegen" test "$(cat "$WORK/status")" = 201
+JOB="$(api POST /api/v1/shares '{"name":"E2E","pool":"e2e","subdir":"E2E","comment":"Test","browsable":true,"guest":false,"recycle":true,"fruit":true,"acl":[{"type":"user","name":"e2euser","access":"rw"}]}')"
+step "Freigabe anlegen" wait_job "$JOB"
+api POST /api/v1/setup/complete >/dev/null
+step "Einrichtung abschließen" test "$(cat "$WORK/status")" = 204
+step "Einrichtung gespeichert" test "$(api GET /api/v1/setup | jget 'd["completed"]')" = True
+
+if command -v smbclient >/dev/null; then
+	step "SMB: Datei schreiben" sh -c "smbclient //127.0.0.1/E2E -p $SMB_PORT -U 'e2euser%$USERPW' -c 'put /etc/hostname test.txt; ls' 2>&1 | grep -q test.txt"
+else
+	echo "[e2e] ÜBERSPRUNGEN SMB-Prüfungen (smbclient fehlt auf diesem Rechner)"
+fi
+
+# --- 5. Neustart: Pool und Freigabe müssen von selbst wieder da sein ---------------------
+echo "[e2e] Neustart des installierten Systems …"
+$SSH "echo $PASSWORD | sudo -S systemctl poweroff" >/dev/null 2>&1 || true
+for _ in $(seq 1 60); do kill -0 "$QPID" 2>/dev/null || break; sleep 2; done
+kill "$QPID" 2>/dev/null || true
+wait "$QPID" 2>/dev/null || true
+boot_vm
+check "Pool nach Neustart eingehängt"  'findmnt -t fuse.mergerfs /srv/pools/e2e'
+check "Samba-Freigabe nach Neustart"   'grep -q "\[E2E\]" /etc/samba/betternas.d/e2e.conf'
+if command -v smbclient >/dev/null; then
+	step "SMB: Datei nach Neustart lesbar" sh -c "smbclient //127.0.0.1/E2E -p $SMB_PORT -U 'e2euser%$USERPW' -c 'get test.txt -' 2>&1 | grep -q betternas"
+fi
+
 [ "$fail" = 0 ] && echo "[e2e] ALLE PRÜFUNGEN BESTANDEN ($MODE)"
 exit "$fail"

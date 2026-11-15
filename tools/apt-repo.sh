@@ -10,7 +10,8 @@ if [ "${1:-}" = "--inner" ]; then
 	shift
 	REPO="${1:?Repo-Verzeichnis fehlt}"
 	shift
-	export GNUPGHOME="$(mktemp -d)"
+	GNUPGHOME="$(mktemp -d)"
+	export GNUPGHOME
 	trap 'rm -rf "$GNUPGHOME"' EXIT
 	chmod 700 "$GNUPGHOME"
 	gpg --batch --quiet --import
