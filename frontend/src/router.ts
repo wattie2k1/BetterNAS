@@ -1,0 +1,44 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { setUnauthorizedHandler } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
+import AppLayout from '@/components/AppLayout.vue'
+import LoginView from '@/views/LoginView.vue'
+import DashboardView from '@/views/DashboardView.vue'
+import PlaceholderView from '@/views/PlaceholderView.vue'
+
+export const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
+    {
+      path: '/',
+      component: AppLayout,
+      children: [
+        { path: '', name: 'dashboard', component: DashboardView, meta: { title: 'Übersicht' } },
+        {
+          path: 'speicher/datentraeger',
+          name: 'disks',
+          component: PlaceholderView,
+          meta: { title: 'Datenträger' },
+        },
+        { path: 'speicher/pools', name: 'pools', component: PlaceholderView, meta: { title: 'Speicherpools' } },
+      ],
+    },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  if (to.meta.public) return true
+  const auth = useAuthStore()
+  if (auth.user || (await auth.fetchMe())) return true
+  return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} }
+})
+
+setUnauthorizedHandler(() => {
+  const auth = useAuthStore()
+  auth.user = null
+  if (router.currentRoute.value.name !== 'login') {
+    router.replace({ name: 'login', query: { next: router.currentRoute.value.fullPath } })
+  }
+})
