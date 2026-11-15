@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/rpc"
@@ -16,6 +17,8 @@ type Deps struct {
 	Runner    sysexec.Runner
 	FS        sysexec.FS
 	AllowLoop bool
+	// Udev liefert Änderungen an Blockgeräten; nil schaltet events.subscribe ab.
+	Udev UdevSource
 }
 
 // mutate serialisiert alle ändernden Operationen (Formatieren, Storage-Apply).
@@ -40,6 +43,7 @@ func Register(s *rpc.Server, d Deps) {
 	s.Handle("system.info", func(context.Context, json.RawMessage) (any, error) {
 		return SystemInfo(d)
 	})
+	registerEvents(s, d)
 	s.Handle("disk.list", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return ListDisks(ctx, d)
 	})
@@ -69,6 +73,16 @@ func Register(s *rpc.Server, d Deps) {
 		mutate.Lock()
 		defer mutate.Unlock()
 		return Apply(ctx, d, st)
+	})
+}
+
+// registerEvents registriert das Ereignis-Abonnement (1 s Entprellung).
+func registerEvents(s *rpc.Server, d Deps) {
+	if d.Udev == nil {
+		return
+	}
+	s.HandleStream("events.subscribe", func(ctx context.Context, emit func(rpc.Event) error) error {
+		return DiskEvents(ctx, d.Udev, time.Second, emit)
 	})
 }
 

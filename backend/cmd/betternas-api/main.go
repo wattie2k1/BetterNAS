@@ -49,6 +49,7 @@ func main() {
 		log.Warn("jobs", "err", err)
 	}
 	agent := rpc.NewClient(cfg.AgentSocket)
+	go api.ForwardAgentEvents(ctx, agent, hub)
 	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev)
 	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers})
 
