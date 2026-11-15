@@ -5,6 +5,8 @@ import AppLayout from '@/components/AppLayout.vue'
 import LoginView from '@/views/LoginView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import DisksView from '@/views/storage/DisksView.vue'
+import UsersView from '@/views/users/UsersView.vue'
+import GroupsView from '@/views/users/GroupsView.vue'
 import PoolsView from '@/views/storage/PoolsView.vue'
 
 export const router = createRouter({
@@ -18,6 +20,8 @@ export const router = createRouter({
         { path: '', name: 'dashboard', component: DashboardView, meta: { title: 'Übersicht' } },
         { path: 'speicher/datentraeger', name: 'disks', component: DisksView, meta: { title: 'Datenträger' } },
         { path: 'speicher/pools', name: 'pools', component: PoolsView, meta: { title: 'Speicherpools' } },
+        { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
+        { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
