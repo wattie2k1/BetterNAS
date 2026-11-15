@@ -124,5 +124,11 @@ check "Admin in betternas-admin"    'id -nG | grep -qw betternas-admin'
 check "Samba-Benutzer angelegt"     "echo $PASSWORD | sudo -S pdbedit -L | grep -q '^ittest:'"
 check "mergerfs installiert"        'command -v mergerfs'
 check "systemd ohne Fehler"         'test "$(systemctl is-system-running)" = running'
+check "BetterNAS-Dienste aktiv"     'systemctl is-active betternas-agent betternas-api'
+code="$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:$HTTPS_PORT/" || true)"
+if [ "$code" = 200 ]; then echo "[e2e] OK   Weboberfläche per HTTPS"; else echo "[e2e] FEHL Weboberfläche per HTTPS ($code)"; fail=1; fi
+code="$(curl -sk -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+	-d "{\"username\":\"ittest\",\"password\":\"$PASSWORD\"}" "https://127.0.0.1:$HTTPS_PORT/api/v1/auth/login" || true)"
+if [ "$code" = 200 ]; then echo "[e2e] OK   Anmeldung mit Installer-Admin"; else echo "[e2e] FEHL Anmeldung mit Installer-Admin ($code)"; fail=1; fi
 [ "$fail" = 0 ] && echo "[e2e] ALLE PRÜFUNGEN BESTANDEN ($MODE)"
 exit "$fail"

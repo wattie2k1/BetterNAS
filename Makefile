@@ -4,10 +4,18 @@ LDFLAGS := -s -w -X github.com/betternas/betternas/internal/version.Version=$(VE
 BUILDER := betternas-builder
 DOCKER_RUN := docker run --rm --privileged --platform linux/$(ARCH) -v $(CURDIR):/src -w /src $(BUILDER)-$(ARCH)
 
-.PHONY: test build build-arm64 builder rootfs iso e2e clean
+.PHONY: test test-go test-web web build build-arm64 builder rootfs iso e2e deb deploy clean
 
-test:
+test: test-go test-web
+
+test-go:
 	cd backend && go vet ./... && go test ./...
+
+test-web:
+	cd frontend && npm test
+
+web:
+	cd frontend && npm ci --no-audit --no-fund && npm run build
 
 build:
 	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../bin/amd64/ ./cmd/...
@@ -31,3 +39,17 @@ e2e:
 
 clean:
 	rm -rf bin dist build
+
+deb:
+	$(DOCKER_RUN) packaging/build-deb.sh $(ARCH) $(VERSION)
+
+VM ?= betternas-dev
+deploy:
+	scp dist/betternas_$(VERSION)_$(ARCH).deb $(VM):/tmp/
+	ssh $(VM) 'sudo apt-get install -y --allow-downgrades /tmp/betternas_$(VERSION)_$(ARCH).deb && rm /tmp/betternas_$(VERSION)_$(ARCH).deb'
+
+# Nativer Build und KVM-Tests auf dem Entwicklungsrechner, z. B. make remote VERSION=0.0.3-dev MODES="uefi bios"
+REMOTE ?= betternas-dev
+MODES ?= uefi
+remote:
+	tools/remote-build.sh $(REMOTE) $(VERSION) $(MODES)

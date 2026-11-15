@@ -22,6 +22,18 @@ grep -q '^betternas-admin:' "$W/etc/group" || err "Gruppe betternas-admin fehlt"
 ls "$W"/boot/vmlinuz-* >/dev/null 2>&1 || err "Kernel fehlt"
 ls "$W"/boot/initrd.img-* >/dev/null 2>&1 || err "initramfs fehlt"
 grep -q 'de_DE.UTF-8' "$W/etc/locale.gen" || err "Locale de_DE fehlt"
+# Besitzer müssen erhalten bleiben (Overlay daher mit --no-preserve=ownership kopieren) (z. B. /var/mail → Gruppe mail, /etc/shadow → Gruppe shadow)
+[ "$(stat -c %g "$W/var/mail")" = "$(awk -F: '$1=="mail"{print $3}' "$W/etc/group")" ] || err "Besitzer im Image verloren (/var/mail)"
+[ "$(stat -c %g "$W/etc/shadow")" = "$(awk -F: '$1=="shadow"{print $3}' "$W/etc/group")" ] || err "Besitzer im Image verloren (/etc/shadow)"
+
+if ls "$W"/var/lib/dpkg/info/betternas.list >/dev/null 2>&1; then
+	[ -x "$W/usr/bin/betternas-api" ] || err "betternas-api fehlt"
+	[ -L "$W/etc/systemd/system/multi-user.target.wants/betternas-api.service" ] || err "betternas-api nicht aktiviert"
+	grep -q '^betternas:' "$W/etc/passwd" || err "Systembenutzer betternas fehlt"
+	[ "$(stat -c %u "$W/etc/betternas/tls")" = "$(awk -F: '$1=="betternas"{print $3}' "$W/etc/passwd")" ] || err "/etc/betternas/tls gehört nicht betternas"
+else
+	echo "HINWEIS: Paket betternas nicht im Image (dist/betternas_*.deb fehlte beim Bau)"
+fi
 
 [ "$fail" = 0 ] && echo "rootfs OK"
 exit "$fail"
