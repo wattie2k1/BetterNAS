@@ -7,14 +7,15 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(mktemp -d)"
 trap 'rm -rf "$ROOT"' EXIT
 
-for f in "$SRC/bin/$ARCH/betternas-api" "$SRC/bin/$ARCH/betternas-agent" "$SRC/frontend/dist/index.html"; do
-	[ -e "$f" ] || { echo "FEHLER: $f fehlt (make build web)"; exit 1; }
+for f in "$SRC/bin/$ARCH/betternas-api" "$SRC/bin/$ARCH/betternas-agent" "$SRC/frontend/dist/index.html" "$SRC/packaging/apt/betternas-archive-keyring.gpg"; do
+	[ -e "$f" ] || { echo "FEHLER: $f fehlt (make build web; Schlüssel: make apt-key)"; exit 1; }
 done
 
 install -D -m 0755 "$SRC/bin/$ARCH/betternas-api" "$ROOT/usr/bin/betternas-api"
 install -D -m 0755 "$SRC/bin/$ARCH/betternas-agent" "$ROOT/usr/sbin/betternas-agent"
 mkdir -p "$ROOT/usr/share/betternas/web"
 cp -a "$SRC/frontend/dist/." "$ROOT/usr/share/betternas/web/"
+install -D -m 0644 "$SRC/packaging/apt/betternas-archive-keyring.gpg" "$ROOT/usr/share/keyrings/betternas-archive-keyring.gpg"
 install -D -m 0644 "$SRC/packaging/samba/smb.conf" "$ROOT/usr/share/betternas/smb.conf"
 install -D -m 0644 "$SRC/packaging/systemd/betternas-api.service" "$ROOT/usr/lib/systemd/system/betternas-api.service"
 install -D -m 0644 "$SRC/packaging/systemd/betternas-agent.service" "$ROOT/usr/lib/systemd/system/betternas-agent.service"

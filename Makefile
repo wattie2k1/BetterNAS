@@ -1,10 +1,12 @@
 VERSION ?= 0.0.1-dev
+# Adresse des BetterNAS-APT-Repos, die ins Image eingetragen wird (leer = keine BetterNAS-Quelle)
+APT_URL ?=
 ARCH    ?= amd64
 LDFLAGS := -s -w -X github.com/betternas/betternas/internal/version.Version=$(VERSION)
 BUILDER := betternas-builder
-DOCKER_RUN := docker run --rm --privileged --platform linux/$(ARCH) -v $(CURDIR):/src -w /src $(BUILDER)-$(ARCH)
+DOCKER_RUN := docker run --rm --privileged --platform linux/$(ARCH) -e APT_URL=$(APT_URL) -v $(CURDIR):/src -w /src $(BUILDER)-$(ARCH)
 
-.PHONY: test test-go test-web web build build-arm64 builder rootfs iso e2e deb deploy clean
+.PHONY: test test-go test-web web build build-arm64 builder rootfs iso e2e deb deploy clean apt-key repo dev-repo
 
 test: test-go test-web
 
@@ -42,6 +44,18 @@ clean:
 
 deb:
 	$(DOCKER_RUN) packaging/build-deb.sh $(ARCH) $(VERSION)
+
+# Einmalig: Signierschlüssel für das APT-Repo erzeugen (privater Schlüssel nach ~/.betternas/, selbst sichern!)
+apt-key:
+	tools/apt-key.sh
+
+# Signiertes APT-Repo aus den gebauten Paketen nach dist/apt (zum Hochladen auf den Webserver)
+repo:
+	tools/apt-repo.sh dist/apt $(wildcard dist/betternas_$(VERSION)_*.deb)
+
+# Entwicklungs-Repo auf dem Entwicklungsrechner veröffentlichen und als APT-Quelle eintragen
+dev-repo:
+	tools/dev-repo.sh $(VM) $(VERSION)
 
 VM ?= betternas-dev
 deploy:
