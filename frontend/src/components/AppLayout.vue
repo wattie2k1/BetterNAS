@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useJobsStore, type Job } from '@/stores/jobs'
 import { useStorageStore } from '@/stores/storage'
 import { useUsersStore } from '@/stores/users'
+import { useSharesStore } from '@/stores/shares'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
 
@@ -16,6 +17,7 @@ const auth = useAuthStore()
 const jobs = useJobsStore()
 const storage = useStorageStore()
 const usersStore = useUsersStore()
+const sharesStore = useSharesStore()
 const route = useRoute()
 const router = useRouter()
 const showJobs = ref(false)
@@ -27,6 +29,8 @@ const nav = [
   { heading: 'Speicher' },
   { label: 'Datenträger', icon: 'pi pi-database', to: '/speicher/datentraeger' },
   { label: 'Speicherpools', icon: 'pi pi-box', to: '/speicher/pools' },
+  { heading: 'Freigaben' },
+  { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben' },
   { heading: 'Benutzer' },
   { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer' },
   { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen' },
@@ -39,6 +43,7 @@ onMounted(() => {
     if (m.type === 'job.updated') jobs.update(m.data as Job)
     storage.handleEvent(m)
     usersStore.handleEvent(m)
+    sharesStore.handleEvent(m)
   })
 })
 onUnmounted(() => disconnect?.())

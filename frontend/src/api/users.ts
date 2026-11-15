@@ -1,4 +1,4 @@
-import { api, apiFetch } from './client'
+import { api } from './client'
 
 export interface UserView {
   name: string
@@ -42,8 +42,7 @@ export const usersApi = {
   groups: () => api.get<GroupView[]>('/api/v1/groups'),
   createUser: (u: UserInput) => api.post<{ name: string }>('/api/v1/users', u),
   updateUser: (name: string, u: UserUpdate) => api.patch<void>(`/api/v1/users/${enc(name)}`, u),
-  setPassword: (name: string, password: string) =>
-    apiFetch<void>(`/api/v1/users/${enc(name)}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
+  setPassword: (name: string, password: string) => api.put<void>(`/api/v1/users/${enc(name)}/password`, { password }),
   deleteUser: (name: string) => api.del<void>(`/api/v1/users/${enc(name)}`),
   createGroup: (g: GroupInput) => api.post<{ name: string }>('/api/v1/groups', g),
   setMembers: (name: string, members: string[]) => api.patch<void>(`/api/v1/groups/${enc(name)}`, { members }),
