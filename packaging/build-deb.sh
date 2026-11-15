@@ -1,0 +1,41 @@
+#!/bin/sh
+# Baut das Debian-Paket betternas. Aufruf: packaging/build-deb.sh <arch> <version>
+set -eu
+ARCH="${1:?Architektur fehlt}"
+VERSION="${2:?Version fehlt}"
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(mktemp -d)"
+trap 'rm -rf "$ROOT"' EXIT
+
+for f in "$SRC/bin/$ARCH/betternas-api" "$SRC/bin/$ARCH/betternas-agent" "$SRC/frontend/dist/index.html"; do
+	[ -e "$f" ] || { echo "FEHLER: $f fehlt (make build web)"; exit 1; }
+done
+
+install -D -m 0755 "$SRC/bin/$ARCH/betternas-api" "$ROOT/usr/bin/betternas-api"
+install -D -m 0755 "$SRC/bin/$ARCH/betternas-agent" "$ROOT/usr/sbin/betternas-agent"
+mkdir -p "$ROOT/usr/share/betternas/web"
+cp -a "$SRC/frontend/dist/." "$ROOT/usr/share/betternas/web/"
+install -D -m 0644 "$SRC/packaging/systemd/betternas-api.service" "$ROOT/usr/lib/systemd/system/betternas-api.service"
+install -D -m 0644 "$SRC/packaging/systemd/betternas-agent.service" "$ROOT/usr/lib/systemd/system/betternas-agent.service"
+
+mkdir -p "$ROOT/DEBIAN"
+install -m 0755 "$SRC/packaging/scripts/postinst.sh" "$ROOT/DEBIAN/postinst"
+install -m 0755 "$SRC/packaging/scripts/prerm.sh" "$ROOT/DEBIAN/prerm"
+install -m 0755 "$SRC/packaging/scripts/postrm.sh" "$ROOT/DEBIAN/postrm"
+SIZE="$(du -sk "$ROOT" | cut -f1)"
+cat > "$ROOT/DEBIAN/control" <<CTRL
+Package: betternas
+Version: $VERSION
+Architecture: $ARCH
+Maintainer: BetterNAS <betternas@localhost>
+Installed-Size: $SIZE
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, mergerfs, smartmontools, gdisk, parted, e2fsprogs, xfsprogs
+Section: admin
+Priority: optional
+Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
+ Weboberfläche (betternas-api) und privilegierter Systemdienst (betternas-agent).
+CTRL
+
+mkdir -p "$SRC/dist"
+rm -f "$SRC"/dist/betternas_*_"$ARCH".deb
+dpkg-deb --root-owner-group -Zxz --build "$ROOT" "$SRC/dist/betternas_${VERSION}_${ARCH}.deb"

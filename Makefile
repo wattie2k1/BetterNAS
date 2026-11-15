@@ -39,3 +39,17 @@ e2e:
 
 clean:
 	rm -rf bin dist build
+
+deb:
+	$(DOCKER_RUN) packaging/build-deb.sh $(ARCH) $(VERSION)
+
+VM ?= betternas-dev
+deploy:
+	scp dist/betternas_$(VERSION)_$(ARCH).deb $(VM):/tmp/
+	ssh $(VM) 'sudo apt-get install -y --allow-downgrades /tmp/betternas_$(VERSION)_$(ARCH).deb && rm /tmp/betternas_$(VERSION)_$(ARCH).deb'
+
+# Nativer Build und KVM-Tests auf dem Entwicklungsrechner, z. B. make remote VERSION=0.0.3-dev MODES="uefi bios"
+REMOTE ?= betternas-dev
+MODES ?= uefi
+remote:
+	tools/remote-build.sh $(REMOTE) $(VERSION) $(MODES)
