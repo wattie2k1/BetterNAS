@@ -1,0 +1,7 @@
+root:x:0:
+sudo:x:27:wattie
+docker:x:990:
+users:x:100:
+wattie:x:1000:
+betternas-admin:x:988:wattie
+familie:x:10000:anna,wattie
