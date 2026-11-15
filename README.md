@@ -19,6 +19,23 @@ make iso ARCH=amd64 VERSION=0.0.1-dev
 
 Ergebnis: `dist/betternas-<version>-amd64.iso` – per `dd`, balenaEtcher, Rufus oder Ventoy auf einen USB-Stick schreiben.
 
+### Empfohlen: nativ auf dem Entwicklungsrechner (amd64)
+
+Unter Emulation (Apple Silicon) sind debootstrap/Python unzuverlässig. Schneller und stabiler ist der Bau auf
+einem BetterNAS-/Debian-Rechner mit KVM (SSH-Alias `betternas-dev`, sudo ohne Passwort):
+
+```bash
+make remote VERSION=0.0.3-dev MODES="uefi bios secureboot"
+```
+
+Das baut Paket, Root-Dateisystem und ISO dort, führt die QEMU-Tests mit KVM aus und holt ISO und `.deb` nach `dist/`.
+
+### Nur das Paket auf den Entwicklungsrechner bringen
+
+```bash
+make build web deb deploy VERSION=0.0.3-dev
+```
+
 ## Auf echter Hardware installieren
 
 1. USB-Stick (≥ 2 GB, wird komplett überschrieben) mit balenaEtcher beschreiben – oder auf macOS:
