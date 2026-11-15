@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"path"
 	"sort"
 	"strings"
@@ -131,8 +132,12 @@ func Apply(ctx context.Context, d Deps, st storage.State) (ApplyResult, error) {
 		if err := d.FS.WriteFile(path.Join(unitDir, name), desired[name], 0o644); err != nil {
 			return ApplyResult{}, err
 		}
-		if err := d.FS.MkdirAll(whereOf(desired[name]), 0o755); err != nil {
+		where := whereOf(desired[name])
+		if err := d.FS.MkdirAll(where, 0o755); err != nil {
 			return ApplyResult{}, err
+		}
+		if !isPoolUnit(name) {
+			protectMountpoint(ctx, d, where)
 		}
 	}
 	if _, err := run(ctx, d.Runner, nil, "systemctl", "daemon-reload"); err != nil {
@@ -156,6 +161,19 @@ func Apply(ctx context.Context, d Deps, st storage.State) (ApplyResult, error) {
 		}
 	}
 	return res, nil
+}
+
+// protectMountpoint macht einen leeren, nicht eingehängten Einhängeordner unveränderlich (chattr +i).
+// Fehlt die Platte später, kann mergerfs dann nicht unbemerkt auf die Systemplatte schreiben.
+// Ist die Platte eingehängt, liegt ihr Dateisystem darüber und bleibt normal beschreibbar.
+func protectMountpoint(ctx context.Context, d Deps, where string) {
+	res, err := d.Runner.Run(ctx, nil, "findmnt", "--mountpoint", where)
+	if err != nil || res.ExitCode == 0 {
+		return // eingehängt (oder unbekannt): nicht anfassen
+	}
+	if r, err := d.Runner.Run(ctx, nil, "chattr", "+i", where); err != nil || r.ExitCode != 0 {
+		slog.Warn("einhängeordner konnte nicht geschützt werden", "dir", where, "stderr", strings.TrimSpace(string(r.Stderr)))
+	}
 }
 
 func rollback(ctx context.Context, d Deps, existing map[string][]byte, added, modified, toStart []string) {

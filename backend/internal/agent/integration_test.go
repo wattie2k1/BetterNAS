@@ -58,6 +58,7 @@ func TestStorageLifecycle(t *testing.T) {
 		}
 		os.RemoveAll(dir)
 		for _, l := range loops {
+			_ = exec.Command("chattr", "-i", storage.DiskPath("loop-"+filepath.Base(l))).Run()
 			os.Remove(storage.DiskPath("loop-" + filepath.Base(l)))
 		}
 		os.Remove(storage.PoolPath("ittest"))
@@ -111,6 +112,20 @@ func TestStorageLifecycle(t *testing.T) {
 	}
 	if found != 1 {
 		t.Fatalf("Datei auf %d Platten statt genau einer", found)
+	}
+
+	// 3b. Fehlende Platte: Der leere Einhängeordner auf der Systemplatte darf nicht beschreibbar sein
+	poolUnit := storage.UnitName(storage.PoolPath("ittest"))
+	diskUnit := storage.UnitName(storage.DiskPath(mine[0].ID))
+	sh(t, "systemctl", "stop", poolUnit)
+	sh(t, "systemctl", "stop", diskUnit)
+	if err := os.WriteFile(filepath.Join(storage.DiskPath(mine[0].ID), "verirrt.txt"), []byte("x"), 0o644); err == nil {
+		t.Fatal("leerer Einhängeordner ist beschreibbar – Daten würden auf der Systemplatte landen")
+	}
+	sh(t, "systemctl", "start", diskUnit)
+	sh(t, "systemctl", "start", poolUnit)
+	if err := os.WriteFile(filepath.Join(storage.DiskPath(mine[0].ID), "ok.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("eingehängte Platte nicht beschreibbar: %v", err)
 	}
 
 	// 4. Pool auf eine Platte verkleinern

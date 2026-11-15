@@ -279,3 +279,26 @@ func TestSmartRejectsUnknownDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Fehlt eine Platte, darf mergerfs nicht in den leeren Einhängeordner auf der Systemplatte schreiben.
+func TestApplyProtectsEmptyMountpoints(t *testing.T) {
+	d, f, _ := storageEnv(t)
+	if _, err := Apply(context.Background(), d, applyState()); err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, f, "findmnt --mountpoint /srv/disks/d1", "chattr +i /srv/disks/d1", "systemctl enable --now srv-disks-d1.mount")
+	if f.Called("chattr +i /srv/pools/media") {
+		t.Fatal("pool mountpoint must not be made immutable")
+	}
+}
+
+func TestApplyDoesNotChattrMountedDisk(t *testing.T) {
+	d, f, _ := storageEnv(t)
+	f.Responses["findmnt --mountpoint /srv/disks/d1"] = sysexec.Result{ExitCode: 0} // bereits eingehängt
+	if _, err := Apply(context.Background(), d, applyState()); err != nil {
+		t.Fatal(err)
+	}
+	if f.Called("chattr +i /srv/disks/d1") {
+		t.Fatal("chattr on a mounted filesystem root")
+	}
+}
