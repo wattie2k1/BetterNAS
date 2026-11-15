@@ -1,0 +1,9 @@
+bin/
+dist/
+build/
+frontend/node_modules/
+frontend/dist/
+*.db
+*.qcow2
+*.log
+.DS_Store
