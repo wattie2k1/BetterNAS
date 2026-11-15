@@ -4,13 +4,16 @@ import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Drawer from 'primevue/drawer'
+import Toast from 'primevue/toast'
 import { useAuthStore } from '@/stores/auth'
 import { useJobsStore, type Job } from '@/stores/jobs'
+import { useStorageStore } from '@/stores/storage'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
 
 const auth = useAuthStore()
 const jobs = useJobsStore()
+const storage = useStorageStore()
 const route = useRoute()
 const router = useRouter()
 const showJobs = ref(false)
@@ -29,6 +32,7 @@ onMounted(() => {
   jobs.load().catch(() => {})
   disconnect = connectEvents((m) => {
     if (m.type === 'job.updated') jobs.update(m.data as Job)
+    storage.handleEvent(m)
   })
 })
 onUnmounted(() => disconnect?.())
@@ -68,6 +72,7 @@ async function logout() {
         <RouterView />
       </main>
     </div>
+    <Toast position="bottom-right" />
     <Drawer v-model:visible="showJobs" header="Aufträge" position="right" class="jobs-drawer">
       <JobsPanel />
     </Drawer>

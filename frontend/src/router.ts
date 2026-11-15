@@ -4,7 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 import AppLayout from '@/components/AppLayout.vue'
 import LoginView from '@/views/LoginView.vue'
 import DashboardView from '@/views/DashboardView.vue'
-import PlaceholderView from '@/views/PlaceholderView.vue'
+import DisksView from '@/views/storage/DisksView.vue'
+import PoolsView from '@/views/storage/PoolsView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -15,13 +16,8 @@ export const router = createRouter({
       component: AppLayout,
       children: [
         { path: '', name: 'dashboard', component: DashboardView, meta: { title: 'Übersicht' } },
-        {
-          path: 'speicher/datentraeger',
-          name: 'disks',
-          component: PlaceholderView,
-          meta: { title: 'Datenträger' },
-        },
-        { path: 'speicher/pools', name: 'pools', component: PlaceholderView, meta: { title: 'Speicherpools' } },
+        { path: 'speicher/datentraeger', name: 'disks', component: DisksView, meta: { title: 'Datenträger' } },
+        { path: 'speicher/pools', name: 'pools', component: PoolsView, meta: { title: 'Speicherpools' } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
