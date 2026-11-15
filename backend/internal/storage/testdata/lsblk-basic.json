@@ -1,0 +1,19 @@
+{
+   "blockdevices": [
+      {"name":"sda", "kname":"sda", "path":"/dev/sda", "type":"disk", "size":4000787030016, "model":"ST4000VN008-2DR166", "serial":"ZGY0ABCD", "wwn":"0x50014ee2b5d1a2c3", "tran":"sata", "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"sdb", "kname":"sdb", "path":"/dev/sdb", "type":"disk", "size":4000787030016, "model":"WDC WD40EFRX-68N32N0", "serial":"WD-WCC7K1234567", "wwn":null, "tran":"sata", "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null],
+         "children": [
+            {"name":"sdb1", "kname":"sdb1", "path":"/dev/sdb1", "type":"part", "size":4000785104896, "model":null, "serial":null, "wwn":null, "tran":null, "rota":true, "fstype":"ext4", "uuid":"0b9d6f1c-7a52-4f0e-9a51-0c3a2b1d4e5f", "label":"media", "mountpoints":[null]}
+         ]
+      },
+      {"name":"sr0", "kname":"sr0", "path":"/dev/sr0", "type":"rom", "size":1073741312, "model":"DVD-RAM", "serial":"123", "wwn":null, "tran":"sata", "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"zram0", "kname":"zram0", "path":"/dev/zram0", "type":"disk", "size":4294967296, "model":null, "serial":null, "wwn":null, "tran":null, "rota":false, "fstype":"swap", "uuid":null, "label":null, "mountpoints":["[SWAP]"]},
+      {"name":"nvme0n1", "kname":"nvme0n1", "path":"/dev/nvme0n1", "type":"disk", "size":512110190592, "model":"Samsung SSD 980 PRO 500GB", "serial":"S5GXNX0T123456A", "wwn":"eui.002538b111b2c3d4", "tran":"nvme", "rota":false, "fstype":null, "uuid":null, "label":null, "mountpoints":[null],
+         "children": [
+            {"name":"nvme0n1p1", "kname":"nvme0n1p1", "path":"/dev/nvme0n1p1", "type":"part", "size":1048576, "model":null, "serial":null, "wwn":null, "tran":"nvme", "rota":false, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+            {"name":"nvme0n1p2", "kname":"nvme0n1p2", "path":"/dev/nvme0n1p2", "type":"part", "size":536870912, "model":null, "serial":null, "wwn":null, "tran":"nvme", "rota":false, "fstype":"vfat", "uuid":"ABCD-1234", "label":"EFI", "mountpoints":["/boot/efi"]},
+            {"name":"nvme0n1p3", "kname":"nvme0n1p3", "path":"/dev/nvme0n1p3", "type":"part", "size":34359738368, "model":null, "serial":null, "wwn":null, "tran":"nvme", "rota":false, "fstype":"ext4", "uuid":"11111111-2222-3333-4444-555555555555", "label":"bnas-root", "mountpoints":["/"]}
+         ]
+      }
+   ]
+}

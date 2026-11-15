@@ -1,0 +1,9 @@
+{
+   "blockdevices": [
+      {"name":"sdc", "kname":"sdc", "path":"/dev/sdc", "type":"disk", "size":2000398934016, "model":"USB3.0 Dock", "serial":"0123456789AB", "wwn":null, "tran":"usb", "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"sdd", "kname":"sdd", "path":"/dev/sdd", "type":"disk", "size":2000398934016, "model":"USB3.0 Dock", "serial":"0123456789AB", "wwn":null, "tran":"usb", "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"vda", "kname":"vda", "path":"/dev/vda", "type":"disk", "size":42949672960, "model":null, "serial":null, "wwn":null, "tran":null, "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"loop0", "kname":"loop0", "path":"/dev/loop0", "type":"loop", "size":1073741824, "model":null, "serial":null, "wwn":null, "tran":null, "rota":false, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"loop1", "kname":"loop1", "path":"/dev/loop1", "type":"loop", "size":0, "model":null, "serial":null, "wwn":null, "tran":null, "rota":false, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]}
+   ]
+}
