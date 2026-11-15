@@ -1,0 +1,17 @@
+{
+   "blockdevices": [
+      {"name":"sda", "kname":"sda", "path":"/dev/sda", "type":"disk", "size":4000787030016, "model":"WDC WD40EFRX-68N32N0", "serial":"WD-WCC7K1234567", "wwn":null, "tran":"sata", "rota":true, "fstype":null, "uuid":null, "label":null, "mountpoints":[null],
+         "children": [
+            {"name":"sda1", "kname":"sda1", "path":"/dev/sda1", "type":"part", "size":4000785104896, "model":null, "serial":null, "wwn":null, "tran":null, "rota":true, "fstype":"ext4", "uuid":"0b9d6f1c-7a52-4f0e-9a51-0c3a2b1d4e5f", "label":"media", "mountpoints":[null]}
+         ]
+      },
+      {"name":"sdc", "kname":"sdc", "path":"/dev/sdc", "type":"disk", "size":31914983424, "model":"SanDisk Ultra", "serial":"4C530001", "wwn":null, "tran":"usb", "rota":false, "fstype":"iso9660", "uuid":"2026-11-15-12-00-00-00", "label":"BETTERNAS", "mountpoints":[null],
+         "children": [
+            {"name":"sdc1", "kname":"sdc1", "path":"/dev/sdc1", "type":"part", "size":1200000000, "model":null, "serial":null, "wwn":null, "tran":"usb", "rota":false, "fstype":"iso9660", "uuid":"2026-11-15-12-00-00-00", "label":"BETTERNAS", "mountpoints":["/run/live/medium"]},
+            {"name":"sdc2", "kname":"sdc2", "path":"/dev/sdc2", "type":"part", "size":5242880, "model":null, "serial":null, "wwn":null, "tran":"usb", "rota":false, "fstype":"vfat", "uuid":"ABCD-0001", "label":null, "mountpoints":[null]}
+         ]
+      },
+      {"name":"sdd", "kname":"sdd", "path":"/dev/sdd", "type":"disk", "size":17179869184, "model":"Small", "serial":"S1", "wwn":null, "tran":"sata", "rota":false, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]},
+      {"name":"nvme0n1", "kname":"nvme0n1", "path":"/dev/nvme0n1", "type":"disk", "size":512110190592, "model":"Samsung SSD 980 PRO 500GB", "serial":"S5GXNX0T123456A", "wwn":"eui.002538b111b2c3d4", "tran":"nvme", "rota":false, "fstype":null, "uuid":null, "label":null, "mountpoints":[null]}
+   ]
+}

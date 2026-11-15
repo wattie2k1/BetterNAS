@@ -1,0 +1,5 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+# <dateisystem> <mountpoint> <typ> <optionen> <dump> <pass>
+UUID=11111111-2222-3333-4444-555555555555 / ext4 errors=remount-ro 0 1
+UUID=ABCD-1234 /boot/efi vfat umask=0077 0 1
+UUID=66666666-7777-8888-9999-000000000000 /srv/appdata ext4 defaults,noatime 0 2

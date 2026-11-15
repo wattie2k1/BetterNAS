@@ -1,0 +1,7 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+MulticastDNS=no
