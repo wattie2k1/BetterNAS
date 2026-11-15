@@ -1,0 +1,12 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS Datenplatte WDC_WD40EFRX-68N32N0_WD-WCC7K1234567
+
+[Mount]
+What=/dev/disk/by-uuid/22222222-2222-2222-2222-222222222222
+Where=/srv/disks/WDC_WD40EFRX-68N32N0_WD-WCC7K1234567
+Type=xfs
+Options=defaults,noatime,nofail
+
+[Install]
+WantedBy=multi-user.target
