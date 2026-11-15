@@ -1,0 +1,12 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS Datenplatte wwn-0x50014ee2b5d1a2c3
+
+[Mount]
+What=/dev/disk/by-uuid/11111111-1111-1111-1111-111111111111
+Where=/srv/disks/wwn-0x50014ee2b5d1a2c3
+Type=ext4
+Options=defaults,noatime,nofail
+
+[Install]
+WantedBy=multi-user.target dev-disk-by\x2duuid-11111111\x2d1111\x2d1111\x2d1111\x2d111111111111.device

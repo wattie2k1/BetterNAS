@@ -53,7 +53,7 @@ func main() {
 	}
 
 	s := rpc.NewServer(allowed)
-	agent.Register(s, agent.Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/"), AllowLoop: *allowLoop})
+	agent.Register(s, agent.Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/"), AllowLoop: *allowLoop, Udev: agent.KernelUevents{}})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

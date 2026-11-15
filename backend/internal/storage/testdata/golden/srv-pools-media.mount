@@ -1,0 +1,14 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS Pool media
+Wants=srv-disks-wwn\x2d0x50014ee2b5d1a2c3.mount srv-disks-WDC_WD40EFRX\x2d68N32N0_WD\x2dWCC7K1234567.mount
+After=srv-disks-wwn\x2d0x50014ee2b5d1a2c3.mount srv-disks-WDC_WD40EFRX\x2d68N32N0_WD\x2dWCC7K1234567.mount
+
+[Mount]
+What=/srv/disks/wwn-0x50014ee2b5d1a2c3:/srv/disks/WDC_WD40EFRX-68N32N0_WD-WCC7K1234567
+Where=/srv/pools/media
+Type=fuse.mergerfs
+Options=category.create=epmfs,minfreespace=20G,moveonenospc=true,cache.files=off,dropcacheonclose=true,fsname=bnas-media,nofail
+
+[Install]
+WantedBy=multi-user.target srv-disks-wwn\x2d0x50014ee2b5d1a2c3.mount srv-disks-WDC_WD40EFRX\x2d68N32N0_WD\x2dWCC7K1234567.mount
