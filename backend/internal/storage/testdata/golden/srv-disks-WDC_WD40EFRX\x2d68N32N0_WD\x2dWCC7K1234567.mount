@@ -9,4 +9,4 @@ Type=xfs
 Options=defaults,noatime,nofail
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target dev-disk-by\x2duuid-22222222\x2d2222\x2d2222\x2d2222\x2d222222222222.device

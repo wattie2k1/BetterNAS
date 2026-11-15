@@ -16,6 +16,8 @@ func RenderUnits(s State) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, d := range s.Disks {
 		where := DiskPath(d.DiskID)
+		// WantedBy auf die Geräte-Unit: Kehrt die Platte zurück, hängt systemd sie von selbst ein.
+		device := EscapePath("/dev/disk/by-uuid/"+d.FSUUID) + ".device"
 		out[UnitName(where)] = []byte(fmt.Sprintf(`%s
 [Unit]
 Description=BetterNAS Datenplatte %s
@@ -27,8 +29,8 @@ Type=%s
 Options=defaults,noatime,nofail
 
 [Install]
-WantedBy=multi-user.target
-`, ManagedHeader, d.DiskID, d.FSUUID, where, d.FSType))
+WantedBy=multi-user.target %s
+`, ManagedHeader, d.DiskID, d.FSUUID, where, d.FSType, device))
 	}
 	for _, p := range s.Pools {
 		var paths, units []string
@@ -38,6 +40,7 @@ WantedBy=multi-user.target
 		}
 		where := PoolPath(p.Name)
 		// Wants statt Requires: Fehlt eine Platte, hängt der Pool mit den übrigen ein.
+		// WantedBy auf die Platten-Units: Wird eine Platte (wieder) eingehängt, startet auch der Pool.
 		out[UnitName(where)] = []byte(fmt.Sprintf(`%s
 [Unit]
 Description=BetterNAS Pool %s
@@ -51,9 +54,9 @@ Type=fuse.mergerfs
 Options=category.create=%s,minfreespace=%s,moveonenospc=true,cache.files=off,dropcacheonclose=true,fsname=bnas-%s,nofail
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target %s
 `, ManagedHeader, p.Name, strings.Join(units, " "), strings.Join(units, " "),
-			strings.Join(paths, ":"), where, p.CreatePolicy, p.MinFree, p.Name))
+			strings.Join(paths, ":"), where, p.CreatePolicy, p.MinFree, p.Name, strings.Join(units, " ")))
 	}
 	return out, nil
 }

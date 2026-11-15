@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/betternas/betternas/internal/api"
+	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/events"
@@ -53,6 +54,21 @@ func main() {
 	go api.ForwardAgentEvents(ctx, agent, hub)
 	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev)
 	sm := storage.NewManager(d, agent, jm, hub)
+	go func() {
+		// Der Agent startet parallel; kurz warten, bis sein Socket bereitsteht.
+		for i := 0; i < 10; i++ {
+			err := sm.Reconcile(ctx)
+			if err == nil {
+				return
+			}
+			if apierr.From(err).Code != apierr.Internal {
+				log.Warn("mount-units abgleichen", "err", err)
+				return
+			}
+			time.Sleep(time.Second)
+		}
+		log.Warn("mount-units abgleichen: agent nicht erreichbar")
+	}()
 	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}

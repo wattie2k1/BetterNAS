@@ -337,6 +337,18 @@ func (m *Manager) run(kind, target, actor, event string, details map[string]any,
 	})
 }
 
+// Reconcile schreibt die Mount-Units aus dem gespeicherten Zustand neu (beim Start der API).
+// Unveränderte Units bleiben unberührt; nach einem Update werden geänderte Units ersetzt.
+func (m *Manager) Reconcile(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st, _, err := m.currentState(ctx)
+	if err != nil {
+		return err
+	}
+	return m.agent.Call(ctx, "storage.apply", st, nil)
+}
+
 // applyAndCommit wendet st über den Agent an und schreibt bei Erfolg die DB-Änderung.
 func (m *Manager) applyAndCommit(ctx context.Context, log jobs.Logger, st State, commit func(tx *sql.Tx) error) error {
 	log.Printf("Wende Konfiguration an …")

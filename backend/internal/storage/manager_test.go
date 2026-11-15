@@ -351,3 +351,23 @@ func TestReleaseDiskInPool(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 }
+
+// Beim Start gleicht die API die Mount-Units mit der Datenbank ab, damit eine neue
+// Version geänderte Units (z. B. nach einem Update) sofort schreibt.
+func TestReconcileAppliesStoredState(t *testing.T) {
+	e := newEnv(t)
+	e.twoDataDisks(t)
+	jid, err := e.m.CreatePool(e.ctx, "anna", PoolInput{Name: "media", Branches: []string{"d1", "d2"}})
+	e.mustSucceed(t, jid, err)
+	before := e.agent.called("storage.apply")
+	if err := e.m.Reconcile(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if e.agent.called("storage.apply") != before+1 {
+		t.Fatal("Reconcile hat storage.apply nicht aufgerufen")
+	}
+	st := e.agent.lastApplied()
+	if len(st.Disks) != 2 || len(st.Pools) != 1 || st.Pools[0].Name != "media" {
+		t.Fatalf("falscher Zustand: %+v", st)
+	}
+}

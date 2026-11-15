@@ -118,3 +118,18 @@ func TestValidateRejects(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Kehrt eine Platte zurück (USB neu verbunden, später eingeschaltet), soll systemd sie
+// und ihren Pool von selbst wieder einhängen.
+func TestUnitsRemountWhenDeviceReturns(t *testing.T) {
+	units, _ := RenderUnits(testState())
+	disk := string(units[`srv-disks-wwn\x2d0x50014ee2b5d1a2c3.mount`])
+	if !strings.Contains(disk, "WantedBy=multi-user.target "+`dev-disk-by\x2duuid-11111111\x2d1111\x2d1111\x2d1111\x2d111111111111.device`+"\n") {
+		t.Fatalf("Platten-Unit wird beim Erscheinen des Geräts nicht gestartet:\n%s", disk)
+	}
+	pool := string(units["srv-pools-media.mount"])
+	want := "WantedBy=multi-user.target " + `srv-disks-wwn\x2d0x50014ee2b5d1a2c3.mount srv-disks-WDC_WD40EFRX\x2d68N32N0_WD\x2dWCC7K1234567.mount` + "\n"
+	if !strings.Contains(pool, want) {
+		t.Fatalf("Pool wird beim Einhängen seiner Platten nicht gestartet:\n%s", pool)
+	}
+}
