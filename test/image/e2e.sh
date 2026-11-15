@@ -110,7 +110,7 @@ boot_vm() {
 	# shellcheck disable=SC2086
 	$QEMU -serial "file:$WORK/boot$BOOTN.log" \
 		-drive file="$WORK/disk.qcow2",if=virtio \
-		-drive file="$WORK/data.qcow2",if=virtio,serial=bnas-e2e-data \
+		-drive file="$WORK/data.qcow2",if=none,id=data0,format=qcow2 -device virtio-blk-pci,drive=data0,serial=bnas-e2e-data \
 		-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22,hostfwd=tcp:127.0.0.1:$HTTPS_PORT-:443,hostfwd=tcp:127.0.0.1:$SMB_PORT-:445 &
 	QPID=$!
 	if ! wait_for "$WORK/boot$BOOTN.log" "BetterNAS ist bereit" "$BOOT_TIMEOUT" "$QPID"; then
@@ -173,7 +173,7 @@ PREVIEW="$(api POST "/api/v1/disks/$DISK/format/preview")"
 TOKEN="$(printf '%s' "$PREVIEW" | jget 'd["confirmToken"]')"
 JOB="$(api POST "/api/v1/disks/$DISK/format" "{\"fsType\":\"ext4\",\"confirmSerial\":\"bnas-e2e-data\",\"confirmToken\":\"$TOKEN\"}")"
 step "Datenplatte formatieren" wait_job "$JOB"
-JOB="$(api POST /api/v1/pools "{\"name\":\"e2e\",\"branches\":[\"$DISK\"]}")"
+JOB="$(api POST /api/v1/pools "{\"name\":\"e2e\",\"branches\":[\"$DISK\"],\"minFree\":\"1G\"}")"
 step "Pool anlegen" wait_job "$JOB"
 api POST /api/v1/users "{\"name\":\"e2euser\",\"fullName\":\"E2E\",\"password\":\"$USERPW\",\"groups\":[],\"admin\":false}" >/dev/null
 step "Benutzer anlegen" test "$(cat "$WORK/status")" = 201

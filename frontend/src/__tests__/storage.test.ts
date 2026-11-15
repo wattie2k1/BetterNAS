@@ -35,6 +35,17 @@ describe('FormatDialog', () => {
   })
 })
 
+describe('PoolDialog: Mindestfreiraum', () => {
+  it('warnt, wenn eine gewählte Platte nicht größer als der Mindestfreiraum ist', async () => {
+    const small = [{ ...disks[2], sizeBytes: 8 * 1024 ** 3 }]
+    const w = mount(PoolDialog, { props: { visible: true, disks: small, pools: [] }, global: { plugins: plugins() } })
+    await w.find('input[type="checkbox"]').setValue(true)
+    expect(w.find('[data-test="minfree-warning"]').exists()).toBe(true) // Standard 20G > 8 GiB
+    await w.find('input#pool-minfree').setValue('1G')
+    expect(w.find('[data-test="minfree-warning"]').exists()).toBe(false)
+  })
+})
+
 describe('PoolDialog', () => {
   const mountDialog = (props = {}) =>
     mount(PoolDialog, { props: { visible: true, disks, pools, ...props }, global: { plugins: plugins() } })
