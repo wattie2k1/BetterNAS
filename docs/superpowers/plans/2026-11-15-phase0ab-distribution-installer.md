@@ -26,6 +26,15 @@
 - Konsolen-Banner im Zielsystem: Zeile `BetterNAS ist bereit: https://<hostname>.local  https://<ip>` (eine Zeile je IPv4).
 - UI-Texte Deutsch (Englisch als zweite Sprache).
 
+## Umsetzungsnotizen (Abweichungen beim Bau)
+
+- Banner: statt Skript + Timer eine statische `/etc/issue.d/betternas.issue` mit agetty-Escapes `\n` (Hostname) und `\4` (IPv4); agetty aktualisiert die Anzeige selbst.
+- UEFI-Booteintrag: `--bootloader-id=debian`, weil Debians signiertes GRUB seine Konfiguration fest unter `EFI/debian` sucht. Zusätzlich wird **immer** (auch im BIOS-Modus) der Fallback `--removable --no-nvram` installiert, damit die Platte auch später per UEFI bootet.
+- Windows-Netzwerkerkennung: Paket heißt in Trixie `wsdd2`.
+- Builder-Container: `/bin/sh` → bash, weil dash unter Rosetta keine Dateideskriptoren ≥ 10 umleiten kann.
+- Neues optionales Feld `adminSSHKey` (nur unbeaufsichtigt): öffentlicher Schlüssel für den Admin – für Tests und Entwicklungsrechner.
+- Live-Installer läuft als eigener Dienst `betternas-installer.service` auf tty1 (statt Autologin-Getty).
+
 ## Review Focus
 
 1. **Installation auf den falschen Datenträger** – USB-Stick, von dem gebootet wurde, darf nie wählbar sein; ohne ausdrückliche Bestätigung wird nichts gelöscht; im unbeaufsichtigten Modus muss `confirmWipe` exakt dem Zielgerät entsprechen (Tests in Task 3 und 6).

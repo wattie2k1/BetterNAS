@@ -7,3 +7,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 # dash kann keine Dateideskriptoren >= 10 umleiten (unter Rosetta belegt); apt ruft "sh -c 'cat >&12'" auf.
 RUN ln -sf bash /usr/bin/sh
+COPY chroot-wrapper.sh /usr/local/sbin/chroot-wrapper
+RUN mv /usr/sbin/chroot /usr/sbin/chroot.real && install -m 0755 /usr/local/sbin/chroot-wrapper /usr/sbin/chroot
