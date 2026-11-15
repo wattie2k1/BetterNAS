@@ -12,6 +12,7 @@ import (
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/storage"
+	"github.com/betternas/betternas/internal/users"
 )
 
 // Config ist die Konfiguration des API-Servers.
@@ -29,6 +30,8 @@ type Deps struct {
 	Auth  *auth.Handlers
 	// Storage ist optional (nil = keine Speicher-Routen).
 	Storage *storage.Manager
+	// Users ist optional (nil = keine Benutzer-Routen).
+	Users *users.Manager
 }
 
 type server struct {
@@ -54,6 +57,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	api.HandleFunc("GET /api/v1/ws", s.websocket)
 	if deps.Storage != nil {
 		s.registerStorage(api)
+	}
+	if deps.Users != nil {
+		s.registerUsers(api)
 	}
 	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, apierr.New(apierr.NotFound, "Unbekannte Schnittstelle"))

@@ -20,6 +20,7 @@ import (
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/storage"
+	"github.com/betternas/betternas/internal/users"
 	"github.com/betternas/betternas/internal/version"
 )
 
@@ -69,7 +70,8 @@ func main() {
 		}
 		log.Warn("mount-units abgleichen: agent nicht erreichbar")
 	}()
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm})
+	um := users.NewManager(d, agent, hub)
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
