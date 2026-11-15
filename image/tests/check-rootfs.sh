@@ -14,7 +14,7 @@ err() { echo "FEHLER: $*"; fail=1; }
 ls "$W"/etc/ssh/ssh_host_* >/dev/null 2>&1 && err "SSH-Host-Keys im Image"
 for f in usr/bin/mergerfs usr/sbin/smbd usr/lib/shim/shimx64.efi.signed usr/lib/grub/i386-pc/modinfo.sh \
          usr/sbin/grub-install usr/sbin/sgdisk etc/issue.d/betternas.issue; do
-	[ -e "$W/$f" ] || [ "$f" = ] || err "$f fehlt"
+	[ -e "$W/$f" ] || err "$f fehlt"
 done
 [ -L "$W/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" ] || err "systemd-networkd nicht aktiviert"
 grep -q '^root:[!*]' "$W/etc/shadow" || err "root ist nicht gesperrt"

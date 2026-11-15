@@ -199,6 +199,15 @@ func Execute(ctx context.Context, env Env, l Layout, a Answers, p Progress) (err
 	if err := x.chroot([]byte(a.AdminPassword+"\n"+a.AdminPassword+"\n"), "smbpasswd", "-a", "-s", a.AdminUser); err != nil {
 		return err
 	}
+	if a.AdminSSHKey != "" {
+		home := "/home/" + a.AdminUser
+		if err := env.FS.WriteFile(x.t(home+"/.ssh/authorized_keys"), []byte(a.AdminSSHKey+"\n"), 0o600); err != nil {
+			return err
+		}
+		if err := x.chroot(nil, "chown", "-R", a.AdminUser+":"+a.AdminUser, home+"/.ssh"); err != nil {
+			return err
+		}
+	}
 
 	p("Installiere Bootloader", 80)
 	efiCommon := []string{"grub-install", "--target=" + grub.efi, "--efi-directory=/boot/efi", "--uefi-secure-boot"}

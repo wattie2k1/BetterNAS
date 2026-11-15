@@ -100,6 +100,22 @@ func TestExecuteCommandSequenceUEFI(t *testing.T) {
 	}
 }
 
+func TestExecuteWritesSSHKey(t *testing.T) {
+	env, f, root := testEnv(t, true)
+	a := testAnswers()
+	a.AdminSSHKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample test@mac"
+	if err := Execute(context.Background(), env, nvmeLayout(t), a, nil); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "target/home/anna/.ssh/authorized_keys"))
+	if err != nil || string(b) != a.AdminSSHKey+"\n" {
+		t.Fatalf("%q %v", b, err)
+	}
+	if !f.Called("chroot /target chown -R anna:anna /home/anna/.ssh") {
+		t.Fatal("ownership not fixed")
+	}
+}
+
 func TestExecuteBIOS(t *testing.T) {
 	env, f, _ := testEnv(t, false)
 	if err := Execute(context.Background(), env, nvmeLayout(t), testAnswers(), nil); err != nil {

@@ -43,6 +43,8 @@ func TestValidate(t *testing.T) {
 		{"no dns", func(a *Answers) { *a = static(*a); a.Net.DNS = nil }, "net.dns"},
 		{"timezone", func(a *Answers) { a.Timezone = "Mars/Base" }, "timezone"},
 		{"keymap", func(a *Answers) { a.Keymap = "dvorak" }, "keymap"},
+		{"ssh key", func(a *Answers) { a.AdminSSHKey = "kein-schluessel" }, "adminSSHKey"},
+		{"ssh key newline", func(a *Answers) { a.AdminSSHKey = "ssh-ed25519 AAAA x\nssh-rsa AAAA" }, "adminSSHKey"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

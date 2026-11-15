@@ -23,6 +23,8 @@ type Answers struct {
 	AdminUser     string    `json:"adminUser"`
 	AdminPassword string    `json:"adminPassword"`
 	ConfirmWipe   string    `json:"confirmWipe,omitempty"`
+	// AdminSSHKey ist ein optionaler öffentlicher SSH-Schlüssel für den Admin (nur unbeaufsichtigt).
+	AdminSSHKey string `json:"adminSSHKey,omitempty"`
 }
 
 // Languages sind die unterstützten Sprachen.

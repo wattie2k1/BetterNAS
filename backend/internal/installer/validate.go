@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"regexp"
 	"slices"
+	"strings"
 )
 
 // FieldError beschreibt eine ungültige Eingabe.
@@ -17,6 +18,7 @@ func (e FieldError) Error() string { return e.Field + ": " + e.Message }
 var (
 	hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	usernameRe = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+	sshKeyRe   = regexp.MustCompile(`^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( .*)?$`)
 )
 
 // reservedUsers enthält Systemkonten aus Debian (base-passwd und Paketkonten) sowie BetterNAS-Konten.
@@ -81,6 +83,9 @@ func (a Answers) validateAdmin() []FieldError {
 		errs = append(errs, FieldError{"adminPassword", "Das Passwort muss mindestens 8 Zeichen lang sein"})
 	case a.AdminPassword == a.AdminUser:
 		errs = append(errs, FieldError{"adminPassword", "Das Passwort darf nicht dem Benutzernamen entsprechen"})
+	}
+	if k := a.AdminSSHKey; k != "" && (!sshKeyRe.MatchString(k) || strings.ContainsAny(k, "\r\n")) {
+		errs = append(errs, FieldError{"adminSSHKey", "Ungültiger öffentlicher SSH-Schlüssel"})
 	}
 	return errs
 }

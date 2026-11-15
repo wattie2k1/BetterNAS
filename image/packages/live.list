@@ -1,0 +1,25 @@
+# Live-System mit Installer – eine Zeile je Paket
+live-boot
+live-config
+live-config-systemd
+systemd-sysv
+udev
+kbd
+console-setup
+keyboard-configuration
+locales
+gdisk
+parted
+dosfstools
+e2fsprogs
+squashfs-tools
+util-linux
+pciutils
+less
+nano
+firmware-linux-free
+firmware-misc-nonfree
+firmware-realtek
+firmware-intel-misc
+intel-microcode
+amd64-microcode
