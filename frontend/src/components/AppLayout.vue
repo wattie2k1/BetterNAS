@@ -31,6 +31,8 @@ const nav = [
   { label: 'Speicherpools', icon: 'pi pi-box', to: '/speicher/pools' },
   { heading: 'Freigaben' },
   { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben' },
+  { heading: 'System' },
+  { label: 'Updates', icon: 'pi pi-download', to: '/system/updates' },
   { heading: 'Benutzer' },
   { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer' },
   { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen' },

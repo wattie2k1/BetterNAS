@@ -141,6 +141,25 @@ func Register(s *rpc.Server, d Deps) {
 		defer mutate.Unlock()
 		return ApplyShares(ctx, d, st)
 	})
+	s.Handle("updates.check", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return CheckUpdates(ctx, d)
+	})
+	s.Handle("updates.install", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		unit, err := InstallUpdates(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"unit": unit}, nil
+	})
+	s.Handle("updates.status", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Unit string `json:"unit"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return UpdateStatus(ctx, d, req.Unit)
+	})
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State
 		if err := decode(p, &st); err != nil {

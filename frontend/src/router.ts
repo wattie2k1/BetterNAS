@@ -7,6 +7,7 @@ import LoginView from '@/views/LoginView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import DisksView from '@/views/storage/DisksView.vue'
 import UsersView from '@/views/users/UsersView.vue'
+import UpdatesView from '@/views/system/UpdatesView.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
 import GroupsView from '@/views/users/GroupsView.vue'
@@ -25,6 +26,7 @@ export const router = createRouter({
         { path: 'speicher/pools', name: 'pools', component: PoolsView, meta: { title: 'Speicherpools' } },
         { path: SETUP_PATH.slice(1), name: 'setup', component: SetupView, meta: { title: 'Einrichtung' } },
         { path: 'freigaben', name: 'shares', component: SharesView, meta: { title: 'Freigaben' } },
+        { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
         { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
         { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },
       ],

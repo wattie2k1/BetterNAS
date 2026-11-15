@@ -13,6 +13,7 @@ import (
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
+	"github.com/betternas/betternas/internal/system"
 	"github.com/betternas/betternas/internal/users"
 )
 
@@ -35,6 +36,8 @@ type Deps struct {
 	Users *users.Manager
 	// Shares ist optional (nil = keine Freigaben-Routen).
 	Shares *shares.Manager
+	// Updates ist optional (nil = keine Update-Routen).
+	Updates *system.Updates
 }
 
 type server struct {
@@ -67,6 +70,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Shares != nil {
 		s.registerShares(api)
+	}
+	if deps.Updates != nil {
+		s.registerUpdates(api)
 	}
 	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, apierr.New(apierr.NotFound, "Unbekannte Schnittstelle"))
