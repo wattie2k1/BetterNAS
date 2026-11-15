@@ -18,6 +18,7 @@ import (
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/rpc"
+	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/version"
 )
 
@@ -51,7 +52,8 @@ func main() {
 	agent := rpc.NewClient(cfg.AgentSocket)
 	go api.ForwardAgentEvents(ctx, agent, hub)
 	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev)
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers})
+	sm := storage.NewManager(d, agent, jm, hub)
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
