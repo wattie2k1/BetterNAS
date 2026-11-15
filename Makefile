@@ -53,3 +53,9 @@ REMOTE ?= betternas-dev
 MODES ?= uefi
 remote:
 	tools/remote-build.sh $(REMOTE) $(VERSION) $(MODES)
+
+# Echte Storage-Integrationstests (root, Loop-Geräte) auf dem Entwicklungsrechner
+integration:
+	cd backend && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c -tags integration -o ../bin/integration.test ./internal/agent
+	scp bin/integration.test $(REMOTE):/tmp/
+	ssh $(REMOTE) 'sudo /tmp/integration.test -test.run TestStorageLifecycle -test.v; rc=$$?; rm -f /tmp/integration.test; exit $$rc'
