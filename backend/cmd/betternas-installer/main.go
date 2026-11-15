@@ -66,7 +66,7 @@ func main() {
 			}
 			return err
 		},
-		Reboot:  func() error { return runQuiet(ctx, runner, "systemctl", "reboot") },
+		Reboot:  reboot,
 		LogPath: *logPath,
 	})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
@@ -162,7 +162,9 @@ func unattended(ctx context.Context, env installer.Env, targets []installer.Targ
 		return fail(err)
 	}
 	fmt.Fprintln(out, "[BetterNAS] Installation abgeschlossen")
-	_ = runQuiet(ctx, env.Runner, "systemctl", "reboot")
+	if err := reboot(); err != nil {
+		fmt.Fprintf(out, "[BetterNAS] Neustart fehlgeschlagen: %v\n", err)
+	}
 	return 0
 }
 

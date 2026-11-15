@@ -140,6 +140,17 @@ func TestSummaryInstallStarts(t *testing.T) {
 	if !h.installed || h.m.Step() != StepDone {
 		t.Fatalf("step %d", h.m.Step())
 	}
+	// Der Text darf nicht verlangen, den Stick vor dem Neustart zu entfernen:
+	// Das Live-System läuft vom Stick.
+	if strings.Contains(h.m.View(), "USB-Stick entfernen und Enter") {
+		t.Fatal("done text asks to remove the stick before reboot")
+	}
+	rebooted := false
+	h.m.deps.Reboot = func() error { rebooted = true; return nil }
+	h.send(enter())
+	if !rebooted {
+		t.Fatal("enter on done screen must reboot")
+	}
 }
 
 func TestSummaryShowsWipeWarning(t *testing.T) {
