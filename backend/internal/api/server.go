@@ -58,6 +58,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	api.HandleFunc("GET /api/v1/jobs", s.listJobs)
 	api.HandleFunc("GET /api/v1/jobs/{id}", s.getJob)
 	api.HandleFunc("GET /api/v1/ws", s.websocket)
+	s.registerSetup(api)
 	if deps.Storage != nil {
 		s.registerStorage(api)
 	}

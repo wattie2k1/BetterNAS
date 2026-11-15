@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, setCsrfToken } from '@/api/client'
+import { useSetupStore } from './setup'
 
 interface Me {
   username: string
@@ -35,6 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       user.value = null
       setCsrfToken('')
+      useSetupStore().reset()
     }
   }
 
