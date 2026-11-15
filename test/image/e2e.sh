@@ -108,8 +108,9 @@ BOOTN=0
 boot_vm() {
 	BOOTN=$((BOOTN + 1))
 	# shellcheck disable=SC2086
+	# bootindex: Mit zweiter Platte würde SeaBIOS sonst evtl. von der leeren Datenplatte starten.
 	$QEMU -serial "file:$WORK/boot$BOOTN.log" \
-		-drive file="$WORK/disk.qcow2",if=virtio \
+		-drive file="$WORK/disk.qcow2",if=none,id=sys0,format=qcow2 -device virtio-blk-pci,drive=sys0,bootindex=0 \
 		-drive file="$WORK/data.qcow2",if=none,id=data0,format=qcow2 -device virtio-blk-pci,drive=data0,serial=bnas-e2e-data \
 		-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22,hostfwd=tcp:127.0.0.1:$HTTPS_PORT-:443,hostfwd=tcp:127.0.0.1:$SMB_PORT-:445 &
 	QPID=$!
