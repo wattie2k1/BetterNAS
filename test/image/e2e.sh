@@ -47,7 +47,7 @@ secureboot)
 esac
 
 # --- Datenträger -------------------------------------------------------------------------
-qemu-img create -q -f qcow2 "$WORK/disk.qcow2" 40G
+qemu-img create -q -f qcow2 "$WORK/disk.qcow2" 48G
 ssh-keygen -q -t ed25519 -N "" -C "e2e" -f "$WORK/id_ed25519"
 cat > "$WORK/answers.json" <<EOF
 {
