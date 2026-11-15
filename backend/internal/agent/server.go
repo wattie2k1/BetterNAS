@@ -8,6 +8,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/rpc"
+	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/sysexec"
 )
@@ -130,6 +131,15 @@ func Register(s *rpc.Server, d Deps) {
 			return err
 		}
 		return SetGroupMembers(ctx, d, req.Name, req.Members)
+	})
+	s.Handle("share.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var st shares.State
+		if err := decode(p, &st); err != nil {
+			return nil, err
+		}
+		mutate.Lock()
+		defer mutate.Unlock()
+		return ApplyShares(ctx, d, st)
 	})
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State

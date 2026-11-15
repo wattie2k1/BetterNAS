@@ -11,6 +11,20 @@ if [ "$1" = "configure" ]; then
 	install -d -o betternas -g betternas -m 0750 /etc/betternas/tls /var/lib/betternas
 	install -d -m 0755 /srv/disks /srv/pools /srv/appdata /srv/vms
 
+	# Samba: Freigaben liegen in /etc/samba/betternas.d. Die smb.conf wird nur ersetzt, wenn sie noch der
+	# Debian-Auslieferung entspricht oder fehlt; eigene Konfiguration bleibt unangetastet.
+	install -d -m 0755 /etc/samba/betternas.d
+	if [ ! -e /etc/samba/betternas.d/shares.conf ]; then
+		printf '%s\n' "# Verwaltet von BetterNAS – nicht manuell bearbeiten" > /etc/samba/betternas.d/shares.conf
+	fi
+	if [ ! -e /etc/samba/smb.conf ] || { [ -e /usr/share/samba/smb.conf ] && cmp -s /etc/samba/smb.conf /usr/share/samba/smb.conf; }; then
+		[ -e /etc/samba/smb.conf ] && cp -p /etc/samba/smb.conf /etc/samba/smb.conf.betternas-orig
+		install -m 0644 /usr/share/betternas/smb.conf /etc/samba/smb.conf
+		if [ -d /run/systemd/system ]; then
+			systemctl try-reload-or-restart smbd.service || true
+		fi
+	fi
+
 	deb-systemd-helper enable betternas-agent.service >/dev/null || true
 	deb-systemd-helper enable betternas-api.service >/dev/null || true
 	if [ -d /run/systemd/system ]; then

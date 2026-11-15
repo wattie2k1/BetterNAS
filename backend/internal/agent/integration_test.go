@@ -61,6 +61,7 @@ func TestStorageLifecycle(t *testing.T) {
 			_ = exec.Command("chattr", "-i", storage.DiskPath("loop-"+filepath.Base(l))).Run()
 			os.Remove(storage.DiskPath("loop-" + filepath.Base(l)))
 		}
+		_ = exec.Command("chattr", "-i", storage.PoolPath("ittest")).Run()
 		os.Remove(storage.PoolPath("ittest"))
 	})
 

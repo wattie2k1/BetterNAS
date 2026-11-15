@@ -15,6 +15,7 @@ install -D -m 0755 "$SRC/bin/$ARCH/betternas-api" "$ROOT/usr/bin/betternas-api"
 install -D -m 0755 "$SRC/bin/$ARCH/betternas-agent" "$ROOT/usr/sbin/betternas-agent"
 mkdir -p "$ROOT/usr/share/betternas/web"
 cp -a "$SRC/frontend/dist/." "$ROOT/usr/share/betternas/web/"
+install -D -m 0644 "$SRC/packaging/samba/smb.conf" "$ROOT/usr/share/betternas/smb.conf"
 install -D -m 0644 "$SRC/packaging/systemd/betternas-api.service" "$ROOT/usr/lib/systemd/system/betternas-api.service"
 install -D -m 0644 "$SRC/packaging/systemd/betternas-agent.service" "$ROOT/usr/lib/systemd/system/betternas-agent.service"
 
@@ -29,7 +30,7 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: BetterNAS <betternas@localhost>
 Installed-Size: $SIZE
-Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, mergerfs, smartmontools, gdisk, parted, e2fsprogs, xfsprogs
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, mergerfs, smartmontools, gdisk, parted, e2fsprogs, xfsprogs
 Section: admin
 Priority: optional
 Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
