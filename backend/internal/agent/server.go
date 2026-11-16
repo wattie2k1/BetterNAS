@@ -16,8 +16,10 @@ import (
 
 // Deps sind die Abhängigkeiten der Agent-Operationen.
 type Deps struct {
-	Runner    sysexec.Runner
-	FS        sysexec.FS
+	Runner sysexec.Runner
+	FS     sysexec.FS
+	// Stream startet langlaufende Prozesse (Logs, Shell); nil schaltet diese Sitzungen ab.
+	Stream    sysexec.Streamer
 	AllowLoop bool
 	// Udev liefert Änderungen an Blockgeräten; nil schaltet events.subscribe ab.
 	Udev UdevSource
@@ -195,6 +197,7 @@ func Register(s *rpc.Server, d Deps) {
 		return SnapraidStatus(ctx, d, req.Pool)
 	})
 	registerDocker(s, d)
+	registerDockerOps(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State
 		if err := decode(p, &st); err != nil {

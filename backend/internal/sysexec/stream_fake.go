@@ -126,3 +126,10 @@ func (p *FakePTY) Close() error {
 	_ = p.out.Close()
 	return p.feed.Close()
 }
+
+// GetPTY liefert das zuletzt gestartete Pseudo-Terminal (nil, falls keines gestartet wurde); sicher für parallele Tests.
+func (f *FakeStreamer) GetPTY() *FakePTY {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.LastPTY
+}

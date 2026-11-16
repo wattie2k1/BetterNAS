@@ -10,6 +10,7 @@ import (
 	"github.com/betternas/betternas/internal/audit"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
+	"github.com/betternas/betternas/internal/rpc"
 )
 
 // Agent ist der Teil des Agent-Clients, den der Manager braucht.
@@ -200,4 +201,30 @@ func (m *Manager) ContainerAction(ctx context.Context, actor, id, action string)
 	err := m.agent.Call(ctx, "container.action", map[string]string{"id": id, "action": action}, nil)
 	m.record(ctx, actor, "container."+action, id, err)
 	return err
+}
+
+// SessionOpener ist der Teil des Agent-Clients für bidirektionale Sitzungen (*rpc.Client).
+type SessionOpener interface {
+	OpenSession(ctx context.Context, method string, params any) (*rpc.Session, error)
+}
+
+// OpenSession öffnet eine Sitzung (Logs, Shell) beim Agent.
+func (m *Manager) OpenSession(ctx context.Context, method string, params any) (*rpc.Session, error) {
+	so, ok := m.agent.(SessionOpener)
+	if !ok {
+		return nil, apierr.New(apierr.Internal, "Sitzungen sind nicht verfügbar")
+	}
+	return so.OpenSession(ctx, method, params)
+}
+
+// Stats liefert CPU und Speicher der laufenden Container.
+func (m *Manager) Stats(ctx context.Context) ([]ContainerStats, error) {
+	list := []ContainerStats{}
+	err := m.agent.Call(ctx, "container.stats", nil, &list)
+	return list, err
+}
+
+// AuditShell hält fest, dass ein Administrator eine Shell in einem Container geöffnet hat.
+func (m *Manager) AuditShell(ctx context.Context, actor, id string) {
+	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: "container.shell", Target: id, Result: "ok"})
 }

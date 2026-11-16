@@ -78,3 +78,13 @@ type StackCheck struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message"`
 }
+
+// ContainerStats sind die Auslastungswerte eines laufenden Containers.
+type ContainerStats struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	CPU        float64 `json:"cpu"`        // Prozent eines Kerns (kann > 100 sein)
+	MemUsage   uint64  `json:"memUsage"`   // Bytes
+	MemLimit   uint64  `json:"memLimit"`   // Bytes
+	MemPercent float64 `json:"memPercent"` // Prozent
+}

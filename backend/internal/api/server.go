@@ -80,6 +80,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Docker != nil {
 		s.registerDocker(api)
+		s.registerDockerStreams(api)
 	}
 	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, apierr.New(apierr.NotFound, "Unbekannte Schnittstelle"))
