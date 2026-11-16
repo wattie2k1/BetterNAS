@@ -36,6 +36,26 @@ Das baut Paket, Root-Dateisystem und ISO dort, führt die QEMU-Tests mit KVM aus
 make build web deb deploy VERSION=0.0.3-dev
 ```
 
+## Updates und APT-Repository
+
+BetterNAS-Pakete kommen aus einem eigenen, signierten APT-Repository (Suite `stable`, Komponente `main`);
+das Basissystem aus den Debian-Quellen. Auf der Seite **System → Updates** lassen sich Updates suchen und installieren
+(die Installation läuft in einer eigenen systemd-Unit und übersteht den Neustart von BetterNAS selbst).
+
+```bash
+make apt-key                         # einmalig: Signierschlüssel; privater Teil nach ~/.betternas/apt-signing-key.asc
+make build web deb VERSION=0.1.0
+make repo VERSION=0.1.0              # signiertes Repo nach dist/apt (auf einen Webserver hochladen)
+make rootfs iso APT_URL=https://…    # Adresse des Repos ins Image eintragen (ohne APT_URL: keine BetterNAS-Quelle)
+```
+
+**Den privaten Schlüssel `~/.betternas/apt-signing-key.asc` selbst sichern.** Geht er verloren, können keine
+Updates mehr für bereits installierte Systeme signiert werden; der öffentliche Schlüssel liegt im Paket
+(`packaging/apt/betternas-archive-keyring.gpg`).
+
+Updates ohne Webserver testen: `make dev-repo VERSION=<neue-version>` veröffentlicht das Repo auf dem Entwicklungsrechner
+(`http://127.0.0.1:8088`) und trägt es dort als Quelle ein.
+
 ## Auf echter Hardware installieren
 
 1. USB-Stick (≥ 2 GB, wird komplett überschrieben) mit balenaEtcher beschreiben – oder auf macOS:
@@ -49,7 +69,9 @@ make build web deb deploy VERSION=0.0.3-dev
    Secure Boot kann eingeschaltet bleiben.
 3. Im Bootmenü „BetterNAS installieren“ wählen; der Installer startet automatisch.
 4. Nach der Installation USB-Stick abziehen, neu starten. Am Bildschirm erscheint
-   `BetterNAS ist bereit: https://<name>.local  https://<ip>`; Anmeldung per SSH mit dem Admin-Benutzer.
+   `BetterNAS ist bereit: https://<name>.local  https://<ip>`.
+5. Im Browser die Adresse öffnen (das selbstsignierte Zertifikat bestätigen) und mit dem Admin-Benutzer anmelden.
+   Der Einrichtungsassistent führt durch Datenplatten, Speicherpool und die erste Freigabe.
 
 Fortgeschritten: Ein zweiter Stick (oder eine Partition) mit FAT-Label `BNASCFG` und einer `answers.json`
 (Felder siehe `backend/internal/installer/answers.go`, Pflicht: `targetDevice`, `confirmWipe`, `adminUser`,
@@ -59,5 +81,10 @@ Fortgeschritten: Ein zweiter Stick (oder eine Partition) mit FAT-Label `BNASCFG`
 
 ```bash
 make test                # Go-Unit-Tests
-make e2e MODE=uefi       # QEMU: unbeaufsichtigte Installation + Boot (bios|uefi|secureboot)
+make e2e MODE=uefi       # QEMU: unbeaufsichtigte Installation + Boot (bios|uefi|secureboot),
+                         # danach Datenplatte, Pool, Benutzer, Freigabe, SMB-Zugriff und Neustart
+make integration         # echte Konten-, Samba- und Storage-Tests auf dem Entwicklungsrechner (root)
 ```
+
+Der Daten-Teil des e2e-Tests braucht `python3` und `smbclient` auf dem Rechner, der ihn ausführt (ohne `smbclient` entfallen
+die SMB-Prüfungen).

@@ -6,6 +6,7 @@ import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Message from 'primevue/message'
 import { useAuthStore } from '@/stores/auth'
+import { safeNext } from '@/utils/redirect'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -20,8 +21,7 @@ async function submit() {
   busy.value = true
   try {
     await auth.login(username.value.trim(), password.value)
-    const target = typeof route.query.next === 'string' && route.query.next.startsWith('/') ? route.query.next : '/'
-    await router.replace(target)
+    await router.replace(safeNext(route.query.next))
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen'
   } finally {

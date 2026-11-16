@@ -1,0 +1,19 @@
+NOTE: This is only a simulation!
+      apt-get needs root privileges for real execution.
+      Keep also in mind that locking is deactivated,
+      so don't depend on the relevance to the real current situation!
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+The following NEW packages will be installed:
+  libnewdep1
+The following packages will be upgraded:
+  betternas libc6 samba
+3 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+Inst libnewdep1 (1.0-1 Debian:13.0/stable [amd64])
+Inst libc6 [2.41-6] (2.41-7 Debian-Security:13/stable-security [amd64]) []
+Inst samba [2:4.22.3+dfsg-1] (2:4.22.3+dfsg-2 Debian:13.0/stable [amd64])
+Inst betternas [0.0.8-dev] (0.1.0 BetterNAS:stable [amd64])
+Conf libnewdep1 (1.0-1 Debian:13.0/stable [amd64])
+Conf libc6 (2.41-7 Debian-Security:13/stable-security [amd64])

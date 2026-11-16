@@ -287,9 +287,15 @@ func TestApplyProtectsEmptyMountpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOrder(t, f, "findmnt --mountpoint /srv/disks/d1", "chattr +i /srv/disks/d1", "systemctl enable --now srv-disks-d1.mount")
-	if f.Called("chattr +i /srv/pools/media") {
-		t.Fatal("pool mountpoint must not be made immutable")
+}
+
+// Auch ein nicht eingehängter Pool darf keine Dateien auf der Systemplatte sammeln (Freigaben schreiben dorthin).
+func TestApplyProtectsPoolMountpoint(t *testing.T) {
+	d, f, _ := storageEnv(t)
+	if _, err := Apply(context.Background(), d, applyState()); err != nil {
+		t.Fatal(err)
 	}
+	assertOrder(t, f, "findmnt --mountpoint /srv/pools/media", "chattr +i /srv/pools/media", "systemctl enable --now srv-pools-media.mount")
 }
 
 func TestApplyDoesNotChattrMountedDisk(t *testing.T) {

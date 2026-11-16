@@ -30,6 +30,14 @@ if ls "$W"/var/lib/dpkg/info/betternas.list >/dev/null 2>&1; then
 	[ -x "$W/usr/bin/betternas-api" ] || err "betternas-api fehlt"
 	[ -L "$W/etc/systemd/system/multi-user.target.wants/betternas-api.service" ] || err "betternas-api nicht aktiviert"
 	grep -q '^betternas:' "$W/etc/passwd" || err "Systembenutzer betternas fehlt"
+	head -n1 "$W/etc/samba/smb.conf" | grep -q 'Verwaltet von BetterNAS' || err "smb.conf wurde nicht von BetterNAS übernommen"
+	[ -f "$W/etc/samba/betternas.d/shares.conf" ] || err "/etc/samba/betternas.d/shares.conf fehlt"
+	[ -s "$W/usr/share/keyrings/betternas-archive-keyring.gpg" ] || err "APT-Schlüsselbund von BetterNAS fehlt"
+	if [ -n "${APT_URL:-}" ]; then
+		grep -qxF "URIs: $APT_URL" "$W/etc/apt/sources.list.d/betternas.sources" 2>/dev/null || err "BetterNAS-APT-Quelle fehlt oder zeigt nicht auf $APT_URL"
+	else
+		[ ! -e "$W/etc/apt/sources.list.d/betternas.sources" ] || err "BetterNAS-APT-Quelle vorhanden, obwohl APT_URL leer ist"
+	fi
 	[ "$(stat -c %u "$W/etc/betternas/tls")" = "$(awk -F: '$1=="betternas"{print $3}' "$W/etc/passwd")" ] || err "/etc/betternas/tls gehört nicht betternas"
 else
 	echo "HINWEIS: Paket betternas nicht im Image (dist/betternas_*.deb fehlte beim Bau)"

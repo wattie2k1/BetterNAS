@@ -70,6 +70,13 @@ export interface PoolView extends PoolInput {
 export const POOL_NAME_RE = /^[a-z][a-z0-9-]{0,31}$/
 export const MIN_FREE_RE = /^[0-9]{1,6}[KMG]$/
 
+/** Wandelt "20G" in Bytes um (1024er-Einheiten wie mergerfs); 0 bei ungültiger Eingabe. */
+export function minFreeBytes(v: string): number {
+  const m = /^([0-9]{1,6})([KMG])$/.exec(v)
+  if (!m) return 0
+  return Number(m[1]) * { K: 1024, M: 1024 ** 2, G: 1024 ** 3 }[m[2] as 'K' | 'M' | 'G']
+}
+
 export const POLICIES = [
   { value: 'epmfs', label: 'Vorhandene Pfade, meist frei (empfohlen)', hint: 'Neue Dateien landen auf der Platte, auf der der Ordner schon liegt – mit dem meisten freien Platz.' },
   { value: 'mfs', label: 'Meist frei', hint: 'Neue Dateien landen immer auf der Platte mit dem meisten freien Platz.' },

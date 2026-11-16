@@ -13,13 +13,15 @@ import (
 	"time"
 
 	"github.com/betternas/betternas/internal/api"
-	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/rpc"
+	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
+	"github.com/betternas/betternas/internal/system"
+	"github.com/betternas/betternas/internal/users"
 	"github.com/betternas/betternas/internal/version"
 )
 
@@ -53,23 +55,36 @@ func main() {
 	agent := rpc.NewClient(cfg.AgentSocket)
 	go api.ForwardAgentEvents(ctx, agent, hub)
 	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev)
-	sm := storage.NewManager(d, agent, jm, hub)
+	// Freigaben-Manager und Storage/Benutzer verweisen aufeinander; die Funktionen lesen shm erst bei Aufruf.
+	var shm *shares.Manager
+	sm := storage.NewManager(d, agent, jm, hub, func(ctx context.Context, pool string) ([]string, error) {
+		return shm.PoolDependents(ctx, pool)
+	})
+	um := users.NewManager(d, agent, hub, func(ctx context.Context, kind, name string) ([]string, error) {
+		return shm.PrincipalUsage(ctx, kind, name)
+	})
+	shm = shares.NewManager(d, agent, jm, hub)
+	// Beim Start den gespeicherten Zustand anwenden. Agent und Pools stehen evtl. erst nach einigen Sekunden bereit.
 	go func() {
-		// Der Agent startet parallel; kurz warten, bis sein Socket bereitsteht.
-		for i := 0; i < 10; i++ {
-			err := sm.Reconcile(ctx)
-			if err == nil {
-				return
+		// Reihenfolge ist wichtig: Freigaben brauchen eingehängte Pools.
+		for _, step := range []struct {
+			name string
+			fn   func(context.Context) error
+		}{{"mount-units", sm.Reconcile}, {"freigaben", shm.Reconcile}} {
+			name, fn := step.name, step.fn
+			ok := false
+			for i := 0; i < 10 && !ok; i++ {
+				if err := fn(ctx); err == nil {
+					ok = true
+				} else if i == 9 {
+					log.Warn(name+" abgleichen", "err", err)
+				} else {
+					time.Sleep(time.Second)
+				}
 			}
-			if apierr.From(err).Code != apierr.Internal {
-				log.Warn("mount-units abgleichen", "err", err)
-				return
-			}
-			time.Sleep(time.Second)
 		}
-		log.Warn("mount-units abgleichen: agent nicht erreichbar")
 	}()
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm})
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub)})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

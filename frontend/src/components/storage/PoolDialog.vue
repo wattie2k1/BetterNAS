@@ -6,7 +6,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
-import { MIN_FREE_RE, POLICIES, POOL_NAME_RE, type DiskView, type PoolInput, type PoolView } from '@/api/storage'
+import { MIN_FREE_RE, minFreeBytes, POLICIES, POOL_NAME_RE, type DiskView, type PoolInput, type PoolView } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
 
 const props = defineProps<{ visible: boolean; disks: DiskView[]; pools: PoolView[]; pool?: PoolView | null; busy?: boolean }>()
@@ -43,6 +43,11 @@ const minFreeError = computed(() => (MIN_FREE_RE.test(minFree.value) ? '' : 'Zah
 const valid = computed(
   () => name.value !== '' && !nameError.value && !minFreeError.value && branches.value.length > 0,
 )
+/** Platten, die nicht größer als der Mindestfreiraum sind, bekommen keine neuen Dateien (mergerfs). */
+const tooSmall = computed(() => {
+  const limit = minFreeBytes(minFree.value)
+  return options.value.filter((d) => branches.value.includes(d.id) && limit > 0 && d.sizeBytes <= limit)
+})
 const policyHint = computed(() => POLICIES.find((p) => p.value === policy.value)?.hint ?? '')
 
 function submit() {
@@ -99,6 +104,10 @@ function submit() {
       <InputText id="pool-minfree" v-model="minFree" fluid />
       <small v-if="minFreeError" class="err">{{ minFreeError }}</small>
 
+      <Message v-if="tooSmall.length" severity="warn" :closable="false" data-test="minfree-warning">
+        {{ tooSmall.length === 1 ? 'Die gewählte Platte ist' : 'Gewählte Platten sind' }} nicht größer als der Mindestfreiraum
+        ({{ minFree }}). Dort werden keine neuen Dateien angelegt. Wähle einen kleineren Wert, z. B. 1G.
+      </Message>
       <Message severity="info" :closable="false">
         mergerfs bietet keine Ausfallsicherheit – SnapRAID folgt in einer späteren Version.
       </Message>

@@ -8,6 +8,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/rpc"
+	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/sysexec"
 )
@@ -64,6 +65,100 @@ func Register(s *rpc.Server, d Deps) {
 		mutate.Lock()
 		defer mutate.Unlock()
 		return Format(ctx, d, req)
+	})
+	s.Handle("account.list", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return ListAccounts(ctx, d)
+	})
+	// mutating registriert eine ändernde Methode unter der gemeinsamen Sperre.
+	mutating := func(method string, fn func(ctx context.Context, p json.RawMessage) error) {
+		s.Handle(method, func(ctx context.Context, p json.RawMessage) (any, error) {
+			mutate.Lock()
+			defer mutate.Unlock()
+			if err := fn(ctx, p); err != nil {
+				return nil, err
+			}
+			return map[string]bool{"ok": true}, nil
+		})
+	}
+	mutating("user.create", func(ctx context.Context, p json.RawMessage) error {
+		var req UserCreate
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return CreateUser(ctx, d, req)
+	})
+	mutating("user.update", func(ctx context.Context, p json.RawMessage) error {
+		var req UserUpdate
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return UpdateUser(ctx, d, req)
+	})
+	mutating("user.password", func(ctx context.Context, p json.RawMessage) error {
+		var req struct{ Name, Password string }
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return SetUserPassword(ctx, d, req.Name, req.Password)
+	})
+	mutating("user.delete", func(ctx context.Context, p json.RawMessage) error {
+		var req struct{ Name string }
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return DeleteUser(ctx, d, req.Name)
+	})
+	mutating("group.create", func(ctx context.Context, p json.RawMessage) error {
+		var req struct{ Name string }
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return CreateGroup(ctx, d, req.Name)
+	})
+	mutating("group.delete", func(ctx context.Context, p json.RawMessage) error {
+		var req struct{ Name string }
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return DeleteGroup(ctx, d, req.Name)
+	})
+	mutating("group.members", func(ctx context.Context, p json.RawMessage) error {
+		var req struct {
+			Name    string   `json:"name"`
+			Members []string `json:"members"`
+		}
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return SetGroupMembers(ctx, d, req.Name, req.Members)
+	})
+	s.Handle("share.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var st shares.State
+		if err := decode(p, &st); err != nil {
+			return nil, err
+		}
+		mutate.Lock()
+		defer mutate.Unlock()
+		return ApplyShares(ctx, d, st)
+	})
+	s.Handle("updates.check", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return CheckUpdates(ctx, d)
+	})
+	s.Handle("updates.install", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		unit, err := InstallUpdates(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"unit": unit}, nil
+	})
+	s.Handle("updates.status", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Unit string `json:"unit"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return UpdateStatus(ctx, d, req.Unit)
 	})
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State

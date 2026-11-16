@@ -37,7 +37,7 @@ func TestStorageLifecycle(t *testing.T) {
 
 	// Schutz: Der Test entfernt am Ende alle verwalteten Units – nur auf einem System ohne eigene Pools laufen.
 	if existing, _ := managedUnits(d); len(existing) > 0 {
-		t.Fatalf("Abbruch: Auf diesem System gibt es bereits verwaltete Mount-Units (%d). Test nur ohne eigene Pools ausführen.", len(existing))
+		t.Skipf("übersprungen: Auf diesem System gibt es bereits verwaltete Mount-Units (%d); der Test läuft nur ohne eigene Pools", len(existing))
 	}
 
 	// Zwei Loop-Geräte à 1 GiB
@@ -61,6 +61,7 @@ func TestStorageLifecycle(t *testing.T) {
 			_ = exec.Command("chattr", "-i", storage.DiskPath("loop-"+filepath.Base(l))).Run()
 			os.Remove(storage.DiskPath("loop-" + filepath.Base(l)))
 		}
+		_ = exec.Command("chattr", "-i", storage.PoolPath("ittest")).Run()
 		os.Remove(storage.PoolPath("ittest"))
 	})
 
