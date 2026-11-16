@@ -24,6 +24,7 @@ import (
 	"github.com/betternas/betternas/internal/system"
 	"github.com/betternas/betternas/internal/users"
 	"github.com/betternas/betternas/internal/version"
+	"github.com/betternas/betternas/internal/vm"
 )
 
 func main() {
@@ -85,7 +86,7 @@ func main() {
 			}
 		}
 	}()
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub)})
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub)})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
