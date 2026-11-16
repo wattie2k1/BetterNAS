@@ -1,0 +1,12 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS SnapRAID Synchronisierung (media)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=betternas-snapraid-sync@media.service
+
+[Install]
+WantedBy=timers.target

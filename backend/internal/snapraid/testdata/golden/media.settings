@@ -1,0 +1,4 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+delete_threshold=500
+scrub_percent=8
+scrub_older_days=10
