@@ -1,19 +1,141 @@
+/* BetterNAS Design-System: Hintergrundbild, Glas-Flächen, Farben und Rundungen. */
 :root {
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light dark;
+
+  --bn-radius: 22px;
+  --bn-radius-sm: 14px;
+  --bn-blur: blur(22px) saturate(160%);
+  --bn-accent-1: #6366f1;
+  --bn-accent-2: #22d3ee;
+  --bn-accent-3: #e879f9;
+
+  /* hell */
+  --bn-wallpaper:
+    radial-gradient(60rem 40rem at 8% -10%, rgb(99 102 241 / 28%), transparent 60%),
+    radial-gradient(50rem 36rem at 105% 8%, rgb(34 211 238 / 24%), transparent 60%),
+    radial-gradient(48rem 40rem at 70% 110%, rgb(232 121 249 / 22%), transparent 60%),
+    linear-gradient(160deg, #eef1fb, #e6ebf8 55%, #f3effb);
+  --bn-glass: rgb(255 255 255 / 66%);
+  --bn-glass-strong: rgb(255 255 255 / 86%);
+  --bn-border: rgb(255 255 255 / 80%);
+  --bn-border-soft: rgb(15 23 42 / 8%);
+  --bn-shadow: 0 10px 40px -12px rgb(30 41 90 / 25%), 0 2px 6px rgb(30 41 90 / 6%);
+  --bn-text-soft: rgb(15 23 42 / 62%);
+  --bn-tile-hover: rgb(255 255 255 / 90%);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bn-wallpaper:
+      radial-gradient(60rem 40rem at 8% -10%, rgb(99 102 241 / 38%), transparent 60%),
+      radial-gradient(50rem 36rem at 105% 8%, rgb(34 211 238 / 20%), transparent 60%),
+      radial-gradient(48rem 40rem at 70% 110%, rgb(232 121 249 / 22%), transparent 60%),
+      linear-gradient(160deg, #080b18, #0c1226 55%, #130d26);
+    --bn-glass: rgb(255 255 255 / 6%);
+    --bn-glass-strong: rgb(24 28 48 / 88%);
+    --bn-border: rgb(255 255 255 / 11%);
+    --bn-border-soft: rgb(255 255 255 / 8%);
+    --bn-shadow: 0 16px 50px -16px rgb(0 0 0 / 65%), 0 1px 0 rgb(255 255 255 / 5%) inset;
+    --bn-text-soft: rgb(226 232 255 / 62%);
+    --bn-tile-hover: rgb(255 255 255 / 11%);
+  }
+}
+
 html,
 body {
   margin: 0;
-  background: var(--p-surface-50);
+  min-height: 100vh;
+  background: var(--bn-wallpaper);
+  background-attachment: fixed;
   color: var(--p-text-color);
-}
-@media (prefers-color-scheme: dark) {
-  html,
-  body {
-    background: var(--p-surface-950);
-  }
 }
 * {
   box-sizing: border-box;
+}
+::selection {
+  background: rgb(99 102 241 / 35%);
+}
+
+/* Glas-Fläche für eigene Elemente */
+.glass {
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
+  -webkit-backdrop-filter: var(--bn-blur);
+}
+
+/* PrimeVue-Komponenten an das Design anpassen (html-Präfix: PrimeVue injiziert seine Styles später) */
+html .p-card {
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
+  -webkit-backdrop-filter: var(--bn-blur);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+html .p-card-title {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+html .p-dialog {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border);
+  border-radius: calc(var(--bn-radius) + 4px);
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 55%);
+  backdrop-filter: var(--bn-blur);
+  -webkit-backdrop-filter: var(--bn-blur);
+}
+html .p-dialog-mask {
+  backdrop-filter: blur(6px);
+}
+html .p-drawer {
+  background: var(--bn-glass-strong);
+  border-color: var(--bn-border);
+  backdrop-filter: var(--bn-blur);
+  -webkit-backdrop-filter: var(--bn-blur);
+}
+html .p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-link):not(.p-button-danger):not(.p-button-secondary):not(.p-button-warn) {
+  background: linear-gradient(135deg, var(--bn-accent-1), #8b5cf6);
+  border: none;
+  box-shadow: 0 6px 18px -6px rgb(99 102 241 / 65%);
+}
+html .p-button {
+  border-radius: 999px;
+  font-weight: 600;
+}
+html .p-button.p-button-icon-only.p-button-rounded {
+  border-radius: 50%;
+}
+.p-inputtext,
+.p-select,
+html .p-password-input {
+  border-radius: var(--bn-radius-sm);
+}
+html .p-tag {
+  border-radius: 999px;
+}
+html .p-message {
+  border-radius: var(--bn-radius-sm);
+}
+html .p-progressbar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--bn-border-soft);
+}
+html .p-progressbar-value {
+  background: linear-gradient(90deg, var(--bn-accent-1), var(--bn-accent-2));
+  border-radius: 999px;
+}
+html .p-toast-message {
+  border-radius: var(--bn-radius-sm);
+  backdrop-filter: var(--bn-blur);
+}
+
+/* Seitenüberschrift und Werkzeugleiste in den Ansichten */
+html .page-sub {
+  color: var(--bn-text-soft);
 }

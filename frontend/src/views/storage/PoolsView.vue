@@ -94,7 +94,7 @@ function save(input: PoolInput) {
       <template #content>
         <p class="sub">{{ p.path }}</p>
         <template v-if="p.mounted">
-          <ProgressBar :value="used(p)" />
+          <ProgressBar :value="used(p)" :show-value="false" />
           <p class="sub">{{ formatBytes(p.sizeBytes - p.freeBytes) }} von {{ formatBytes(p.sizeBytes) }} belegt</p>
         </template>
         <ul>

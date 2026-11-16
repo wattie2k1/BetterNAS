@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Drawer from 'primevue/drawer'
 import Toast from 'primevue/toast'
@@ -21,25 +20,28 @@ const sharesStore = useSharesStore()
 const route = useRoute()
 const router = useRouter()
 const showJobs = ref(false)
-const navOpen = ref(false)
+const now = ref(new Date())
+let clock: ReturnType<typeof setInterval> | undefined
 const title = computed(() => (route.meta.title as string) ?? 'BetterNAS')
 
+/** Dock-Einträge; color ist der Verlauf der Symbol-Kachel. */
 const nav = [
-  { label: 'Übersicht', icon: 'pi pi-home', to: '/' },
-  { heading: 'Speicher' },
-  { label: 'Datenträger', icon: 'pi pi-database', to: '/speicher/datentraeger' },
-  { label: 'Speicherpools', icon: 'pi pi-box', to: '/speicher/pools' },
-  { heading: 'Freigaben' },
-  { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben' },
-  { heading: 'System' },
-  { label: 'Updates', icon: 'pi pi-download', to: '/system/updates' },
-  { heading: 'Benutzer' },
-  { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer' },
-  { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen' },
+  { label: 'Übersicht', icon: 'pi pi-th-large', to: '/', color: ['#6366f1', '#8b5cf6'] },
+  { label: 'Datenträger', icon: 'pi pi-database', to: '/speicher/datentraeger', color: ['#0ea5e9', '#22d3ee'] },
+  { label: 'Speicherpools', icon: 'pi pi-box', to: '/speicher/pools', color: ['#10b981', '#34d399'] },
+  { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben', color: ['#f59e0b', '#fbbf24'] },
+  { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer', color: ['#ec4899', '#f472b6'] },
+  { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen', color: ['#a855f7', '#c084fc'] },
+  { label: 'Updates', icon: 'pi pi-download', to: '/system/updates', color: ['#ef4444', '#fb7185'] },
 ]
+const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
+const initial = computed(() => (auth.user ?? '?').slice(0, 1).toUpperCase())
+const time = computed(() => now.value.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))
+const date = computed(() => now.value.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))
 
 let disconnect: (() => void) | undefined
 onMounted(() => {
+  clock = setInterval(() => (now.value = new Date()), 15000)
   jobs.load().catch(() => {})
   disconnect = connectEvents((m) => {
     if (m.type === 'job.updated') jobs.update(m.data as Job)
@@ -48,7 +50,10 @@ onMounted(() => {
     sharesStore.handleEvent(m)
   })
 })
-onUnmounted(() => disconnect?.())
+onUnmounted(() => {
+  disconnect?.()
+  clearInterval(clock)
+})
 
 async function logout() {
   await auth.logout()
@@ -57,29 +62,34 @@ async function logout() {
 </script>
 
 <template>
-  <div class="shell" :class="{ 'nav-open': navOpen }">
-    <aside class="sidebar">
-      <div class="brand"><i class="pi pi-server" /> BetterNAS</div>
-      <nav>
-        <template v-for="(item, i) in nav" :key="i">
-          <div v-if="item.heading" class="heading">{{ item.heading }}</div>
-          <RouterLink v-else :to="item.to!" class="link" @click="navOpen = false">
-            <i :class="item.icon" /> {{ item.label }}
-          </RouterLink>
-        </template>
-      </nav>
-    </aside>
+  <div class="shell">
+    <nav class="dock glass" aria-label="Hauptnavigation">
+      <RouterLink to="/" class="logo" aria-label="BetterNAS">
+        <i class="pi pi-server" />
+      </RouterLink>
+      <span class="sep" />
+      <RouterLink v-for="item in nav" :key="item.to" :to="item.to" class="item" :aria-label="item.label" active-class="" exact-active-class="active">
+        <span class="icon" :style="{ background: gradient(item.color) }"><i :class="item.icon" /></span>
+        <span class="tip">{{ item.label }}</span>
+      </RouterLink>
+    </nav>
     <div class="main">
       <header class="topbar">
-        <Button class="menu" icon="pi pi-bars" text rounded aria-label="Menü" @click="navOpen = !navOpen" />
-        <h1>{{ title }}</h1>
+        <div>
+          <h1>{{ title }}</h1>
+          <div class="date">{{ date }}</div>
+        </div>
         <span class="spacer" />
-        <Button text rounded aria-label="Aufträge" @click="showJobs = true">
+        <div class="chip clock glass">{{ time }}</div>
+        <button class="chip round glass" aria-label="Aufträge" @click="showJobs = true">
           <i class="pi pi-list-check" />
-          <Badge v-if="jobs.running.length" :value="jobs.running.length" severity="info" />
-        </Button>
-        <span class="user"><i class="pi pi-user" /> {{ auth.user }}</span>
-        <Button icon="pi pi-sign-out" text rounded aria-label="Abmelden" @click="logout" />
+          <Badge v-if="jobs.running.length" :value="jobs.running.length" severity="info" class="badge" />
+        </button>
+        <div class="chip user glass">
+          <span class="avatar">{{ initial }}</span>
+          <span class="name">{{ auth.user }}</span>
+          <button class="logout" aria-label="Abmelden" title="Abmelden" @click="logout"><i class="pi pi-sign-out" /></button>
+        </div>
       </header>
       <main class="content">
         <RouterView />
@@ -94,114 +104,209 @@ async function logout() {
 
 <style scoped>
 .shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
   min-height: 100vh;
+  padding-left: 108px;
 }
-.sidebar {
-  background: var(--p-surface-0);
-  border-right: 1px solid var(--p-content-border-color);
-  padding: 1rem 0.75rem;
-}
-.brand {
-  font-weight: 700;
-  font-size: 1.15rem;
-  padding: 0.5rem 0.75rem 1.25rem;
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-.heading {
-  margin: 1rem 0.75rem 0.25rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--p-text-muted-color);
-}
-.link {
-  display: flex;
-  gap: 0.6rem;
-  align-items: center;
-  padding: 0.55rem 0.75rem;
-  border-radius: 8px;
-  color: var(--p-text-color);
-  text-decoration: none;
-}
-.link:hover {
-  background: var(--p-surface-100);
-}
-.link.router-link-exact-active {
-  background: var(--p-primary-50);
-  color: var(--p-primary-700);
-  font-weight: 600;
-}
-.main {
+.dock {
+  position: fixed;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 74px;
+  padding: 14px 0;
+  border-radius: 28px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 1.35rem;
+  background: linear-gradient(135deg, var(--bn-accent-1), var(--bn-accent-3));
+  box-shadow: 0 8px 22px -6px rgb(139 92 246 / 70%);
+}
+.sep {
+  width: 30px;
+  height: 1px;
+  background: var(--bn-border-soft);
+}
+.item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.item:hover {
+  background: var(--bn-tile-hover);
+  transform: translateX(2px) scale(1.06);
+}
+.icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 1.1rem;
+  box-shadow: 0 6px 16px -6px rgb(0 0 0 / 45%);
+}
+.item.active {
+  background: var(--bn-tile-hover);
+  box-shadow: 0 0 0 2px var(--bn-accent-1) inset;
+}
+.tip {
+  position: absolute;
+  left: 66px;
+  white-space: nowrap;
+  padding: 0.35rem 0.7rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--p-text-color);
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border);
+  box-shadow: var(--bn-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.item:hover .tip,
+.item:focus-visible .tip {
+  opacity: 1;
+  transform: none;
+}
+.main {
   min-width: 0;
+  padding: 22px 28px 40px 8px;
+  max-width: 1500px;
 }
 .topbar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1.5rem;
-  border-bottom: 1px solid var(--p-content-border-color);
-  background: var(--p-surface-0);
+  gap: 12px;
+  margin-bottom: 22px;
 }
 .topbar h1 {
-  font-size: 1.15rem;
   margin: 0;
+  font-size: 1.9rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+.date {
+  color: var(--bn-text-soft);
+  font-size: 0.85rem;
+  margin-top: 2px;
 }
 .spacer {
   flex: 1;
 }
-.user {
-  display: flex;
-  gap: 0.35rem;
+.chip {
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
   align-items: center;
-  color: var(--p-text-muted-color);
+  gap: 10px;
+  padding: 0 16px;
+  color: var(--p-text-color);
+  font: inherit;
+  font-weight: 600;
 }
-.menu {
-  display: none;
+.chip.round {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
 }
-.content {
-  padding: 1.5rem;
+.chip.round:hover {
+  background: var(--bn-tile-hover);
 }
-@media (prefers-color-scheme: dark) {
-  .sidebar,
-  .topbar {
-    background: var(--p-surface-900);
-  }
-  .link:hover {
-    background: var(--p-surface-800);
-  }
-  .link.router-link-exact-active {
-    background: color-mix(in srgb, var(--p-primary-500) 20%, transparent);
-    color: var(--p-primary-200);
-  }
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+.user {
+  padding: 0 6px 0 5px;
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bn-accent-1), var(--bn-accent-3));
+}
+.logout {
+  all: unset;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--bn-text-soft);
+}
+.logout:hover {
+  background: var(--bn-tile-hover);
+  color: var(--p-text-color);
 }
 @media (max-width: 800px) {
   .shell {
-    grid-template-columns: 1fr;
+    padding-left: 0;
+    padding-bottom: 96px;
   }
-  .sidebar {
+  .dock {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    transform: none;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 26px;
+    gap: 2px;
+    overflow-x: auto;
+  }
+  .sep,
+  .tip,
+  .logo {
     display: none;
-    position: fixed;
-    inset: 0 30% 0 0;
-    z-index: 10;
   }
-  .nav-open .sidebar {
-    display: block;
+  .item {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 auto;
   }
-  .menu {
-    display: inline-flex;
+  .icon {
+    width: 36px;
+    height: 36px;
   }
-  .user {
+  .main {
+    padding: 16px;
+  }
+  .topbar h1 {
+    font-size: 1.5rem;
+  }
+  .name,
+  .clock {
     display: none;
-  }
-  .content,
-  .topbar {
-    padding-inline: 16px;
   }
 }
 </style>

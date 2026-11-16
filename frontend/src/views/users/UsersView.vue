@@ -126,14 +126,17 @@ function save(input: UserInput) {
 .users {
   width: 100%;
   border-collapse: collapse;
-  background: var(--p-content-background);
-  border-radius: 10px;
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
 }
 th,
 td {
   text-align: left;
   padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid var(--p-content-border-color);
+  border-bottom: 1px solid var(--bn-border-soft);
   vertical-align: top;
 }
 th {

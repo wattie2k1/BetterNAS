@@ -127,22 +127,28 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
 .pkgs {
   width: 100%;
   border-collapse: collapse;
-  background: var(--p-content-background);
-  border-radius: 10px;
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
 }
 th,
 td {
   text-align: left;
   padding: 0.5rem 0.9rem;
-  border-bottom: 1px solid var(--p-content-border-color);
+  border-bottom: 1px solid var(--bn-border-soft);
 }
 th {
   font-size: 0.8rem;
   color: var(--p-text-muted-color);
 }
 .log {
-  background: var(--p-content-background);
-  border-radius: 10px;
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
   padding: 0.8rem;
   max-height: 24rem;
   overflow: auto;

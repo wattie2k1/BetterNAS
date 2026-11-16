@@ -239,11 +239,11 @@ describe('DashboardView: SnapRAID', () => {
     const st = { enabled: true, running: false, lastSync: { action: 'sync', result: 'ok', at: '2026-11-16T03:00:00Z' }, diff: { equal: 1, added: 4, removed: 0, updated: 0, moved: 0, copied: 0 } }
     const route = (withSnap: boolean) =>
       vi.fn().mockImplementation(async (url: string) => {
-        const body = url.includes('/snapraid/status') ? st : url.includes('/pools') ? (withSnap ? [snapPool] : pools) : info
+        const body = url.includes('/snapraid/status') ? st : url.includes('/disks') ? [] : url.includes('/pools') ? (withSnap ? [snapPool] : pools) : info
         return new Response(JSON.stringify(body), { status: 200 })
       })
     vi.stubGlobal('fetch', route(true))
-    const w = mount(DashboardView, { global: { plugins: plugins() } })
+    const w = mount(DashboardView, { global: { plugins: plugins(), stubs: { RouterLink: true } } })
     await flushPromises()
     const tile = w.find('[data-test="snapraid-summary"]')
     expect(tile.exists()).toBe(true)
@@ -251,7 +251,7 @@ describe('DashboardView: SnapRAID', () => {
     expect(tile.text()).toContain('4')
     w.unmount()
     vi.stubGlobal('fetch', route(false))
-    const w2 = mount(DashboardView, { global: { plugins: plugins() } })
+    const w2 = mount(DashboardView, { global: { plugins: plugins(), stubs: { RouterLink: true } } })
     await flushPromises()
     expect(w2.find('[data-test="snapraid-summary"]').exists()).toBe(false)
   })
