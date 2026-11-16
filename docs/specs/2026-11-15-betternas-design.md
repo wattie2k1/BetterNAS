@@ -309,7 +309,8 @@ BetterNAS/
 | 3 | SnapRAID optional pro Pool, Timer, Status (umgesetzt, 0.2.0) | Redundanz |
 | 4a | Docker installiert/eingerichtet, Stacks (Editor, Validierung, Deploy/Update/Löschen), Container-Liste und -Aktionen (umgesetzt) | Docker-Verwaltung |
 | 4b | Logs-Stream, Shell (xterm.js), Stats, Update-Prüfung per Digest, Images/Netzwerke/Volumes (umgesetzt) | Docker-Verwaltung komplett |
-| 5 | KVM: Assistent, noVNC, Snapshots, Bridge | VM-Verwaltung |
+| 5a | KVM: libvirt eingerichtet, VM-Liste, Betrieb (start/shutdown/destroy/reboot/Autostart/löschen), Anlege-Assistent (umgesetzt) | VMs anlegen und steuern |
+| 5b | KVM: noVNC-Konsole, Snapshots, Klonen, ISO-Upload, Bridge `br0` (Opt-in) | VM-Verwaltung komplett |
 | 6 | Ausbau: SMART-Alarme, Benachrichtigungen, App-Vorlagen, Spindown, 2FA, Backup, Restore-Assistent, Passthrough, NFS, Browser-Installer | Feature-Reife |
 
 Abweichung Phase 3: Sync/Scrub laufen nicht als Job-RPC, sondern in einer eigenen Unit des Agents
@@ -330,6 +331,13 @@ Abweichung Phase 4b: Logs und Shell laufen über einen bidirektionalen RPC-Kanal
 Die Update-Prüfung vergleicht je Stack die lokalen RepoDigests mit `docker buildx imagetools inspect` (Job, Ergebnis in
 `settings`/`docker.updates`). Images, Netzwerke und Volumes: Liste, Entfernen, Prune mit Bestätigung. Nicht umgesetzt:
 Compose-Schema-Validierung im Editor (`monaco-yaml`).
+
+Abweichung Phase 5a: Statt `go-libvirt` ruft der Agent `virsh -c qemu:///system` und `qemu-img` über `sysexec.Runner` auf
+(wie bei Docker: keine Abhängigkeit, mit `FakeRunner` testbar, die API bekommt keinen Zugriff auf den libvirt-Socket).
+Die Domain-XML erzeugt `internal/vm` aus einer validierten `Spec` (nie Nutzer-XML) und übergibt sie per stdin an
+`virsh define`. libvirt ist die Wahrheit (keine DB-Tabelle); die GUI pollt alle 5 s und reagiert auf `vm.changed`.
+Disks (qcow2) liegen unter `/srv/vms/disks/<name>.qcow2`, ISOs werden unter `/srv/vms/iso` ausgewählt (Upload folgt in 5b).
+Standard-Netz ist das NAT-Netz `default`; die Bridge `br0` kommt in 5b nur als Opt-in mit Rückfall.
 
 Entwickelt und getestet wird ab Phase 0b in VMs, die aus dem eigenen ISO installiert wurden.
 
