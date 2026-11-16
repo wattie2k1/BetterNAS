@@ -20,7 +20,24 @@ const busy = ref(false)
 const names = computed(() => store.stacks.map((s) => s.name))
 const dockerDown = computed(() => store.status && (!store.status.installed || !store.status.active))
 
-onMounted(() => store.refresh())
+const checking = ref(false)
+onMounted(() => Promise.all([store.refresh(), store.loadUpdates()]))
+
+const outdated = (name: string) => store.updates.stacks[name]?.outdated ?? []
+const checkedAt = computed(() => (store.updates.checkedAt ? new Date(store.updates.checkedAt).toLocaleString('de-DE') : ''))
+
+async function checkUpdates() {
+  checking.value = true
+  try {
+    await store.checkUpdates()
+    const n = store.stacks.filter((s) => outdated(s.name).length).length
+    toast.add({ severity: n ? 'info' : 'success', summary: n ? `${n} Stack(s) mit Updates` : 'Alles aktuell', life: 5000 })
+  } catch (e) {
+    fail(e)
+  } finally {
+    checking.value = false
+  }
+}
 
 const fail = (e: unknown) =>
   toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
@@ -102,6 +119,8 @@ async function remove() {
 
 <template>
   <div class="toolbar">
+    <span v-if="checkedAt" class="sub" data-test="checked-at">Zuletzt auf Updates geprüft: {{ checkedAt }}</span>
+    <Button data-test="check-updates" label="Auf Updates prüfen" icon="pi pi-sync" severity="secondary" :loading="checking" :disabled="!!dockerDown || !store.stacks.length" @click="checkUpdates" />
     <Button label="Neuer Stack" icon="pi pi-plus" :disabled="!!dockerDown" @click="openNew" />
   </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
@@ -116,6 +135,7 @@ async function remove() {
       <template #title>
         <div class="title">
           <span><i class="pi pi-clone" /> {{ s.name }}</span>
+          <Tag v-if="outdated(s.name).length" data-test="update-tag" value="Update verfügbar" severity="info" :title="`Neue Version für: ${outdated(s.name).join(', ')}`" />
           <Tag
             :value="s.total ? `${s.running} von ${s.total} laufen` : 'Nicht gestartet'"
             :severity="s.total && s.running === s.total ? 'success' : s.running ? 'warn' : 'secondary'"
@@ -149,6 +169,8 @@ async function remove() {
 .toolbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 .grid {
@@ -162,6 +184,7 @@ async function remove() {
   align-items: center;
   gap: 0.5rem;
 }
+.sub,
 .empty {
   color: var(--p-text-muted-color);
   font-size: 0.875rem;

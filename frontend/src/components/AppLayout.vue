@@ -34,6 +34,7 @@ const nav = [
   { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben', color: ['#f59e0b', '#fbbf24'] },
   { label: 'Docker-Stacks', icon: 'pi pi-clone', to: '/docker/stacks', color: ['#2563eb', '#60a5fa'] },
   { label: 'Container', icon: 'pi pi-server', to: '/docker/container', color: ['#0d9488', '#2dd4bf'] },
+  { label: 'Docker-Ressourcen', icon: 'pi pi-sliders-h', to: '/docker/ressourcen', color: ['#7c3aed', '#a78bfa'] },
   { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer', color: ['#ec4899', '#f472b6'] },
   { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen', color: ['#a855f7', '#c084fc'] },
   { label: 'Updates', icon: 'pi pi-download', to: '/system/updates', color: ['#ef4444', '#fb7185'] },
