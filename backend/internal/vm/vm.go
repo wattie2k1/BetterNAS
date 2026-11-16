@@ -23,6 +23,8 @@ var (
 	NameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 	// ISORe erlaubt nur Dateinamen direkt unter ISODir.
 	ISORe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.iso$`)
+	// DomainRe erlaubt auch Namen bestehender, nicht von BetterNAS angelegter VMs (ohne führendes `-`).
+	DomainRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	// NetworkRe ist ein libvirt-Netzname.
 	NetworkRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$`)
 )
