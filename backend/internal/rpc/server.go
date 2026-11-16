@@ -19,17 +19,22 @@ type Handler func(ctx context.Context, params json.RawMessage) (any, error)
 // StreamHandler liefert Ereignisse, bis ctx endet.
 type StreamHandler func(ctx context.Context, emit func(Event) error) error
 
+// SessionHandler bearbeitet eine bidirektionale Sitzung: in liefert, was der Client nach der Anfrage sendet
+// (wird geschlossen, wenn der Client die Verbindung beendet), emit sendet Ereignisse an den Client.
+type SessionHandler func(ctx context.Context, params json.RawMessage, in <-chan Event, emit func(Event) error) error
+
 // Server nimmt Aufrufe entgegen.
 type Server struct {
 	allowed  []uint32
 	mu       sync.RWMutex
 	handlers map[string]Handler
 	streams  map[string]StreamHandler
+	sessions map[string]SessionHandler
 }
 
 // NewServer erzeugt einen Server. allowedUIDs == nil erlaubt jeden Peer (nur für Tests/Entwicklung).
 func NewServer(allowedUIDs []uint32) *Server {
-	return &Server{allowed: allowedUIDs, handlers: map[string]Handler{}, streams: map[string]StreamHandler{}}
+	return &Server{allowed: allowedUIDs, handlers: map[string]Handler{}, streams: map[string]StreamHandler{}, sessions: map[string]SessionHandler{}}
 }
 
 // Handle registriert eine Methode.
@@ -44,6 +49,13 @@ func (s *Server) HandleStream(method string, h StreamHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.streams[method] = h
+}
+
+// HandleSession registriert eine bidirektionale Sitzung (z. B. Shell im Container).
+func (s *Server) HandleSession(method string, h SessionHandler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessions[method] = h
 }
 
 // Serve nimmt Verbindungen an, bis der Listener geschlossen wird.
@@ -82,11 +94,39 @@ func (s *Server) serveConn(conn net.Conn) {
 	s.mu.RLock()
 	h, okH := s.handlers[req.Method]
 	sh, okS := s.streams[req.Method]
+	sess, okSess := s.sessions[req.Method]
 	s.mu.RUnlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	switch {
+	case okSess:
+		in := make(chan Event, 64)
+		go func() {
+			defer cancel()
+			defer close(in)
+			for {
+				line, err := readLine(r)
+				if err != nil {
+					return
+				}
+				var ev Event
+				if json.Unmarshal(line, &ev) != nil {
+					continue
+				}
+				select {
+				case in <- ev:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		var wmu sync.Mutex
+		_ = sess(ctx, req.Params, in, func(ev Event) error {
+			wmu.Lock()
+			defer wmu.Unlock()
+			return writeJSON(conn, ev)
+		})
 	case okS:
 		// Verbindung schließt der Client → Lesen schlägt fehl → ctx endet.
 		go func() {
