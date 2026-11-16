@@ -26,6 +26,11 @@ if [ "$1" = "configure" ]; then
 	# libvirt: Standard-NAT-Netz `default` aktivieren (VMs ohne eigene Bridge). Im chroot ohne systemd übersprungen.
 	if [ -d /run/systemd/system ] && command -v virsh >/dev/null 2>&1; then
 		systemctl enable --now libvirtd.socket >/dev/null 2>&1 || true
+		# libvirt kommt direkt nach der Installation oft erst nach einigen Sekunden hoch.
+		for _ in 1 2 3 4 5 6 7 8 9 10; do
+			virsh -c qemu:///system net-info default >/dev/null 2>&1 && break
+			sleep 1
+		done
 		virsh -c qemu:///system net-autostart default >/dev/null 2>&1 || true
 		virsh -c qemu:///system net-start default >/dev/null 2>&1 || true
 	fi
