@@ -38,6 +38,14 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = []string{"nginx:stable"}
 	case "image.digests":
 		out = []docker.ImageStatus{{Image: "nginx:stable", Outdated: true}}
+	case "image.list":
+		out = []docker.ImageInfo{{ID: "aaaaaaaaaaaa", Ref: "nginx:stable", Repository: "nginx", Tag: "stable"}}
+	case "network.list":
+		out = []docker.NetworkInfo{{ID: "111111111111", Name: "bridge", Builtin: true}}
+	case "volume.list":
+		out = []docker.VolumeInfo{{Name: "data", Unused: true}}
+	case "resource.prune":
+		out = docker.PruneResult{Reclaimed: "1.5GB"}
 	case "docker.status":
 		out = docker.Status{Installed: true, Active: true, Version: "26"}
 	}
@@ -160,5 +168,30 @@ func TestDockerUpdatesRoutes(t *testing.T) {
 	s.waitJob(t, w.Body.Bytes())
 	if w := s.do("GET", "/api/v1/docker/updates", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"outdated":["nginx:stable"]`) {
 		t.Fatalf("Ergebnis %d %s", w.Code, w.Body)
+	}
+}
+
+func TestDockerResourceRoutes(t *testing.T) {
+	s := newDockerAPI(t)
+	for path, want := range map[string]string{
+		"/api/v1/docker/images":   `"ref":"nginx:stable"`,
+		"/api/v1/docker/networks": `"builtin":true`,
+		"/api/v1/docker/volumes":  `"unused":true`,
+	} {
+		if w := s.do("GET", path, ""); w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("%s %d %s", path, w.Code, w.Body)
+		}
+	}
+	if w := s.do("DELETE", "/api/v1/docker/images?ref=ghcr.io/x/y:1", ""); w.Code != 204 {
+		t.Fatalf("rm image %d %s", w.Code, w.Body)
+	}
+	if w := s.do("DELETE", "/api/v1/docker/volumes", ""); w.Code != 400 {
+		t.Fatalf("ohne ref %d", w.Code)
+	}
+	if w := s.do("POST", "/api/v1/docker/images/prune", `{"all":true}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"reclaimed":"1.5GB"`) {
+		t.Fatalf("prune %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/docker/volumes/prune", ``); w.Code != 200 {
+		t.Fatalf("prune ohne Body %d %s", w.Code, w.Body)
 	}
 }

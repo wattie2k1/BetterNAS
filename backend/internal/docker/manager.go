@@ -321,3 +321,49 @@ func (m *Manager) CheckUpdates(ctx context.Context, actor string) (string, error
 		return nil
 	}), nil
 }
+
+func validKind(kind string) bool {
+	return kind == KindImage || kind == KindNetwork || kind == KindVolume
+}
+
+// Images liefert alle Images.
+func (m *Manager) Images(ctx context.Context) ([]ImageInfo, error) {
+	list := []ImageInfo{}
+	err := m.agent.Call(ctx, "image.list", nil, &list)
+	return list, err
+}
+
+// Networks liefert alle Netzwerke.
+func (m *Manager) Networks(ctx context.Context) ([]NetworkInfo, error) {
+	list := []NetworkInfo{}
+	err := m.agent.Call(ctx, "network.list", nil, &list)
+	return list, err
+}
+
+// Volumes liefert alle Volumes.
+func (m *Manager) Volumes(ctx context.Context) ([]VolumeInfo, error) {
+	list := []VolumeInfo{}
+	err := m.agent.Call(ctx, "volume.list", nil, &list)
+	return list, err
+}
+
+// RemoveResource entfernt ein Image, Netzwerk oder Volume.
+func (m *Manager) RemoveResource(ctx context.Context, actor, kind, ref string) error {
+	if !validKind(kind) || ref == "" || len(ref) > 300 {
+		return apierr.New(apierr.InvalidParams, "Ungültige Anfrage")
+	}
+	err := m.agent.Call(ctx, "resource.remove", map[string]string{"kind": kind, "ref": ref}, nil)
+	m.record(ctx, actor, "docker."+kind+".remove", ref, err)
+	return err
+}
+
+// PruneResources räumt ungenutzte Ressourcen einer Art auf.
+func (m *Manager) PruneResources(ctx context.Context, actor, kind string, all bool) (PruneResult, error) {
+	if !validKind(kind) {
+		return PruneResult{}, apierr.New(apierr.InvalidParams, "Ungültige Anfrage")
+	}
+	var res PruneResult
+	err := m.agent.Call(ctx, "resource.prune", map[string]any{"kind": kind, "all": all}, &res)
+	m.record(ctx, actor, "docker."+kind+".prune", kind, err)
+	return res, err
+}
