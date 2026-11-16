@@ -28,7 +28,6 @@ const title = computed(() => (route.meta.title as string) ?? 'BetterNAS')
 
 /** Dock-Einträge; color ist der Verlauf der Symbol-Kachel. */
 const nav = [
-  { label: 'Übersicht', icon: 'pi pi-th-large', to: '/', color: ['#6366f1', '#8b5cf6'] },
   { label: 'Datenträger', icon: 'pi pi-database', to: '/speicher/datentraeger', color: ['#0ea5e9', '#22d3ee'] },
   { label: 'Speicherpools', icon: 'pi pi-box', to: '/speicher/pools', color: ['#10b981', '#34d399'] },
   { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben', color: ['#f59e0b', '#fbbf24'] },
@@ -70,8 +69,9 @@ async function logout() {
 <template>
   <div class="shell">
     <nav class="dock glass" aria-label="Hauptnavigation">
-      <RouterLink to="/" class="logo" aria-label="BetterNAS">
-        <i class="pi pi-server" />
+      <RouterLink to="/" class="item home" aria-label="Übersicht" active-class="" exact-active-class="active">
+        <span class="logo"><i class="pi pi-server" /></span>
+        <span class="tip">Übersicht</span>
       </RouterLink>
       <span class="sep" />
       <RouterLink v-for="item in nav" :key="item.to" :to="item.to" class="item" :aria-label="item.label" active-class="" exact-active-class="active">
@@ -291,8 +291,7 @@ async function logout() {
     overflow-x: auto;
   }
   .sep,
-  .tip,
-  .logo {
+  .tip {
     display: none;
   }
   .item {
@@ -300,9 +299,11 @@ async function logout() {
     height: 46px;
     flex: 0 0 auto;
   }
-  .icon {
+  .icon,
+  .logo {
     width: 36px;
     height: 36px;
+    font-size: 1.1rem;
   }
   .main {
     padding: 16px;
