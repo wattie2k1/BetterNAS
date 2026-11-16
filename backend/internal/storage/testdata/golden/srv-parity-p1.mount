@@ -1,0 +1,12 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS Paritätsplatte p1
+
+[Mount]
+What=/dev/disk/by-uuid/33333333-3333-3333-3333-333333333333
+Where=/srv/parity/p1
+Type=ext4
+Options=defaults,noatime,nofail
+
+[Install]
+WantedBy=multi-user.target dev-disk-by\x2duuid-33333333\x2d3333\x2d3333\x2d3333\x2d333333333333.device

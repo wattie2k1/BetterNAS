@@ -228,13 +228,13 @@ func TestPreviewRejectsSystemAndManaged(t *testing.T) {
 
 func TestImportExistingFilesystem(t *testing.T) {
 	e := newEnv(t)
-	jid, err := e.m.Import(e.ctx, "anna", "d3")
+	jid, err := e.m.Import(e.ctx, "anna", "d3", "")
 	e.mustSucceed(t, jid, err)
 	st := e.agent.lastApplied()
 	if len(st.Disks) != 1 || st.Disks[0].FSUUID != "uuid-3" || st.Disks[0].FSType != "ext4" {
 		t.Fatalf("%+v", st)
 	}
-	if _, err := e.m.Import(e.ctx, "anna", "d2"); codeOf(err) != apierr.InvalidParams {
+	if _, err := e.m.Import(e.ctx, "anna", "d2", ""); codeOf(err) != apierr.InvalidParams {
 		t.Fatal(err)
 	}
 }
@@ -369,5 +369,45 @@ func TestReconcileAppliesStoredState(t *testing.T) {
 	st := e.agent.lastApplied()
 	if len(st.Disks) != 2 || len(st.Pools) != 1 || st.Pools[0].Name != "media" {
 		t.Fatalf("falscher Zustand: %+v", st)
+	}
+}
+
+func TestFormatAsParityStoresRole(t *testing.T) {
+	e := newEnv(t)
+	p, err := e.m.PreviewFormat(e.ctx, "d2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jid, err := e.m.Format(e.ctx, "anna", "d2", FormatRequest{FSType: "ext4", Role: "parity", ConfirmSerial: "SER2", ConfirmToken: p.ConfirmToken})
+	e.mustSucceed(t, jid, err)
+	st := e.agent.lastApplied()
+	if len(st.Disks) != 1 || st.Disks[0].Role != "parity" {
+		t.Fatalf("%+v", st)
+	}
+	views, _ := e.m.ListDisks(e.ctx)
+	for _, v := range views {
+		if v.ID == "d2" && v.Role != "parity" {
+			t.Fatalf("%+v", v)
+		}
+	}
+	// Eine Paritätsplatte kann nicht in einen Pool.
+	if _, err := e.m.CreatePool(e.ctx, "anna", PoolInput{Name: "x", Branches: []string{"d2"}}); codeOf(err) != apierr.InvalidParams {
+		t.Fatalf("pool with parity disk: %v", err)
+	}
+	p2, _ := e.m.PreviewFormat(e.ctx, "d1")
+	if _, err := e.m.Format(e.ctx, "anna", "d1", FormatRequest{FSType: "ext4", Role: "boss", ConfirmSerial: "SER1", ConfirmToken: p2.ConfirmToken}); codeOf(err) != apierr.InvalidParams {
+		t.Fatalf("bad role: %v", err)
+	}
+}
+
+func TestImportWithRole(t *testing.T) {
+	e := newEnv(t)
+	jid, err := e.m.Import(e.ctx, "anna", "d3", "parity")
+	e.mustSucceed(t, jid, err)
+	if st := e.agent.lastApplied(); len(st.Disks) != 1 || st.Disks[0].Role != "parity" {
+		t.Fatalf("%+v", st)
+	}
+	if _, err := e.m.Import(e.ctx, "anna", "d3", "boss"); codeOf(err) != apierr.InvalidParams {
+		t.Fatal(err)
 	}
 }

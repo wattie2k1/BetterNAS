@@ -12,6 +12,18 @@ type DiskMount struct {
 	DiskID string `json:"diskId"`
 	FSUUID string `json:"fsUuid"`
 	FSType string `json:"fsType"`
+	Role   string `json:"role,omitempty"` // "data" (Standard) | "parity"
+}
+
+// IsParity meldet, ob die Platte eine SnapRAID-Paritätsplatte ist.
+func (d DiskMount) IsParity() bool { return d.Role == RoleParity }
+
+// Path liefert den Mountpoint: /srv/disks/<id> bzw. /srv/parity/<id>.
+func (d DiskMount) Path() string {
+	if d.IsParity() {
+		return ParityPath(d.DiskID)
+	}
+	return DiskPath(d.DiskID)
 }
 
 // Pool ist ein mergerfs-Pool. Branches sind Disk-IDs in Reihenfolge.
@@ -27,6 +39,12 @@ type State struct {
 	Disks []DiskMount `json:"disks"`
 	Pools []Pool      `json:"pools"`
 }
+
+// Rollen eingehängter Datenträger.
+const (
+	RoleData   = "data"
+	RoleParity = "parity"
+)
 
 // Standardwerte und erlaubte Werte.
 const (
@@ -47,6 +65,9 @@ var (
 // DiskPath liefert den Mountpoint einer Datenplatte.
 func DiskPath(id string) string { return "/srv/disks/" + id }
 
+// ParityPath liefert den Mountpoint einer Paritätsplatte.
+func ParityPath(id string) string { return "/srv/parity/" + id }
+
 // PoolPath liefert den Mountpoint eines Pools.
 func PoolPath(name string) string { return "/srv/pools/" + name }
 
@@ -54,7 +75,7 @@ func invalid(msg string) error { return apierr.New(apierr.InvalidParams, msg) }
 
 // Validate prüft den Zustand vollständig (Namen, Werte, Referenzen).
 func (s State) Validate() error {
-	disks := map[string]bool{}
+	disks := map[string]*DiskMount{}
 	for _, d := range s.Disks {
 		if !diskIDRe.MatchString(d.DiskID) {
 			return invalid("Ungültige Datenträger-Kennung: " + d.DiskID)
@@ -65,7 +86,14 @@ func (s State) Validate() error {
 		if !slices.Contains(fsTypes, d.FSType) {
 			return invalid("Nicht unterstütztes Dateisystem: " + d.FSType)
 		}
-		disks[d.DiskID] = true
+		if d.Role != "" && d.Role != RoleData && d.Role != RoleParity {
+			return invalid("Unbekannte Rolle des Datenträgers: " + d.Role)
+		}
+		if disks[d.DiskID] != nil {
+			return invalid("Datenträger doppelt: " + d.DiskID)
+		}
+		d := d
+		disks[d.DiskID] = &d
 	}
 	used := map[string]string{}
 	names := map[string]bool{}
@@ -87,8 +115,11 @@ func (s State) Validate() error {
 			return invalid("Ein Pool braucht mindestens einen Datenträger")
 		}
 		for _, b := range p.Branches {
-			if !disks[b] {
+			if disks[b] == nil {
 				return invalid("Datenträger ist nicht eingehängt: " + b)
+			}
+			if disks[b].IsParity() {
+				return invalid("Eine Paritätsplatte kann nicht Teil eines Pools sein: " + b)
 			}
 			if other, ok := used[b]; ok {
 				return invalid("Datenträger " + b + " gehört bereits zu Pool " + other)

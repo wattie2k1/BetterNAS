@@ -136,3 +136,21 @@ func TestStorageRoutes(t *testing.T) {
 		t.Fatalf("delete %d %s", w.Code, w.Body)
 	}
 }
+
+func TestFormatPassesRole(t *testing.T) {
+	s := newStorageAPI(t)
+	w := s.do("POST", "/api/v1/disks/d1/format/preview", "")
+	var p struct{ ConfirmToken string }
+	json.Unmarshal(w.Body.Bytes(), &p)
+	w = s.do("POST", "/api/v1/disks/d1/format", `{"fsType":"ext4","role":"parity","confirmSerial":"S1","confirmToken":"`+p.ConfirmToken+`"}`)
+	if w.Code != 202 {
+		t.Fatalf("format %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
+	if w := s.do("GET", "/api/v1/disks", ""); !strings.Contains(w.Body.String(), `"role":"parity"`) {
+		t.Fatalf("disks %s", w.Body)
+	}
+	if w := s.do("POST", "/api/v1/pools", `{"name":"media","branches":["d1"]}`); w.Code != 400 {
+		t.Fatalf("pool with parity disk %d %s", w.Code, w.Body)
+	}
+}
