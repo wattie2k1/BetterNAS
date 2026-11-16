@@ -36,6 +36,25 @@ Das baut Paket, Root-Dateisystem und ISO dort, führt die QEMU-Tests mit KVM aus
 make build web deb deploy VERSION=0.0.3-dev
 ```
 
+## SnapRAID (optional pro Pool)
+
+SnapRAID schützt einen Pool vor dem Ausfall von 1–2 Datenplatten (Parität, keine Echtzeit-RAID):
+
+1. Unter **Speicher → Datenträger** eine Platte formatieren und als **Paritätsplatte** verwenden
+   (jede Paritätsplatte muss mindestens so groß sein wie die größte Datenplatte des Pools).
+2. Unter **Speicher → Pools** am Pool **SnapRAID einrichten**: Paritätsplatten wählen, Zeitpläne und Schwellen prüfen.
+3. BetterNAS synchronisiert täglich um 03:00 Uhr (neue und geänderte Dateien in die Parität) und prüft sonntags um
+   05:00 Uhr 8 % der Daten, die älter als 10 Tage sind. Beides lässt sich von Hand starten.
+
+Sicherheitsnetze: Der Sync hält an, wenn mehr als 500 Dateien gelöscht wurden (z. B. leere oder neu formatierte Platte);
+die GUI fragt dann nach („Trotzdem synchronisieren“). Fehlt eine Platte des Pools, läuft nichts. Solange SnapRAID aktiv
+ist, lassen sich Datenplatten nicht aus dem Pool entfernen und Paritätsplatten nicht freigeben – zuerst SnapRAID
+abschalten. Die geführte Wiederherstellung einer ausgefallenen Platte folgt in Phase 6; bis dahin hilft
+`snapraid -c /etc/betternas/snapraid/<pool>.conf fix -d <platte>` auf der Konsole.
+
+Dateien: `/etc/betternas/snapraid/<pool>.conf` und `.settings`, Zustand und Log in `/var/lib/betternas/snapraid/`,
+Timer `betternas-snapraid-sync-<pool>.timer` und `…-scrub-<pool>.timer`.
+
 ## Updates und APT-Repository
 
 BetterNAS-Pakete kommen aus einem eigenen, signierten APT-Repository (Suite `stable`, Komponente `main`);
@@ -83,8 +102,13 @@ Fortgeschritten: Ein zweiter Stick (oder eine Partition) mit FAT-Label `BNASCFG`
 make test                # Go-Unit-Tests
 make e2e MODE=uefi       # QEMU: unbeaufsichtigte Installation + Boot (bios|uefi|secureboot),
                          # danach Datenplatte, Pool, Benutzer, Freigabe, SMB-Zugriff und Neustart
-make integration         # echte Konten-, Samba- und Storage-Tests auf dem Entwicklungsrechner (root)
+make integration         # echte Konten-, Samba-, Storage- und SnapRAID-Tests auf dem Entwicklungsrechner (root)
 ```
+
+Der SnapRAID-Integrationstest (`TestSnapraidLifecycle`) braucht root, `losetup`, `mkfs.ext4` und `snapraid`, aber kein
+systemd; er läuft auch in einem privilegierten Container, z. B. mit Colima:
+`docker run --rm --privileged -v <ordner-mit-test-binary>:/t debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq snapraid e2fsprogs && /t/agent.test -test.run TestSnapraidLifecycle -test.v'`
+(Test-Binary: `go test -c -tags integration ./internal/agent`).
 
 Der Daten-Teil des e2e-Tests braucht `python3` und `smbclient` auf dem Rechner, der ihn ausführt (ohne `smbclient` entfallen
 die SMB-Prüfungen).

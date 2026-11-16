@@ -306,10 +306,15 @@ BetterNAS/
 | 0c | Repo-Grundlagen, Go-Gerüst API/Agent, Vue-Gerüst, Login, Jobs, Audit, .deb im Image | GUI im installierten System |
 | 1 | Disk-Erkennung, Formatieren/Importieren, Mount-Units, mergerfs-Pools CRUD | Pools per GUI |
 | 2 | Benutzer/Gruppen, Samba-Sync, Shares, Einrichtungsassistent nach erstem Login, APT-Repo | **Erstes Release als ISO (MVP)** |
-| 3 | SnapRAID optional pro Pool, Timer, Status | Redundanz |
+| 3 | SnapRAID optional pro Pool, Timer, Status (umgesetzt, 0.2.0) | Redundanz |
 | 4 | Docker-Stacks, Editor, Logs, Shell, Updates | Docker-Verwaltung |
 | 5 | KVM: Assistent, noVNC, Snapshots, Bridge | VM-Verwaltung |
 | 6 | Ausbau: SMART-Alarme, Benachrichtigungen, App-Vorlagen, Spindown, 2FA, Backup, Restore-Assistent, Passthrough, NFS, Browser-Installer | Feature-Reife |
+
+Abweichung Phase 3: Sync/Scrub laufen nicht als Job-RPC, sondern in einer eigenen Unit des Agents
+(`betternas-agent snapraid-run`, von Timern und GUI gestartet; `flock` gegen Parallelläufe, Ergebnis in
+`/var/lib/betternas/snapraid/<pool>.state.json`). Die GUI zeigt den Lauf trotzdem als Job mit Log. SnapRAID wird am
+Pool nach dem Anlegen eingerichtet, nicht im Anlege-Dialog.
 
 Entwickelt und getestet wird ab Phase 0b in VMs, die aus dem eigenen ISO installiert wurden.
 
