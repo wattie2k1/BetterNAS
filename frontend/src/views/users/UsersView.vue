@@ -71,8 +71,13 @@ function save(input: UserInput) {
       <tbody>
         <tr v-for="u in store.users" :key="u.name" :data-test="`user-${u.name}`">
           <td>
-            <strong>{{ u.name }}</strong>
-            <div v-if="u.fullName" class="sub">{{ u.fullName }}</div>
+            <div class="who">
+              <span class="avatar-sm" aria-hidden="true">{{ u.name.slice(0, 1).toUpperCase() }}</span>
+              <div>
+                <strong>{{ u.name }}</strong>
+                <div v-if="u.fullName" class="sub">{{ u.fullName }}</div>
+              </div>
+            </div>
           </td>
           <td>
             <Tag v-if="u.admin" value="Administrator" severity="info" />
@@ -115,6 +120,11 @@ function save(input: UserInput) {
 </template>
 
 <style scoped>
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 .toolbar {
   display: flex;
   justify-content: flex-end;

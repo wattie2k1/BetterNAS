@@ -119,7 +119,18 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
   color: var(--p-text-muted-color);
 }
 .ok {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1.4rem 1.6rem;
+  border-radius: var(--bn-radius);
+  background: linear-gradient(135deg, rgb(16 185 129 / 18%), rgb(34 211 238 / 12%));
+  border: 1px solid rgb(16 185 129 / 35%);
   color: var(--p-green-500);
+  font-weight: 650;
+}
+.ok i {
+  font-size: 1.5rem;
 }
 .table-wrap {
   overflow-x: auto;
@@ -153,6 +164,7 @@ th {
   max-height: 24rem;
   overflow: auto;
   font-size: 0.8rem;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   white-space: pre-wrap;
 }
 </style>
