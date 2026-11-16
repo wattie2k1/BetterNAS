@@ -1,0 +1,21 @@
+<domain type='kvm'>
+  <name>debian</name>
+  <devices>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/srv/vms/disks/debian.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <disk type='file' device='disk'>
+      <source file='/etc/passwd'/>
+      <target dev='vdb' bus='virtio'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <source file='/srv/vms/iso/debian.iso'/>
+      <target dev='sda' bus='sata'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <target dev='sdb' bus='sata'/>
+    </disk>
+  </devices>
+</domain>

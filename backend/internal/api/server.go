@@ -16,6 +16,7 @@ import (
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/system"
 	"github.com/betternas/betternas/internal/users"
+	"github.com/betternas/betternas/internal/vm"
 )
 
 // Config ist die Konfiguration des API-Servers.
@@ -41,6 +42,8 @@ type Deps struct {
 	Updates *system.Updates
 	// Docker ist optional (nil = keine Docker-Routen).
 	Docker *docker.Manager
+	// VMs ist optional (nil = keine VM-Routen).
+	VMs *vm.Manager
 }
 
 type server struct {
@@ -77,6 +80,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Updates != nil {
 		s.registerUpdates(api)
+	}
+	if deps.VMs != nil {
+		s.registerVMs(api)
 	}
 	if deps.Docker != nil {
 		s.registerDocker(api)

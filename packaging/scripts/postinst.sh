@@ -9,7 +9,7 @@ if [ "$1" = "configure" ]; then
 	getent group betternas-admin >/dev/null || addgroup --quiet --system betternas-admin
 
 	install -d -o betternas -g betternas -m 0750 /etc/betternas/tls /var/lib/betternas
-	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms
+	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms /srv/vms/disks /srv/vms/iso
 	install -d -m 0755 /etc/betternas/snapraid /var/lib/betternas/snapraid
 	install -d -m 0700 /srv/appdata/stacks
 	install -d -m 0710 /srv/appdata/docker
@@ -21,6 +21,18 @@ if [ "$1" = "configure" ]; then
 		if [ -d /run/systemd/system ]; then
 			systemctl try-restart docker.service || true
 		fi
+	fi
+
+	# libvirt: Standard-NAT-Netz `default` aktivieren (VMs ohne eigene Bridge). Im chroot ohne systemd übersprungen.
+	if [ -d /run/systemd/system ] && command -v virsh >/dev/null 2>&1; then
+		systemctl enable --now libvirtd.socket >/dev/null 2>&1 || true
+		# libvirt kommt direkt nach der Installation oft erst nach einigen Sekunden hoch.
+		for _ in 1 2 3 4 5 6 7 8 9 10; do
+			virsh -c qemu:///system net-info default >/dev/null 2>&1 && break
+			sleep 1
+		done
+		virsh -c qemu:///system net-autostart default >/dev/null 2>&1 || true
+		virsh -c qemu:///system net-start default >/dev/null 2>&1 || true
 	fi
 
 	# Samba: Freigaben liegen in /etc/samba/betternas.d. Die smb.conf wird nur ersetzt, wenn sie noch der

@@ -34,7 +34,7 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: BetterNAS <betternas@localhost>
 Installed-Size: $SIZE
-Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, mergerfs, snapraid, docker.io, docker-compose, smartmontools, gdisk, parted, e2fsprogs, xfsprogs
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, mergerfs, snapraid, docker.io, docker-compose, libvirt-daemon-system, libvirt-clients, qemu-system-x86, qemu-utils, ovmf, swtpm, swtpm-tools, smartmontools, gdisk, parted, e2fsprogs, xfsprogs
 Section: admin
 Priority: optional
 Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung

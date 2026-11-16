@@ -16,6 +16,10 @@ for f in usr/bin/mergerfs usr/bin/snapraid usr/sbin/smbd usr/lib/shim/shimx64.ef
          usr/sbin/grub-install usr/sbin/sgdisk etc/issue.d/betternas.issue; do
 	[ -e "$W/$f" ] || err "$f fehlt"
 done
+for f in usr/bin/virsh usr/bin/qemu-img usr/bin/qemu-system-x86_64; do
+	[ -e "$W/$f" ] || err "$f fehlt"
+done
+ls "$W"/usr/share/OVMF/OVMF_CODE*.fd >/dev/null 2>&1 || err "OVMF (UEFI-Firmware für VMs) fehlt"
 [ -L "$W/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" ] || err "systemd-networkd nicht aktiviert"
 grep -q '^root:[!*]' "$W/etc/shadow" || err "root ist nicht gesperrt"
 grep -q '^betternas-admin:' "$W/etc/group" || err "Gruppe betternas-admin fehlt"
