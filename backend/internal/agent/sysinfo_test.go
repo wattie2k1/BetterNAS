@@ -20,4 +20,22 @@ func TestSysinfoParsesProc(t *testing.T) {
 	if info.UptimeSeconds != 12345 || info.CPUCount < 1 {
 		t.Fatalf("%+v", info)
 	}
+	// cpu 4705 150 1120 16250 520 30 45 0 → Summe 22820, idle 16250 + 520
+	if info.CPUTotalTicks != 22820 || info.CPUIdleTicks != 16770 {
+		t.Fatalf("cpu ticks %+v", info)
+	}
+	if info.Load != [3]float64{0.52, 0.34, 0.21} || info.CPUModel != "Intel(R) Core(TM) i5-8500T CPU @ 2.10GHz" {
+		t.Fatalf("load/model %+v", info)
+	}
+}
+
+func TestParseCPUStatIgnoresGarbage(t *testing.T) {
+	for _, in := range []string{"", "intr 1", "cpu 1 2", "cpu0 1 2 3 4 5"} {
+		if total, idle := parseCPUStat(in); total != 0 || idle != 0 {
+			t.Errorf("%q: %d %d", in, total, idle)
+		}
+	}
+	if total, idle := parseCPUStat("cpu  1 2 3 4 5 6 7 8 9 10\n"); total != 36 || idle != 9 {
+		t.Errorf("guest darf nicht doppelt zählen: %d %d", total, idle)
+	}
 }

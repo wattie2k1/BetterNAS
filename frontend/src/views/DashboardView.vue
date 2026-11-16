@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import ProgressBar from 'primevue/progressbar'
 import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
@@ -9,9 +9,14 @@ import { useAuthStore } from '@/stores/auth'
 import { useStorageStore } from '@/stores/storage'
 import { storageApi, unprotected, type PoolView, type SnapraidStatus } from '@/api/storage'
 import { formatBytes, formatDateTime, formatUptime } from '@/utils/format'
+import { moveTile, shiftTile, useTileOrder } from '@/utils/tileOrder'
 
 interface SystemInfo {
   hostname: string
+  cpuModel: string
+  cpuTotalTicks: number
+  cpuIdleTicks: number
+  load: [number, number, number]
   kernel: string
   os: string
   uptimeSeconds: number
@@ -26,15 +31,31 @@ const store = useStorageStore()
 const info = ref<SystemInfo | null>(null)
 const snap = ref<{ pool: PoolView; status: SnapraidStatus }[]>([])
 const error = ref('')
+const cpuPercent = ref<number | null>(null)
+let lastTicks: { total: number; idle: number } | null = null
 let timer: ReturnType<typeof setInterval> | undefined
+let firstCpu: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
   try {
-    info.value = await api.get<SystemInfo>('/api/v1/system/info')
+    const next = await api.get<SystemInfo>('/api/v1/system/info')
+    info.value = next
+    updateCpu(next)
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
+}
+
+/** Auslastung seit der letzten Abfrage aus den kumulierten Zählern des Kernels. */
+function updateCpu(i: SystemInfo) {
+  const total = i.cpuTotalTicks
+  const idle = i.cpuIdleTicks
+  if (lastTicks && total > lastTicks.total) {
+    const busy = 1 - (idle - lastTicks.idle) / (total - lastTicks.total)
+    cpuPercent.value = Math.max(0, Math.min(100, busy * 100))
+  }
+  lastTicks = { total, idle }
 }
 
 async function loadSnapraid() {
@@ -50,9 +71,13 @@ async function loadSnapraid() {
 onMounted(() => {
   load()
   loadSnapraid()
-  timer = setInterval(load, 10000)
+  firstCpu = setTimeout(load, 1500) // zweite Messung, damit die CPU-Kachel schnell einen Wert zeigt
+  timer = setInterval(load, 5000)
 })
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => {
+  clearInterval(timer)
+  clearTimeout(firstCpu)
+})
 
 const memUsed = computed(() => (info.value ? info.value.memTotalBytes - info.value.memAvailableBytes : 0))
 const memPercent = computed(() => (info.value ? Math.round((memUsed.value / info.value.memTotalBytes) * 100) : 0))
@@ -69,6 +94,41 @@ const storageTotal = computed(() => mountedPools.value.reduce((a, p) => a + p.si
 const storageUsed = computed(() => mountedPools.value.reduce((a, p) => a + (p.sizeBytes - p.freeBytes), 0))
 const storagePercent = computed(() => (storageTotal.value ? (storageUsed.value / storageTotal.value) * 100 : 0))
 const poolPercent = (p: PoolView) => (p.sizeBytes ? Math.round(((p.sizeBytes - p.freeBytes) / p.sizeBytes) * 100) : 0)
+
+// --- Kacheln: vom Nutzer sortierbar, Reihenfolge wird im Browser gemerkt ---
+const TILES = ['storage', 'cpu', 'memory', 'disks', 'snapraid', 'system'] as const
+const tileMeta: Record<string, { icon: string; title: string }> = {
+  storage: { icon: 'pi pi-database', title: 'Speicher' },
+  cpu: { icon: 'pi pi-bolt', title: 'Prozessor' },
+  memory: { icon: 'pi pi-microchip', title: 'Arbeitsspeicher' },
+  disks: { icon: 'pi pi-hard-drive', title: 'Datenträger' },
+  snapraid: { icon: 'pi pi-shield', title: 'SnapRAID' },
+  system: { icon: 'pi pi-info-circle', title: 'System' },
+}
+const tiles = useTileOrder(() => `bn-dashboard-tiles:${auth.user ?? ''}`, TILES)
+const visibleTiles = computed(() => tiles.order.value.filter((id) => id !== 'snapraid' || snap.value.length > 0))
+const customOrder = computed(() => tiles.order.value.join() !== TILES.join())
+const dragging = ref<string | null>(null)
+
+function onDragStart(e: DragEvent, id: string) {
+  dragging.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+function onDrop(target: string) {
+  if (dragging.value) tiles.set(moveTile(tiles.order.value, dragging.value, target))
+  dragging.value = null
+}
+function onHandleKey(e: KeyboardEvent, id: string) {
+  const delta = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 0
+  if (!delta) return
+  e.preventDefault()
+  tiles.set(shiftTile(tiles.order.value, visibleTiles.value, id, delta))
+  // Fokus bleibt am verschobenen Griff, auch wenn Vue das Element neu einsetzt.
+  void nextTick(() => (document.querySelector(`[data-test="tile-${id}"] .handle`) as HTMLElement | null)?.focus())
+}
 
 const dataDisks = computed(() => store.disks.filter((d) => d.role === 'data' || d.role === 'parity'))
 const smartWarnings = computed(() => store.disks.filter((d) => d.smart && !d.smart.passed).length)
@@ -95,10 +155,37 @@ const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
   </section>
   <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
+  <div v-if="customOrder" class="reset">
+    <button type="button" data-test="tiles-reset" @click="tiles.reset()"><i class="pi pi-undo" /> Anordnung zurücksetzen</button>
+  </div>
   <div class="widgets">
-    <article class="widget glass storage">
-      <header><i class="pi pi-database" /> Speicher</header>
-      <div class="storage-body">
+    <article
+      v-for="id in visibleTiles"
+      :key="id"
+      class="widget glass"
+      :class="{ storage: id === 'storage', dragging: dragging === id }"
+      :data-test="`tile-${id}`"
+      draggable="true"
+      @dragstart="onDragStart($event, id)"
+      @dragend="dragging = null"
+      @dragover.prevent
+      @drop.prevent="onDrop(id)"
+    >
+      <header>
+        <i :class="tileMeta[id].icon" />
+        <span>{{ tileMeta[id].title }}</span>
+        <button
+          type="button"
+          class="handle"
+          :aria-label="`Kachel ${tileMeta[id].title} verschieben (Pfeiltasten)`"
+          title="Ziehen oder mit den Pfeiltasten verschieben"
+          @keydown="onHandleKey($event, id)"
+        >
+          <i class="pi pi-arrows-alt" />
+        </button>
+      </header>
+
+      <div v-if="id === 'storage'" class="storage-body">
         <RingGauge :value="storagePercent" label="belegt" />
         <div class="storage-side">
           <template v-if="mountedPools.length">
@@ -113,33 +200,38 @@ const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
           <p v-else class="soft">Noch kein Speicherpool. Lege unter „Speicherpools“ einen an.</p>
         </div>
       </div>
-    </article>
 
-    <article class="widget glass">
-      <header><i class="pi pi-microchip" /> Arbeitsspeicher</header>
-      <div v-if="info" class="mem">
-        <RingGauge :value="memPercent" label="belegt" :size="116" from="#e879f9" to="#6366f1" />
-        <div>
-          <p class="big">{{ formatBytes(memUsed) }}</p>
-          <p class="soft">von {{ formatBytes(info.memTotalBytes) }}</p>
-          <p class="soft">{{ info.cpuCount }} CPU-Kerne</p>
+      <template v-else-if="id === 'cpu'">
+        <div v-if="info" class="mem" data-test="cpu-tile">
+          <RingGauge :value="cpuPercent ?? 0" :label="cpuPercent === null ? 'misst …' : 'ausgelastet'" :size="116" from="#f59e0b" to="#ef4444" />
+          <div>
+            <p class="big" data-test="cpu-percent">{{ cpuPercent === null ? '–' : `${Math.round(cpuPercent)} %` }}</p>
+            <p class="soft">{{ info.cpuCount }} Kerne</p>
+            <p class="soft" data-test="cpu-load">Last {{ (info.load ?? []).map((l) => l.toFixed(2)).join(' · ') }}</p>
+          </div>
         </div>
-      </div>
-      <Skeleton v-else height="7rem" />
-    </article>
+        <Skeleton v-else height="7rem" />
+        <p v-if="info?.cpuModel" class="soft model">{{ info.cpuModel }}</p>
+      </template>
 
-    <article class="widget glass">
-      <header><i class="pi pi-hard-drive" /> Datenträger</header>
-      <div class="facts">
+      <template v-else-if="id === 'memory'">
+        <div v-if="info" class="mem">
+          <RingGauge :value="memPercent" label="belegt" :size="116" from="#e879f9" to="#6366f1" />
+          <div>
+            <p class="big">{{ formatBytes(memUsed) }}</p>
+            <p class="soft">von {{ formatBytes(info.memTotalBytes) }}</p>
+          </div>
+        </div>
+        <Skeleton v-else height="7rem" />
+      </template>
+
+      <div v-else-if="id === 'disks'" class="facts">
         <div class="fact"><strong>{{ dataDisks.length }}</strong><span>in Verwendung</span></div>
         <div class="fact" :class="{ bad: smartWarnings }"><strong>{{ smartWarnings }}</strong><span>SMART-Warnungen</span></div>
         <div class="fact" :class="{ bad: missingDisks }"><strong>{{ missingDisks }}</strong><span>fehlen</span></div>
       </div>
-    </article>
 
-    <article v-if="snap.length" class="widget glass" data-test="snapraid-summary">
-      <header><i class="pi pi-shield" /> SnapRAID</header>
-      <ul class="snap">
+      <ul v-else-if="id === 'snapraid'" class="snap" data-test="snapraid-summary">
         <li v-for="s in snap" :key="s.pool.name">
           <div class="row">
             <strong>{{ s.pool.name }}</strong>
@@ -152,21 +244,20 @@ const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
           <div v-if="s.status.diff" class="soft">{{ unprotected(s.status.diff) }} ungeschützte Änderungen</div>
         </li>
       </ul>
-    </article>
 
-    <article class="widget glass">
-      <header><i class="pi pi-info-circle" /> System</header>
-      <dl v-if="info">
-        <dt>Gerätename</dt>
-        <dd>{{ info.hostname }}</dd>
-        <dt>Betriebssystem</dt>
-        <dd>{{ info.os }}</dd>
-        <dt>Kernel</dt>
-        <dd>{{ info.kernel }}</dd>
-        <dt>Laufzeit</dt>
-        <dd>{{ formatUptime(info.uptimeSeconds) }}</dd>
-      </dl>
-      <Skeleton v-else height="7rem" />
+      <template v-else-if="id === 'system'">
+        <dl v-if="info">
+          <dt>Gerätename</dt>
+          <dd>{{ info.hostname }}</dd>
+          <dt>Betriebssystem</dt>
+          <dd>{{ info.os }}</dd>
+          <dt>Kernel</dt>
+          <dd>{{ info.kernel }}</dd>
+          <dt>Laufzeit</dt>
+          <dd>{{ formatUptime(info.uptimeSeconds) }}</dd>
+        </dl>
+        <Skeleton v-else height="7rem" />
+      </template>
     </article>
   </div>
 
@@ -195,6 +286,50 @@ const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
 }
 .widget {
   padding: 20px 22px;
+  cursor: grab;
+}
+.widget.dragging {
+  opacity: 0.45;
+}
+.widgets {
+  grid-auto-flow: dense;
+}
+.handle {
+  all: unset;
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.widget:hover .handle,
+.handle:focus-visible {
+  opacity: 1;
+}
+.handle:focus-visible {
+  outline: 2px solid var(--bn-accent-1);
+}
+.reset {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.reset button {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--bn-text-soft);
+}
+.reset button:hover {
+  color: var(--p-text-color);
+}
+.model {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
 }
 .widget.storage {
   grid-column: span 2;
