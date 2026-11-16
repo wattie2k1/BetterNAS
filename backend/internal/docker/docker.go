@@ -88,3 +88,27 @@ type ContainerStats struct {
 	MemLimit   uint64  `json:"memLimit"`   // Bytes
 	MemPercent float64 `json:"memPercent"` // Prozent
 }
+
+// ImageRefRe erlaubt Image-Referenzen (keine führenden Bindestriche, keine Leerzeichen).
+var ImageRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$`)
+
+// ImageStatus ist das Ergebnis des Digest-Vergleichs eines Images.
+type ImageStatus struct {
+	Image    string `json:"image"`
+	Local    string `json:"local"`
+	Remote   string `json:"remote"`
+	Outdated bool   `json:"outdated"`
+	Error    string `json:"error,omitempty"`
+}
+
+// UpdateInfo beschreibt den Update-Stand eines Stacks.
+type UpdateInfo struct {
+	Outdated []string `json:"outdated"`
+	Errors   []string `json:"errors"`
+}
+
+// UpdateReport ist das Ergebnis der letzten Update-Prüfung.
+type UpdateReport struct {
+	CheckedAt string                `json:"checkedAt"`
+	Stacks    map[string]UpdateInfo `json:"stacks"`
+}

@@ -3,6 +3,8 @@ package docker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -172,6 +174,9 @@ func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (str
 			}
 			switch st.State {
 			case "succeeded":
+				if action == "update" {
+					m.forgetUpdate(ctx, name)
+				}
 				return nil
 			case "failed":
 				return apierr.New(apierr.Conflict, "Der Vorgang ist fehlgeschlagen (Protokoll siehe oben).")
@@ -227,4 +232,92 @@ func (m *Manager) Stats(ctx context.Context) ([]ContainerStats, error) {
 // AuditShell hält fest, dass ein Administrator eine Shell in einem Container geöffnet hat.
 func (m *Manager) AuditShell(ctx context.Context, actor, id string) {
 	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: "container.shell", Target: id, Result: "ok"})
+}
+
+const keyUpdates = "docker.updates"
+
+func (m *Manager) loadReport(ctx context.Context) (UpdateReport, error) {
+	rep := UpdateReport{Stacks: map[string]UpdateInfo{}}
+	var raw string
+	err := m.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, keyUpdates).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rep, nil
+	}
+	if err != nil {
+		return rep, err
+	}
+	_ = json.Unmarshal([]byte(raw), &rep)
+	if rep.Stacks == nil {
+		rep.Stacks = map[string]UpdateInfo{}
+	}
+	return rep, nil
+}
+
+func (m *Manager) saveReport(ctx context.Context, rep UpdateReport) error {
+	b, err := json.Marshal(rep)
+	if err != nil {
+		return err
+	}
+	_, err = m.db.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, keyUpdates, string(b))
+	return err
+}
+
+// Updates liefert das Ergebnis der letzten Update-Prüfung.
+func (m *Manager) Updates(ctx context.Context) (UpdateReport, error) { return m.loadReport(ctx) }
+
+// forgetUpdate entfernt einen Stack aus dem Prüfergebnis (nach „Aktualisieren“ ist er aktuell).
+func (m *Manager) forgetUpdate(ctx context.Context, name string) {
+	rep, err := m.loadReport(ctx)
+	if err != nil {
+		return
+	}
+	if _, ok := rep.Stacks[name]; ok {
+		delete(rep.Stacks, name)
+		_ = m.saveReport(ctx, rep)
+	}
+}
+
+// CheckUpdates vergleicht als Job die Image-Digests aller Stacks mit den Registries.
+func (m *Manager) CheckUpdates(ctx context.Context, actor string) (string, error) {
+	return m.jobs.Start("docker.updatecheck", "docker", actor, func(ctx context.Context, log jobs.Logger) (err error) {
+		defer func() {
+			m.record(ctx, actor, "docker.updatecheck", "docker", err)
+		}()
+		stacks, err := m.ListStacks(ctx)
+		if err != nil {
+			return err
+		}
+		rep := UpdateReport{CheckedAt: time.Now().UTC().Format(time.RFC3339), Stacks: map[string]UpdateInfo{}}
+		for i, s := range stacks {
+			log.Printf("Prüfe Stack %s …", s.Name)
+			info := UpdateInfo{Outdated: []string{}, Errors: []string{}}
+			var images []string
+			if err := m.agent.Call(ctx, "stack.images", map[string]string{"name": s.Name}, &images); err != nil {
+				info.Errors = append(info.Errors, apierr.From(err).Message)
+			} else if len(images) > 0 {
+				var sts []ImageStatus
+				if err := m.agent.Call(ctx, "image.digests", map[string]any{"images": images}, &sts); err != nil {
+					info.Errors = append(info.Errors, apierr.From(err).Message)
+				}
+				for _, st := range sts {
+					switch {
+					case st.Outdated:
+						info.Outdated = append(info.Outdated, st.Image)
+					case st.Error != "":
+						info.Errors = append(info.Errors, st.Image+": "+st.Error)
+					}
+				}
+			}
+			rep.Stacks[s.Name] = info
+			if len(info.Outdated) > 0 {
+				log.Printf("  Updates verfügbar für: %s", strings.Join(info.Outdated, ", "))
+			}
+			log.SetProgress((i + 1) * 100 / len(stacks))
+		}
+		if err := m.saveReport(ctx, rep); err != nil {
+			return err
+		}
+		log.Printf("Prüfung abgeschlossen.")
+		return nil
+	}), nil
 }

@@ -198,6 +198,7 @@ func Register(s *rpc.Server, d Deps) {
 	})
 	registerDocker(s, d)
 	registerDockerOps(s, d)
+	registerDockerUpdates(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State
 		if err := decode(p, &st); err != nil {

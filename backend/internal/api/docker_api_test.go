@@ -34,6 +34,10 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = docker.StackCheck{OK: true}
 	case "container.list":
 		out = []docker.Container{{ID: "0123456789ab", Name: "web", Ports: []string{}}}
+	case "stack.images":
+		out = []string{"nginx:stable"}
+	case "image.digests":
+		out = []docker.ImageStatus{{Image: "nginx:stable", Outdated: true}}
 	case "docker.status":
 		out = docker.Status{Installed: true, Active: true, Version: "26"}
 	}
@@ -141,5 +145,20 @@ func TestDockerEndpointsRequireAuthAndCSRF(t *testing.T) {
 		if c[0] != "GET" && w.Code != 403 {
 			t.Errorf("%s %s ohne CSRF: %d", c[0], c[1], w.Code)
 		}
+	}
+}
+
+func TestDockerUpdatesRoutes(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/docker/updates", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"stacks":{}`) {
+		t.Fatalf("leer %d %s", w.Code, w.Body)
+	}
+	w := s.do("POST", "/api/v1/docker/updates/check", "")
+	if w.Code != 202 {
+		t.Fatalf("check %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
+	if w := s.do("GET", "/api/v1/docker/updates", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"outdated":["nginx:stable"]`) {
+		t.Fatalf("Ergebnis %d %s", w.Code, w.Body)
 	}
 }

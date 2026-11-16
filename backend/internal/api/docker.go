@@ -42,6 +42,14 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		st, err := m.Status(r.Context())
 		reply(w, st, err)
 	})
+	mux.HandleFunc("GET /api/v1/docker/updates", func(w http.ResponseWriter, r *http.Request) {
+		rep, err := m.Updates(r.Context())
+		reply(w, rep, err)
+	})
+	mux.HandleFunc("POST /api/v1/docker/updates/check", func(w http.ResponseWriter, r *http.Request) {
+		id, err := m.CheckUpdates(r.Context(), actor(r))
+		accepted(w, id, err)
+	})
 	mux.HandleFunc("GET /api/v1/stacks", func(w http.ResponseWriter, r *http.Request) {
 		list, err := m.ListStacks(r.Context())
 		reply(w, list, err)
