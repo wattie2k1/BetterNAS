@@ -33,9 +33,9 @@
 
 **Files:** Modify `image/packages/rootfs.list`, `packaging/build-deb.sh`, `packaging/scripts/postinst.sh`; Create `packaging/docker/daemon.json`.
 
-- [ ] **Step 1:** `docker.io` und `docker-compose` in `rootfs.list`; in `Depends` von `build-deb.sh` ergänzen; `daemon.json` per `install -D -m 0644` nach `/etc/docker/daemon.json` (Inhalt siehe Constraints); `postinst.sh`: `install -d -m 0755 /srv/appdata/stacks /srv/appdata/docker`.
-- [ ] **Step 2:** `sh -n` auf die Skripte, `python3 -m json.tool packaging/docker/daemon.json`; `image/tests/check-rootfs.sh` prüft zusätzlich `docker` und `/usr/libexec/docker/cli-plugins/docker-compose` (bzw. Pfad des Pakets).
-- [ ] **Step 3: Commit** – `feat(packaging): docker engine, compose and daemon config`
+- [x] **Step 1:** `docker.io` und `docker-compose` in `rootfs.list`; in `Depends` von `build-deb.sh` ergänzen; `daemon.json` per `install -D -m 0644` nach `/etc/docker/daemon.json` (Inhalt siehe Constraints); `postinst.sh`: `install -d -m 0755 /srv/appdata/stacks /srv/appdata/docker`.
+- [x] **Step 2:** `sh -n` auf die Skripte, `python3 -m json.tool packaging/docker/daemon.json`; `image/tests/check-rootfs.sh` prüft zusätzlich `docker` und `/usr/libexec/docker/cli-plugins/docker-compose` (bzw. Pfad des Pakets).
+- [x] **Step 3: Commit** – `feat(packaging): docker engine, compose and daemon config`
 
 ### Task 2: Paket `internal/docker` – Namen, Pfade, Parser
 
@@ -48,9 +48,9 @@
 - `type StackInfo struct { Name string; Running, Total int; Updated int64 }`; `func ParseComposeLs(out []byte) (map[string]struct{ Running, Total int }, error)` für `docker compose ls -a --format json` (`Status` z. B. `running(2), exited(1)`).
 - `type RunState struct { State string; Log string }` (`running|succeeded|failed`).
 
-- [ ] **Step 1: Tests** – `TestStackNameValidation` (gültig `jellyfin`, `a_b-1`; ungültig `""`, `../x`, `A`, `a b`, 41 Zeichen), `TestStackDir`, `TestParseContainers` (Fixture mit Compose- und Nicht-Compose-Container, Ports `0.0.0.0:8096->8096/tcp, :::8096->8096/tcp`), `TestParseComposeLs`.
-- [ ] **Step 2:** `cd backend && go test ./internal/docker` → FAIL. **Step 3:** implementieren. **Step 4:** PASS.
-- [ ] **Step 5: Commit** – `feat(docker): names, paths and output parsers`
+- [x] **Step 1: Tests** – `TestStackNameValidation` (gültig `jellyfin`, `a_b-1`; ungültig `""`, `../x`, `A`, `a b`, 41 Zeichen), `TestStackDir`, `TestParseContainers` (Fixture mit Compose- und Nicht-Compose-Container, Ports `0.0.0.0:8096->8096/tcp, :::8096->8096/tcp`), `TestParseComposeLs`.
+- [x] **Step 2:** `cd backend && go test ./internal/docker` → FAIL. **Step 3:** implementieren. **Step 4:** PASS.
+- [x] **Step 5: Commit** – `feat(docker): names, paths and output parsers`
 
 ### Task 3: Agent – Stack-Dateien (list/get/save/validate/delete)
 
@@ -58,8 +58,8 @@
 
 **Interfaces:** RPC `stack.list` → `[]docker.StackInfo` (Verzeichnisse mit `compose.yaml` + Laufzustand aus `docker compose ls -a`; Docker nicht erreichbar → Liste trotzdem, Zähler 0); `stack.get {name}` → `{name, compose, env}`; `stack.save {name, compose, env}` (Verzeichnis 0700, Dateien 0600, atomar via Temp+Rename; `mutate`-Sperre); `stack.validate {name}` → `{ok, message}` (`docker compose --project-directory <dir> config -q`); `stack.delete {name}`.
 
-- [ ] **Step 1: Tests** – `TestSaveAndGetStack`, `TestStackFilesAreMode0600` (FakeFS merkt Modi), `TestStackSizeLimits`, `TestValidateStackReportsComposeError` (Runner liefert ExitCode 1 + stderr → `ok:false`, Meldung enthalten), `TestDeleteStackOnlyOwnDir` (nur `StackDir(name)` wird entfernt; Runner sah `compose down`), `TestListStacksIgnoresDirsWithoutCompose`.
-- [ ] **Step 2–4:** FAIL → implementieren → `go test ./internal/agent` PASS. **Step 5: Commit** – `feat(agent): compose stack files and validation`
+- [x] **Step 1: Tests** – `TestSaveAndGetStack`, `TestStackFilesAreMode0600` (FakeFS merkt Modi), `TestStackSizeLimits`, `TestValidateStackReportsComposeError` (Runner liefert ExitCode 1 + stderr → `ok:false`, Meldung enthalten), `TestDeleteStackOnlyOwnDir` (nur `StackDir(name)` wird entfernt; Runner sah `compose down`), `TestListStacksIgnoresDirsWithoutCompose`.
+- [x] **Step 2–4:** FAIL → implementieren → `go test ./internal/agent` PASS. **Step 5: Commit** – `feat(agent): compose stack files and validation`
 
 ### Task 4: Agent – Läufe, Container, Docker-Status
 
@@ -67,8 +67,8 @@
 
 **Interfaces:** `stack.run {name, action}` → `{unit}` (validiert, bei `up`/`update` zuerst `config -q`; `systemd-run --unit=betternas-stack-<name>-<ts> --no-block --property=RemainAfterExit=yes --description=… docker compose --project-directory <dir> <args>`; `update` = Shell-freie Kette über zwei Aufrufe: `pull`, dann `up -d --remove-orphans` in einer Unit per `sh -c` **ohne** Nutzereingaben im String – der Stackname ist durch die Regex gesichert; Aufräumen alter Units wie in `InstallUpdates`); `stack.runstatus {unit}` → `docker.RunState` (Unit-Regex `^betternas-stack-[a-z0-9_-]+-[0-9]+$`, Log: `journalctl -u … -n 200`); `container.list` → `[]docker.Container`; `container.action {id, action}`; `docker.status` → `{installed, active, version}` (`docker version --format {{.Server.Version}}`, `systemctl is-active docker`).
 
-- [ ] **Step 1: Tests** – `TestRunStackBuildsSystemdRun` (genauer Argumentvektor), `TestRunStackRefusesWhenRunning`, `TestDeployRefusesInvalidCompose`, `TestRunStackRejectsUnknownAction`, `TestRunStatusUnitValidation`, `TestContainerActionValidation` (ID `../x`, Aktion `exec` → `invalid_params`), `TestContainerList` (Runner-Fixture), `TestDockerStatusNotInstalled`.
-- [ ] **Step 2–4:** FAIL → implementieren → PASS. **Step 5: Commit** – `feat(agent): stack runs, containers and docker status`
+- [x] **Step 1: Tests** – `TestRunStackBuildsSystemdRun` (genauer Argumentvektor), `TestRunStackRefusesWhenRunning`, `TestDeployRefusesInvalidCompose`, `TestRunStackRejectsUnknownAction`, `TestRunStatusUnitValidation`, `TestContainerActionValidation` (ID `../x`, Aktion `exec` → `invalid_params`), `TestContainerList` (Runner-Fixture), `TestDockerStatusNotInstalled`.
+- [x] **Step 2–4:** FAIL → implementieren → PASS. **Step 5: Commit** – `feat(agent): stack runs, containers and docker status`
 
 ### Task 5: API – Manager und Routen
 
@@ -76,15 +76,15 @@
 
 **Routen (Admin-Session, CSRF wie übrige):** `GET /api/v1/docker/status`; `GET /api/v1/stacks`; `POST /api/v1/stacks` `{name, compose, env}` (409 bei vorhandenem Namen); `GET|PUT|DELETE /api/v1/stacks/{name}`; `POST /api/v1/stacks/{name}/validate`; `POST /api/v1/stacks/{name}/{action}` (`up|down|stop|start|restart|pull|update`) → `202 {jobId}`; `GET /api/v1/containers`; `POST /api/v1/containers/{id}/{action}` → `204`. Manager: Audit (`stack.save|delete|run`, `container.action`), Job pro Lauf (`jobs.Start("stack."+action, name, actor, …)` pollt alle 2 s `stack.runstatus`, spiegelt das Log, endet mit `failed` bei Unit-Fehler), Event `docker.changed` über den Hub nach jeder Änderung.
 
-- [ ] **Step 1: Tests** – Manager mit Fake-Agent: `TestRunStackTracksJobToSuccess`, `TestRunStackFailureMarksJobFailed`, `TestCreateStackConflict`, `TestAuditRecorded`; API: `TestStacksRequireSession`, `TestRunReturns202WithJobId`, `TestInvalidNameIs400`.
-- [ ] **Step 2–4:** FAIL → implementieren → `go vet ./... && go test ./...` PASS. **Step 5: Commit** – `feat(api): docker stacks and containers`
+- [x] **Step 1: Tests** – Manager mit Fake-Agent: `TestRunStackTracksJobToSuccess`, `TestRunStackFailureMarksJobFailed`, `TestCreateStackConflict`, `TestAuditRecorded`; API: `TestStacksRequireSession`, `TestRunReturns202WithJobId`, `TestInvalidNameIs400`.
+- [x] **Step 2–4:** FAIL → implementieren → `go vet ./... && go test ./...` PASS. **Step 5: Commit** – `feat(api): docker stacks and containers`
 
 ### Task 6: Frontend – API-Client und Store
 
 **Files:** Create `frontend/src/api/docker.ts`, `frontend/src/stores/docker.ts`; Modify `components/AppLayout.vue` (`docker.changed`-Event → `docker.handleEvent`); Test `frontend/src/__tests__/docker-store.test.ts`.
 
-- [ ] **Step 1: Tests** – Store lädt Stacks/Container, `run(name, action)` verfolgt den Job über `useJobsStore().track` und lädt neu; `handleEvent` lädt bei `docker.changed`; Fehler → `error`.
-- [ ] **Step 2–4:** FAIL → implementieren → `npm test` PASS. **Step 5: Commit** – `feat(web): docker api client and store`
+- [x] **Step 1: Tests** – Store lädt Stacks/Container, `run(name, action)` verfolgt den Job über `useJobsStore().track` und lädt neu; `handleEvent` lädt bei `docker.changed`; Fehler → `error`.
+- [x] **Step 2–4:** FAIL → implementieren → `npm test` PASS. **Step 5: Commit** – `feat(web): docker api client and store`
 
 ### Task 7: Frontend – Ansichten
 
@@ -92,15 +92,15 @@
 
 Verhalten: Stacks-Karten/Tabelle (Name, Laufzustand „2/3 laufen“, Aktionen Start/Stopp/Neustart/Aktualisieren/Bearbeiten/Löschen); Dialog „Stack“ mit Namensfeld (nur beim Anlegen), YAML-Editor (Vorlage mit `services:` bei neu), `.env`-Reiter, Button „Prüfen“ (zeigt Compose-Fehler), „Speichern“ und „Speichern & starten“; Löschen-Dialog nennt: „Volumes bleiben erhalten“; leere Zustände und Docker-nicht-aktiv-Hinweis deutsch; Container-Tabelle (Name, Image, Status, Ports, Stack) mit Start/Stopp/Neustart/Entfernen (ConfirmDialog). Texte nur in den Views, Logik im Store.
 
-- [ ] **Step 1: Tests** (Komponenten mit gemocktem Store, Editor gestubbt): Liste rendert, Deploy ruft `run`, Löschen verlangt Bestätigung, Prüfen zeigt Fehlertext, Docker inaktiv zeigt Hinweis.
-- [ ] **Step 2–4:** FAIL → implementieren → `npm test && npm run build` PASS (Chunk-Größe des Editors notieren). **Step 5: Commit** – `feat(web): docker stacks and containers views`
+- [x] **Step 1: Tests** (Komponenten mit gemocktem Store, Editor gestubbt): Liste rendert, Deploy ruft `run`, Löschen verlangt Bestätigung, Prüfen zeigt Fehlertext, Docker inaktiv zeigt Hinweis.
+- [x] **Step 2–4:** FAIL → implementieren → `npm test && npm run build` PASS (Chunk-Größe des Editors notieren). **Step 5: Commit** – `feat(web): docker stacks and containers views`
 
 ### Task 8: Abschluss und Test auf dem Testgerät
 
-- [ ] **Step 1:** `make test`; `make build web deb VERSION=0.3.0-rc1`; `make deploy VERSION=0.3.0-rc1` auf `betternas-dev` (zieht `docker.io`/`docker-compose` per apt).
-- [ ] **Step 2: Integrationstest** (`//go:build integration`, `agent/docker_integration_test.go`, in `make integration` aufnehmen, überspringt ohne Docker): Stack anlegen → `up` (kleines `busybox`-Image, `sleep`) → `container.list` zeigt ihn → `down` → `delete`.
-- [ ] **Step 3:** Manuell in der GUI: Stack mit ungültigem YAML (Fehlertext), gültiger Stack deployen, Container stoppen, Stack löschen. Ergebnis im Ledger festhalten.
-- [ ] **Step 4:** Doku (`docs/specs` §8 Phase 4a, Abweichungen), Memory aktualisieren; **Commit** – `docs: docker stacks (phase 4a)`. Danach „In main mergen“ auf Nachfrage.
+- [x] **Step 1:** `make test`; `make build web deb VERSION=0.3.0-rc1`; `make deploy VERSION=0.3.0-rc1` auf `betternas-dev` (zieht `docker.io`/`docker-compose` per apt).
+- [x] **Step 2: Integrationstest** (`//go:build integration`, `agent/docker_integration_test.go`, in `make integration` aufnehmen, überspringt ohne Docker): Stack anlegen → `up` (kleines `busybox`-Image, `sleep`) → `container.list` zeigt ihn → `down` → `delete`.
+- [x] **Step 3:** Manuell in der GUI: Stack mit ungültigem YAML (Fehlertext), gültiger Stack deployen, Container stoppen, Stack löschen. Ergebnis im Ledger festhalten.
+- [x] **Step 4:** Doku (`docs/specs` §8 Phase 4a, Abweichungen), Memory aktualisieren; **Commit** – `docs: docker stacks (phase 4a)`. Danach „In main mergen“ auf Nachfrage.
 
 ## Offen für Etappe B
 

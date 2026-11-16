@@ -307,7 +307,8 @@ BetterNAS/
 | 1 | Disk-Erkennung, Formatieren/Importieren, Mount-Units, mergerfs-Pools CRUD | Pools per GUI |
 | 2 | Benutzer/Gruppen, Samba-Sync, Shares, Einrichtungsassistent nach erstem Login, APT-Repo | **Erstes Release als ISO (MVP)** |
 | 3 | SnapRAID optional pro Pool, Timer, Status (umgesetzt, 0.2.0) | Redundanz |
-| 4 | Docker-Stacks, Editor, Logs, Shell, Updates | Docker-Verwaltung |
+| 4a | Docker installiert/eingerichtet, Stacks (Editor, Validierung, Deploy/Update/Löschen), Container-Liste und -Aktionen (umgesetzt) | Docker-Verwaltung |
+| 4b | Logs-Stream, Shell, Stats, Update-Prüfung per Digest, Images/Netzwerke/Volumes | Docker-Verwaltung komplett |
 | 5 | KVM: Assistent, noVNC, Snapshots, Bridge | VM-Verwaltung |
 | 6 | Ausbau: SMART-Alarme, Benachrichtigungen, App-Vorlagen, Spindown, 2FA, Backup, Restore-Assistent, Passthrough, NFS, Browser-Installer | Feature-Reife |
 
@@ -315,6 +316,13 @@ Abweichung Phase 3: Sync/Scrub laufen nicht als Job-RPC, sondern in einer eigene
 (`betternas-agent snapraid-run`, von Timern und GUI gestartet; `flock` gegen Parallelläufe, Ergebnis in
 `/var/lib/betternas/snapraid/<pool>.state.json`). Die GUI zeigt den Lauf trotzdem als Job mit Log. SnapRAID wird am
 Pool nach dem Anlegen eingerichtet, nicht im Anlege-Dialog.
+
+Abweichung Phase 4a: Die API greift nicht selbst auf `docker.sock` zu (Gruppe `docker` ist root-gleich); alle
+Docker-Operationen sind typisierte Agent-RPCs über die `docker`-CLI. Stacks sind nur Dateien unter
+`/srv/appdata/stacks/<name>/` (root, 0600/0700), es gibt keine `stacks`-Tabelle. Deploy/Pull/Down laufen in einer
+transienten Unit `betternas-stack-<name>-<ts>` (Job pollt `stack.runstatus`). Docker `data-root` ist
+`/srv/appdata/docker` (`/etc/docker/daemon.json`, nur gesetzt, wenn keine eigene existiert). Der Editor ist Monaco mit
+YAML-Grundmodus (lazy geladen); validiert wird serverseitig mit `docker compose config`.
 
 Entwickelt und getestet wird ab Phase 0b in VMs, die aus dem eigenen ISO installiert wurden.
 
