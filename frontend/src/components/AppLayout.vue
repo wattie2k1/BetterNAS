@@ -9,6 +9,7 @@ import { useJobsStore, type Job } from '@/stores/jobs'
 import { useStorageStore } from '@/stores/storage'
 import { useUsersStore } from '@/stores/users'
 import { useSharesStore } from '@/stores/shares'
+import { useDockerStore } from '@/stores/docker'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
 
@@ -17,6 +18,7 @@ const jobs = useJobsStore()
 const storage = useStorageStore()
 const usersStore = useUsersStore()
 const sharesStore = useSharesStore()
+const dockerStore = useDockerStore()
 const route = useRoute()
 const router = useRouter()
 const showJobs = ref(false)
@@ -30,6 +32,8 @@ const nav = [
   { label: 'Datenträger', icon: 'pi pi-database', to: '/speicher/datentraeger', color: ['#0ea5e9', '#22d3ee'] },
   { label: 'Speicherpools', icon: 'pi pi-box', to: '/speicher/pools', color: ['#10b981', '#34d399'] },
   { label: 'Freigaben', icon: 'pi pi-folder-open', to: '/freigaben', color: ['#f59e0b', '#fbbf24'] },
+  { label: 'Docker-Stacks', icon: 'pi pi-clone', to: '/docker/stacks', color: ['#2563eb', '#60a5fa'] },
+  { label: 'Container', icon: 'pi pi-server', to: '/docker/container', color: ['#0d9488', '#2dd4bf'] },
   { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer', color: ['#ec4899', '#f472b6'] },
   { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen', color: ['#a855f7', '#c084fc'] },
   { label: 'Updates', icon: 'pi pi-download', to: '/system/updates', color: ['#ef4444', '#fb7185'] },
@@ -48,6 +52,7 @@ onMounted(() => {
     storage.handleEvent(m)
     usersStore.handleEvent(m)
     sharesStore.handleEvent(m)
+    dockerStore.handleEvent(m)
   })
 })
 onUnmounted(() => {

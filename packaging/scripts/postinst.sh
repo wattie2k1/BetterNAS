@@ -11,6 +11,17 @@ if [ "$1" = "configure" ]; then
 	install -d -o betternas -g betternas -m 0750 /etc/betternas/tls /var/lib/betternas
 	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms
 	install -d -m 0755 /etc/betternas/snapraid /var/lib/betternas/snapraid
+	install -d -m 0700 /srv/appdata/stacks
+	install -d -m 0710 /srv/appdata/docker
+
+	# Docker: data-root auf /srv/appdata (nicht mergerfs). Eine vorhandene eigene daemon.json bleibt unangetastet.
+	install -d -m 0755 /etc/docker
+	if [ ! -e /etc/docker/daemon.json ]; then
+		install -m 0644 /usr/share/betternas/docker-daemon.json /etc/docker/daemon.json
+		if [ -d /run/systemd/system ]; then
+			systemctl try-restart docker.service || true
+		fi
+	fi
 
 	# Samba: Freigaben liegen in /etc/samba/betternas.d. Die smb.conf wird nur ersetzt, wenn sie noch der
 	# Debian-Auslieferung entspricht oder fehlt; eigene Konfiguration bleibt unangetastet.
