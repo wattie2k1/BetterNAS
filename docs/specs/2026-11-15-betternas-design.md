@@ -308,7 +308,7 @@ BetterNAS/
 | 2 | Benutzer/Gruppen, Samba-Sync, Shares, Einrichtungsassistent nach erstem Login, APT-Repo | **Erstes Release als ISO (MVP)** |
 | 3 | SnapRAID optional pro Pool, Timer, Status (umgesetzt, 0.2.0) | Redundanz |
 | 4a | Docker installiert/eingerichtet, Stacks (Editor, Validierung, Deploy/Update/Löschen), Container-Liste und -Aktionen (umgesetzt) | Docker-Verwaltung |
-| 4b | Logs-Stream, Shell, Stats, Update-Prüfung per Digest, Images/Netzwerke/Volumes | Docker-Verwaltung komplett |
+| 4b | Logs-Stream, Shell (xterm.js), Stats, Update-Prüfung per Digest, Images/Netzwerke/Volumes (umgesetzt) | Docker-Verwaltung komplett |
 | 5 | KVM: Assistent, noVNC, Snapshots, Bridge | VM-Verwaltung |
 | 6 | Ausbau: SMART-Alarme, Benachrichtigungen, App-Vorlagen, Spindown, 2FA, Backup, Restore-Assistent, Passthrough, NFS, Browser-Installer | Feature-Reife |
 
@@ -323,6 +323,13 @@ Docker-Operationen sind typisierte Agent-RPCs über die `docker`-CLI. Stacks sin
 transienten Unit `betternas-stack-<name>-<ts>` (Job pollt `stack.runstatus`). Docker `data-root` ist
 `/srv/appdata/docker` (`/etc/docker/daemon.json`, nur gesetzt, wenn keine eigene existiert). Der Editor ist Monaco mit
 YAML-Grundmodus (lazy geladen); validiert wird serverseitig mit `docker compose config`.
+
+Abweichung Phase 4b: Logs und Shell laufen über einen bidirektionalen RPC-Kanal (`rpc.Session`, Agent-Sitzungen
+`container.logs`/`container.shell` mit PTY über `creack/pty`), den die API per WebSocket an den Browser reicht
+(`/api/v1/containers/{id}/logs|shell`). Stats sind ein einfacher Aufruf (`docker stats --no-stream`, GUI fragt alle 5 s).
+Die Update-Prüfung vergleicht je Stack die lokalen RepoDigests mit `docker buildx imagetools inspect` (Job, Ergebnis in
+`settings`/`docker.updates`). Images, Netzwerke und Volumes: Liste, Entfernen, Prune mit Bestätigung. Nicht umgesetzt:
+Compose-Schema-Validierung im Editor (`monaco-yaml`).
 
 Entwickelt und getestet wird ab Phase 0b in VMs, die aus dem eigenen ISO installiert wurden.
 

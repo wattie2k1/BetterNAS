@@ -3,6 +3,8 @@ package docker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/betternas/betternas/internal/audit"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
+	"github.com/betternas/betternas/internal/rpc"
 )
 
 // Agent ist der Teil des Agent-Clients, den der Manager braucht.
@@ -171,6 +174,9 @@ func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (str
 			}
 			switch st.State {
 			case "succeeded":
+				if action == "update" {
+					m.forgetUpdate(ctx, name)
+				}
 				return nil
 			case "failed":
 				return apierr.New(apierr.Conflict, "Der Vorgang ist fehlgeschlagen (Protokoll siehe oben).")
@@ -200,4 +206,164 @@ func (m *Manager) ContainerAction(ctx context.Context, actor, id, action string)
 	err := m.agent.Call(ctx, "container.action", map[string]string{"id": id, "action": action}, nil)
 	m.record(ctx, actor, "container."+action, id, err)
 	return err
+}
+
+// SessionOpener ist der Teil des Agent-Clients für bidirektionale Sitzungen (*rpc.Client).
+type SessionOpener interface {
+	OpenSession(ctx context.Context, method string, params any) (*rpc.Session, error)
+}
+
+// OpenSession öffnet eine Sitzung (Logs, Shell) beim Agent.
+func (m *Manager) OpenSession(ctx context.Context, method string, params any) (*rpc.Session, error) {
+	so, ok := m.agent.(SessionOpener)
+	if !ok {
+		return nil, apierr.New(apierr.Internal, "Sitzungen sind nicht verfügbar")
+	}
+	return so.OpenSession(ctx, method, params)
+}
+
+// Stats liefert CPU und Speicher der laufenden Container.
+func (m *Manager) Stats(ctx context.Context) ([]ContainerStats, error) {
+	list := []ContainerStats{}
+	err := m.agent.Call(ctx, "container.stats", nil, &list)
+	return list, err
+}
+
+// AuditShell hält fest, dass ein Administrator eine Shell in einem Container geöffnet hat.
+func (m *Manager) AuditShell(ctx context.Context, actor, id string) {
+	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: "container.shell", Target: id, Result: "ok"})
+}
+
+const keyUpdates = "docker.updates"
+
+func (m *Manager) loadReport(ctx context.Context) (UpdateReport, error) {
+	rep := UpdateReport{Stacks: map[string]UpdateInfo{}}
+	var raw string
+	err := m.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, keyUpdates).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rep, nil
+	}
+	if err != nil {
+		return rep, err
+	}
+	_ = json.Unmarshal([]byte(raw), &rep)
+	if rep.Stacks == nil {
+		rep.Stacks = map[string]UpdateInfo{}
+	}
+	return rep, nil
+}
+
+func (m *Manager) saveReport(ctx context.Context, rep UpdateReport) error {
+	b, err := json.Marshal(rep)
+	if err != nil {
+		return err
+	}
+	_, err = m.db.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, keyUpdates, string(b))
+	return err
+}
+
+// Updates liefert das Ergebnis der letzten Update-Prüfung.
+func (m *Manager) Updates(ctx context.Context) (UpdateReport, error) { return m.loadReport(ctx) }
+
+// forgetUpdate entfernt einen Stack aus dem Prüfergebnis (nach „Aktualisieren“ ist er aktuell).
+func (m *Manager) forgetUpdate(ctx context.Context, name string) {
+	rep, err := m.loadReport(ctx)
+	if err != nil {
+		return
+	}
+	if _, ok := rep.Stacks[name]; ok {
+		delete(rep.Stacks, name)
+		_ = m.saveReport(ctx, rep)
+	}
+}
+
+// CheckUpdates vergleicht als Job die Image-Digests aller Stacks mit den Registries.
+func (m *Manager) CheckUpdates(ctx context.Context, actor string) (string, error) {
+	return m.jobs.Start("docker.updatecheck", "docker", actor, func(ctx context.Context, log jobs.Logger) (err error) {
+		defer func() {
+			m.record(ctx, actor, "docker.updatecheck", "docker", err)
+		}()
+		stacks, err := m.ListStacks(ctx)
+		if err != nil {
+			return err
+		}
+		rep := UpdateReport{CheckedAt: time.Now().UTC().Format(time.RFC3339), Stacks: map[string]UpdateInfo{}}
+		for i, s := range stacks {
+			log.Printf("Prüfe Stack %s …", s.Name)
+			info := UpdateInfo{Outdated: []string{}, Errors: []string{}}
+			var images []string
+			if err := m.agent.Call(ctx, "stack.images", map[string]string{"name": s.Name}, &images); err != nil {
+				info.Errors = append(info.Errors, apierr.From(err).Message)
+			} else if len(images) > 0 {
+				var sts []ImageStatus
+				if err := m.agent.Call(ctx, "image.digests", map[string]any{"images": images}, &sts); err != nil {
+					info.Errors = append(info.Errors, apierr.From(err).Message)
+				}
+				for _, st := range sts {
+					switch {
+					case st.Outdated:
+						info.Outdated = append(info.Outdated, st.Image)
+					case st.Error != "":
+						info.Errors = append(info.Errors, st.Image+": "+st.Error)
+					}
+				}
+			}
+			rep.Stacks[s.Name] = info
+			if len(info.Outdated) > 0 {
+				log.Printf("  Updates verfügbar für: %s", strings.Join(info.Outdated, ", "))
+			}
+			log.SetProgress((i + 1) * 100 / len(stacks))
+		}
+		if err := m.saveReport(ctx, rep); err != nil {
+			return err
+		}
+		log.Printf("Prüfung abgeschlossen.")
+		return nil
+	}), nil
+}
+
+func validKind(kind string) bool {
+	return kind == KindImage || kind == KindNetwork || kind == KindVolume
+}
+
+// Images liefert alle Images.
+func (m *Manager) Images(ctx context.Context) ([]ImageInfo, error) {
+	list := []ImageInfo{}
+	err := m.agent.Call(ctx, "image.list", nil, &list)
+	return list, err
+}
+
+// Networks liefert alle Netzwerke.
+func (m *Manager) Networks(ctx context.Context) ([]NetworkInfo, error) {
+	list := []NetworkInfo{}
+	err := m.agent.Call(ctx, "network.list", nil, &list)
+	return list, err
+}
+
+// Volumes liefert alle Volumes.
+func (m *Manager) Volumes(ctx context.Context) ([]VolumeInfo, error) {
+	list := []VolumeInfo{}
+	err := m.agent.Call(ctx, "volume.list", nil, &list)
+	return list, err
+}
+
+// RemoveResource entfernt ein Image, Netzwerk oder Volume.
+func (m *Manager) RemoveResource(ctx context.Context, actor, kind, ref string) error {
+	if !validKind(kind) || ref == "" || len(ref) > 300 {
+		return apierr.New(apierr.InvalidParams, "Ungültige Anfrage")
+	}
+	err := m.agent.Call(ctx, "resource.remove", map[string]string{"kind": kind, "ref": ref}, nil)
+	m.record(ctx, actor, "docker."+kind+".remove", ref, err)
+	return err
+}
+
+// PruneResources räumt ungenutzte Ressourcen einer Art auf.
+func (m *Manager) PruneResources(ctx context.Context, actor, kind string, all bool) (PruneResult, error) {
+	if !validKind(kind) {
+		return PruneResult{}, apierr.New(apierr.InvalidParams, "Ungültige Anfrage")
+	}
+	var res PruneResult
+	err := m.agent.Call(ctx, "resource.prune", map[string]any{"kind": kind, "all": all}, &res)
+	m.record(ctx, actor, "docker."+kind+".prune", kind, err)
+	return res, err
 }

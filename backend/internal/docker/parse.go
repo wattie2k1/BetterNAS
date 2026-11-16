@@ -71,3 +71,55 @@ func ParseComposeLs(out []byte) (map[string]StackInfo, error) {
 	}
 	return res, nil
 }
+
+var sizeRe = regexp.MustCompile(`^([0-9.]+)\s*([A-Za-z]*)$`)
+
+var sizeUnits = map[string]float64{
+	"": 1, "b": 1,
+	"kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12,
+	"kib": 1 << 10, "mib": 1 << 20, "gib": 1 << 30, "tib": 1 << 40,
+}
+
+// ParseSize liest Größen wie "10.5MiB" oder "1.2GB" (Docker nutzt beide Schreibweisen) in Bytes.
+func ParseSize(s string) uint64 {
+	m := sizeRe.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	unit, ok := sizeUnits[strings.ToLower(m[2])]
+	if err != nil || !ok {
+		return 0
+	}
+	return uint64(v * unit)
+}
+
+func parsePercent(s string) float64 {
+	v, _ := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(s), "%"), 64)
+	return v
+}
+
+// ParseStats liest `docker stats --no-stream --no-trunc --format '{{json .}}'`.
+func ParseStats(out []byte) ([]ContainerStats, error) {
+	list := []ContainerStats{}
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var r struct{ ID, Name, CPUPerc, MemUsage, MemPerc string }
+		if err := json.Unmarshal(line, &r); err != nil {
+			return nil, err
+		}
+		st := ContainerStats{ID: r.ID, Name: r.Name, CPU: parsePercent(r.CPUPerc), MemPercent: parsePercent(r.MemPerc)}
+		if len(st.ID) > 12 {
+			st.ID = st.ID[:12]
+		}
+		if used, limit, ok := strings.Cut(r.MemUsage, "/"); ok {
+			st.MemUsage, st.MemLimit = ParseSize(used), ParseSize(limit)
+		}
+		list = append(list, st)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	return list, nil
+}

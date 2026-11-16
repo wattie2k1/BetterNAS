@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 
 	"github.com/betternas/betternas/internal/apierr"
@@ -102,4 +103,60 @@ func (c *Client) Subscribe(ctx context.Context, method string) (<-chan Event, er
 		}
 	}()
 	return ch, nil
+}
+
+// Session ist eine offene bidirektionale Sitzung mit dem Agent.
+type Session struct {
+	conn   net.Conn
+	events chan Event
+	wmu    sync.Mutex
+	stop   func() bool
+}
+
+// OpenSession startet method mit params und liefert eine Sitzung. Der Kanal Events wird geschlossen,
+// wenn der Agent die Sitzung beendet, ctx endet oder Close aufgerufen wird.
+func (c *Client) OpenSession(ctx context.Context, method string, params any) (*Session, error) {
+	conn, err := c.dial(ctx, method, params)
+	if err != nil {
+		return nil, err
+	}
+	s := &Session{conn: conn, events: make(chan Event, 64)}
+	s.stop = context.AfterFunc(ctx, func() { conn.Close() })
+	go func() {
+		defer close(s.events)
+		defer conn.Close()
+		r := bufio.NewReaderSize(conn, 64*1024)
+		for {
+			line, err := readLine(r)
+			if err != nil {
+				return
+			}
+			var ev Event
+			if json.Unmarshal(line, &ev) != nil {
+				continue
+			}
+			select {
+			case s.events <- ev:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return s, nil
+}
+
+// Events liefert die Ereignisse des Agents.
+func (s *Session) Events() <-chan Event { return s.events }
+
+// Send schickt ein Ereignis an den Agent.
+func (s *Session) Send(ev Event) error {
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	return writeJSON(s.conn, ev)
+}
+
+// Close beendet die Sitzung.
+func (s *Session) Close() {
+	s.stop()
+	s.conn.Close()
 }

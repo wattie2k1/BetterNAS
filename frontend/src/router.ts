@@ -13,6 +13,7 @@ import SharesView from '@/views/shares/SharesView.vue'
 import GroupsView from '@/views/users/GroupsView.vue'
 import PoolsView from '@/views/storage/PoolsView.vue'
 import StacksView from '@/views/docker/StacksView.vue'
+import ResourcesView from '@/views/docker/ResourcesView.vue'
 import ContainersView from '@/views/docker/ContainersView.vue'
 
 export const router = createRouter({
@@ -30,6 +31,7 @@ export const router = createRouter({
         { path: 'freigaben', name: 'shares', component: SharesView, meta: { title: 'Freigaben' } },
         { path: 'docker/stacks', name: 'stacks', component: StacksView, meta: { title: 'Docker-Stacks' } },
         { path: 'docker/container', name: 'containers', component: ContainersView, meta: { title: 'Container' } },
+        { path: 'docker/ressourcen', name: 'resources', component: ResourcesView, meta: { title: 'Docker-Ressourcen' } },
         { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
         { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
         { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import LogsDialog from '@/components/docker/LogsDialog.vue'
+import ShellDialog from '@/components/docker/ShellDialog.vue'
+import { formatBytes } from '@/utils/format'
 import { useDockerStore } from '@/stores/docker'
 import type { ContainerAction, ContainerInfo } from '@/api/docker'
 
@@ -14,7 +17,20 @@ const busy = ref<string | null>(null)
 const removing = ref<ContainerInfo | null>(null)
 const dockerDown = computed(() => store.status && (!store.status.installed || !store.status.active))
 
-onMounted(() => store.refresh())
+const logsFor = ref<ContainerInfo | null>(null)
+const shellFor = ref<ContainerInfo | null>(null)
+
+onMounted(async () => {
+  await store.refresh()
+  store.startStats()
+})
+onUnmounted(() => store.stopStats())
+
+const cpu = (id: string) => store.stats[id]?.cpu
+const mem = (id: string) => {
+  const s = store.stats[id]
+  return s ? `${formatBytes(s.memUsage)} / ${formatBytes(s.memLimit)}` : ''
+}
 
 const severity = (state: string) => (state === 'running' ? 'success' : state === 'exited' || state === 'created' ? 'secondary' : 'warn')
 const stateLabel: Record<string, string> = {
@@ -60,6 +76,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
           <th>Name</th>
           <th>Image</th>
           <th>Zustand</th>
+          <th>Auslastung</th>
           <th>Ports</th>
           <th />
         </tr>
@@ -75,11 +92,20 @@ async function act(c: ContainerInfo, action: ContainerAction) {
             <Tag :value="stateLabel[c.state] ?? c.state" :severity="severity(c.state)" />
             <div class="sub">{{ c.status }}</div>
           </td>
+          <td data-test="usage">
+            <template v-if="c.state === 'running' && store.stats[c.id]">
+              <div>CPU {{ cpu(c.id)?.toFixed(1) }} %</div>
+              <div class="sub">RAM {{ mem(c.id) }}</div>
+            </template>
+            <span v-else class="sub">—</span>
+          </td>
           <td>
             <div v-for="p in c.ports" :key="p" class="sub">{{ p }}</div>
             <span v-if="!c.ports.length" class="sub">—</span>
           </td>
           <td class="actions">
+            <Button v-if="c.state === 'running'" icon="pi pi-align-left" text rounded aria-label="Logs" title="Logs" @click="logsFor = c" />
+            <Button v-if="c.state === 'running'" icon="pi pi-code" text rounded aria-label="Shell" title="Shell öffnen" @click="shellFor = c" />
             <Button v-if="c.state !== 'running'" icon="pi pi-play" text rounded aria-label="Starten" title="Starten" :disabled="busy === c.id" @click="act(c, 'start')" />
             <Button v-else icon="pi pi-stop" text rounded aria-label="Stoppen" title="Stoppen" :disabled="busy === c.id" @click="act(c, 'stop')" />
             <Button icon="pi pi-refresh" text rounded aria-label="Neu starten" title="Neu starten" :disabled="busy === c.id" @click="act(c, 'restart')" />
@@ -89,6 +115,8 @@ async function act(c: ContainerInfo, action: ContainerAction) {
       </tbody>
     </table>
   </div>
+  <LogsDialog :visible="!!logsFor" :container="logsFor" @update:visible="(v) => !v && (logsFor = null)" />
+  <ShellDialog :visible="!!shellFor" :container="shellFor" @update:visible="(v) => !v && (shellFor = null)" />
   <ConfirmDialog
     :visible="!!removing"
     header="Container entfernen"

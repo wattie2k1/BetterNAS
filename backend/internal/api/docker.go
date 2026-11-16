@@ -42,6 +42,14 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		st, err := m.Status(r.Context())
 		reply(w, st, err)
 	})
+	mux.HandleFunc("GET /api/v1/docker/updates", func(w http.ResponseWriter, r *http.Request) {
+		rep, err := m.Updates(r.Context())
+		reply(w, rep, err)
+	})
+	mux.HandleFunc("POST /api/v1/docker/updates/check", func(w http.ResponseWriter, r *http.Request) {
+		id, err := m.CheckUpdates(r.Context(), actor(r))
+		accepted(w, id, err)
+	})
 	mux.HandleFunc("GET /api/v1/stacks", func(w http.ResponseWriter, r *http.Request) {
 		list, err := m.ListStacks(r.Context())
 		reply(w, list, err)
@@ -89,6 +97,38 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 	for action := range docker.ContainerActions {
 		mux.HandleFunc("POST /api/v1/containers/{id}/"+action, func(w http.ResponseWriter, r *http.Request) {
 			noContent(w, m.ContainerAction(r.Context(), actor(r), r.PathValue("id"), action))
+		})
+	}
+
+	lists := map[string]func(w http.ResponseWriter, r *http.Request){
+		docker.KindImage: func(w http.ResponseWriter, r *http.Request) {
+			v, err := m.Images(r.Context())
+			reply(w, v, err)
+		},
+		docker.KindNetwork: func(w http.ResponseWriter, r *http.Request) {
+			v, err := m.Networks(r.Context())
+			reply(w, v, err)
+		},
+		docker.KindVolume: func(w http.ResponseWriter, r *http.Request) {
+			v, err := m.Volumes(r.Context())
+			reply(w, v, err)
+		},
+	}
+	for kind, plural := range map[string]string{docker.KindImage: "images", docker.KindNetwork: "networks", docker.KindVolume: "volumes"} {
+		mux.HandleFunc("GET /api/v1/docker/"+plural, lists[kind])
+		// ref steht in der Query, weil Image-Referenzen Schrägstriche enthalten.
+		mux.HandleFunc("DELETE /api/v1/docker/"+plural, func(w http.ResponseWriter, r *http.Request) {
+			noContent(w, m.RemoveResource(r.Context(), actor(r), kind, r.URL.Query().Get("ref")))
+		})
+		mux.HandleFunc("POST /api/v1/docker/"+plural+"/prune", func(w http.ResponseWriter, r *http.Request) {
+			var req struct {
+				All bool `json:"all"`
+			}
+			if !decodeBody(w, r, &req) {
+				return
+			}
+			res, err := m.PruneResources(r.Context(), actor(r), kind, req.All)
+			reply(w, res, err)
 		})
 	}
 }

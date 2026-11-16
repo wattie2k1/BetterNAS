@@ -78,3 +78,37 @@ type StackCheck struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message"`
 }
+
+// ContainerStats sind die Auslastungswerte eines laufenden Containers.
+type ContainerStats struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	CPU        float64 `json:"cpu"`        // Prozent eines Kerns (kann > 100 sein)
+	MemUsage   uint64  `json:"memUsage"`   // Bytes
+	MemLimit   uint64  `json:"memLimit"`   // Bytes
+	MemPercent float64 `json:"memPercent"` // Prozent
+}
+
+// ImageRefRe erlaubt Image-Referenzen (keine führenden Bindestriche, keine Leerzeichen).
+var ImageRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$`)
+
+// ImageStatus ist das Ergebnis des Digest-Vergleichs eines Images.
+type ImageStatus struct {
+	Image    string `json:"image"`
+	Local    string `json:"local"`
+	Remote   string `json:"remote"`
+	Outdated bool   `json:"outdated"`
+	Error    string `json:"error,omitempty"`
+}
+
+// UpdateInfo beschreibt den Update-Stand eines Stacks.
+type UpdateInfo struct {
+	Outdated []string `json:"outdated"`
+	Errors   []string `json:"errors"`
+}
+
+// UpdateReport ist das Ergebnis der letzten Update-Prüfung.
+type UpdateReport struct {
+	CheckedAt string                `json:"checkedAt"`
+	Stacks    map[string]UpdateInfo `json:"stacks"`
+}

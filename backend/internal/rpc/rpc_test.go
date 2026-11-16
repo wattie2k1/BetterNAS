@@ -114,3 +114,74 @@ func TestSubscribeReceivesEvents(t *testing.T) {
 		t.Fatal("channel not closed after cancel")
 	}
 }
+
+func TestSessionBidirectional(t *testing.T) {
+	s := NewServer(nil)
+	s.HandleSession("echo", func(ctx context.Context, p json.RawMessage, in <-chan Event, emit func(Event) error) error {
+		if err := emit(Event{Event: "hello", Data: p}); err != nil {
+			return err
+		}
+		for ev := range in {
+			if err := emit(Event{Event: "echo:" + ev.Event, Data: ev.Data}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	c := NewClient(startServer(t, s))
+	sess, err := c.OpenSession(ctx(t), "echo", map[string]int{"n": 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	if ev := <-sess.Events(); ev.Event != "hello" || string(ev.Data) != `{"n":7}` {
+		t.Fatalf("%+v", ev)
+	}
+	if err := sess.Send(Event{Event: "ping", Data: json.RawMessage(`"x"`)}); err != nil {
+		t.Fatal(err)
+	}
+	if ev := <-sess.Events(); ev.Event != "echo:ping" || string(ev.Data) != `"x"` {
+		t.Fatalf("%+v", ev)
+	}
+}
+
+func TestSessionClosesOnClientClose(t *testing.T) {
+	s := NewServer(nil)
+	done := make(chan struct{})
+	s.HandleSession("wait", func(ctx context.Context, _ json.RawMessage, in <-chan Event, _ func(Event) error) error {
+		defer close(done)
+		<-ctx.Done()
+		return nil
+	})
+	c := NewClient(startServer(t, s))
+	sess, err := c.OpenSession(ctx(t), "wait", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Close()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Server-Handler wurde nicht beendet")
+	}
+}
+
+func TestSessionEndsWhenHandlerReturns(t *testing.T) {
+	s := NewServer(nil)
+	s.HandleSession("once", func(_ context.Context, _ json.RawMessage, _ <-chan Event, emit func(Event) error) error {
+		return emit(Event{Event: "bye"})
+	})
+	c := NewClient(startServer(t, s))
+	sess, err := c.OpenSession(ctx(t), "once", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	var got []string
+	for ev := range sess.Events() {
+		got = append(got, ev.Event)
+	}
+	if len(got) != 1 || got[0] != "bye" {
+		t.Fatalf("%v", got)
+	}
+}
