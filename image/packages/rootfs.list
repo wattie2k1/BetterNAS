@@ -30,6 +30,8 @@ samba
 wsdd2
 mergerfs
 snapraid
+docker.io
+docker-compose
 smartmontools
 gdisk
 parted
