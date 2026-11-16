@@ -24,7 +24,10 @@ func (agentStub) Call(_ context.Context, method string, _, result any) error {
 	var out any
 	switch method {
 	case "disk.list":
-		out = []storage.Disk{{ID: "d1", Device: "/dev/sda", Serial: "S1", SizeBytes: 1e12, Manageable: true, Partitions: []storage.Partition{}}}
+		out = []storage.Disk{
+			{ID: "d1", Device: "/dev/sda", Serial: "S1", SizeBytes: 1e12, Manageable: true, Partitions: []storage.Partition{}},
+			{ID: "d2", Device: "/dev/sdb", Serial: "S2", SizeBytes: 1e12, Manageable: true, Partitions: []storage.Partition{}},
+		}
 	case "disk.format":
 		out = map[string]string{"fsUuid": "u1", "label": "bnas-1"}
 	default:

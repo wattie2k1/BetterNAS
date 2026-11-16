@@ -75,10 +75,11 @@ type PoolInput struct {
 // PoolView ist ein Pool aus Sicht der Oberfläche.
 type PoolView struct {
 	PoolInput
-	Path      string `json:"path"`
-	SizeBytes uint64 `json:"sizeBytes"`
-	FreeBytes uint64 `json:"freeBytes"`
-	Mounted   bool   `json:"mounted"`
+	Path      string         `json:"path"`
+	SizeBytes uint64         `json:"sizeBytes"`
+	FreeBytes uint64         `json:"freeBytes"`
+	Mounted   bool           `json:"mounted"`
+	Snapraid  *SnapraidInput `json:"snapraid,omitempty"`
 }
 
 type formatToken struct {
@@ -100,13 +101,14 @@ type Manager struct {
 	hub   *events.Hub
 	deps  []DependentsFunc
 
-	mu      sync.Mutex // serialisiert alle Änderungen
-	tmu     sync.Mutex
-	tokens  map[string]formatToken
-	smart   map[string]smartEntry
-	now     func() time.Time
-	statfs  func(path string) (size, free uint64, err error)
-	mounted func(path string) bool
+	mu        sync.Mutex // serialisiert alle Änderungen
+	tmu       sync.Mutex
+	tokens    map[string]formatToken
+	smart     map[string]smartEntry
+	now       func() time.Time
+	pollEvery time.Duration // Abfrageintervall der SnapRAID-Läufe
+	statfs    func(path string) (size, free uint64, err error)
+	mounted   func(path string) bool
 }
 
 // NewManager erzeugt einen Manager.
@@ -114,7 +116,7 @@ func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps .
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
 		tokens: map[string]formatToken{}, smart: map[string]smartEntry{},
-		now: time.Now, statfs: statfs, mounted: isMounted,
+		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second,
 	}
 }
 
@@ -209,6 +211,13 @@ func (m *Manager) currentState(ctx context.Context) (State, map[string]dbDisk, e
 	return st, disks, nil
 }
 
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 func poolOf(pools []Pool, diskID string) string {
 	for _, p := range pools {
 		if slices.Contains(p.Branches, diskID) {
@@ -269,6 +278,10 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 	if err != nil {
 		return nil, err
 	}
+	parity, err := m.parityPools(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := []DiskView{}
 	seen := map[string]bool{}
 	for _, d := range live {
@@ -280,6 +293,9 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 			v.Role = known[d.ID].Role
 			v.FSType = known[d.ID].FSType
 			v.Pool = poolOf(st.Pools, d.ID)
+			if v.Pool == "" {
+				v.Pool = parity[d.ID]
+			}
 			seen[d.ID] = true
 		}
 		if v.FSType == "" && len(d.Partitions) > 0 {
@@ -294,7 +310,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		}
 		out = append(out, DiskView{
 			Disk: Disk{ID: id, Model: k.Model, Serial: k.Serial, SizeBytes: k.Size, Partitions: []Partition{}, Reason: "Datenträger fehlt"},
-			Role: k.Role, State: "missing", Pool: poolOf(st.Pools, id), FSType: k.FSType,
+			Role: k.Role, State: "missing", Pool: cmpOr(poolOf(st.Pools, id), parity[id]), FSType: k.FSType,
 		})
 	}
 	return out, nil
@@ -306,9 +322,14 @@ func (m *Manager) ListPools(ctx context.Context) ([]PoolView, error) {
 	if err != nil {
 		return nil, err
 	}
+	sp, err := m.loadSnapraid(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := []PoolView{}
 	for _, p := range pools {
-		v := PoolView{PoolInput: PoolInput{Name: p.Name, Branches: p.Branches, CreatePolicy: p.CreatePolicy, MinFree: p.MinFree}, Path: PoolPath(p.Name)}
+		c, enabled := sp[p.Name]
+		v := PoolView{PoolInput: PoolInput{Name: p.Name, Branches: p.Branches, CreatePolicy: p.CreatePolicy, MinFree: p.MinFree}, Path: PoolPath(p.Name), Snapraid: snapraidInputOf(c, enabled)}
 		v.Mounted = m.mounted(v.Path)
 		if v.Mounted {
 			v.SizeBytes, v.FreeBytes, _ = m.statfs(v.Path)
@@ -347,7 +368,14 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return m.agent.Call(ctx, "storage.apply", st, nil)
+	if err := m.agent.Call(ctx, "storage.apply", st, nil); err != nil {
+		return err
+	}
+	all, err := m.loadSnapraid(ctx)
+	if err != nil {
+		return err
+	}
+	return m.applySnapraid(ctx, snapraidState(all, "", nil))
 }
 
 // applyAndCommit wendet st über den Agent an und schreibt bei Erfolg die DB-Änderung.
@@ -530,6 +558,13 @@ func (m *Manager) Release(ctx context.Context, actor, id string) (string, error)
 	if p := poolOf(st.Pools, id); p != "" {
 		return "", apierr.New(apierr.DiskInUse, "Der Datenträger gehört zu Pool "+p).With("pool", p)
 	}
+	parity, err := m.parityPools(ctx)
+	if err != nil {
+		return "", err
+	}
+	if p := parity[id]; p != "" {
+		return "", apierr.New(apierr.DiskInUse, "Der Datenträger ist Paritätsplatte von Pool "+p+". Bitte SnapRAID zuerst abschalten.").With("pool", p)
+	}
 	return m.run("disk.release", id, actor, "disks.changed", nil, func(ctx context.Context, log jobs.Logger) error {
 		st, _, err := m.currentState(ctx)
 		if err != nil {
@@ -649,16 +684,25 @@ func (m *Manager) UpdatePool(ctx context.Context, actor, name string, in PoolInp
 	if _, err := m.validatePool(ctx, in, name); err != nil {
 		return "", err
 	}
+	if err := m.checkSnapraidBranches(ctx, name, in.Branches); err != nil {
+		return "", err
+	}
 	return m.run("pool.update", name, actor, "pools.changed", map[string]any{"branches": in.Branches},
 		func(ctx context.Context, log jobs.Logger) error {
 			st, err := m.validatePool(ctx, in, name)
 			if err != nil {
 				return err
 			}
+			if err := m.checkSnapraidBranches(ctx, name, in.Branches); err != nil {
+				return err
+			}
 			log.Printf("Ändere Pool %s …", name)
-			return m.applyAndCommit(ctx, log, st, func(tx *sql.Tx) error {
+			if err := m.applyAndCommit(ctx, log, st, func(tx *sql.Tx) error {
 				return writePool(ctx, tx, findPool(st, name), m.now(), false)
-			})
+			}); err != nil {
+				return err
+			}
+			return m.reapplySnapraidIfEnabled(ctx, log, name)
 		}), nil
 }
 
@@ -684,10 +728,50 @@ func (m *Manager) DeletePool(ctx context.Context, actor, name string) (string, e
 			return err
 		}
 		st.Pools = slices.DeleteFunc(st.Pools, func(p Pool) bool { return p.Name == name })
+		if all, err := m.loadSnapraid(ctx); err != nil {
+			return err
+		} else if _, ok := all[name]; ok {
+			log.Printf("Schalte SnapRAID ab …")
+			if err := m.applySnapraid(ctx, snapraidState(all, name, nil)); err != nil {
+				return err
+			}
+		}
 		log.Printf("Entferne Pool %s …", name)
 		return m.applyAndCommit(ctx, log, st, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `DELETE FROM pools WHERE name = ?`, name)
 			return err
 		})
 	}), nil
+}
+
+// checkSnapraidBranches verhindert das Entfernen von Datenplatten, solange SnapRAID aktiv ist,
+// und prüft, dass neue Datenplatten nicht größer als die Paritätsplatten sind.
+func (m *Manager) checkSnapraidBranches(ctx context.Context, pool string, branches []string) error {
+	all, err := m.loadSnapraid(ctx)
+	if err != nil {
+		return err
+	}
+	c, ok := all[pool]
+	if !ok {
+		return nil
+	}
+	for _, b := range c.Data {
+		if !slices.Contains(branches, b) {
+			return apierr.New(apierr.Conflict, "Datenträger "+b+" kann nicht entfernt werden: SnapRAID zuerst deaktivieren.").With("disk", b)
+		}
+	}
+	return m.checkParity(ctx, pool, branches, c.Parity)
+}
+
+// reapplySnapraidIfEnabled schreibt die SnapRAID-Konfiguration neu (z. B. nach neuen Datenplatten).
+func (m *Manager) reapplySnapraidIfEnabled(ctx context.Context, log jobs.Logger, pool string) error {
+	all, err := m.loadSnapraid(ctx)
+	if err != nil {
+		return err
+	}
+	if _, ok := all[pool]; !ok {
+		return nil
+	}
+	log.Printf("Aktualisiere SnapRAID-Konfiguration …")
+	return m.applySnapraid(ctx, snapraidState(all, "", nil))
 }

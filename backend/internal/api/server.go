@@ -64,6 +64,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	s.registerSetup(api)
 	if deps.Storage != nil {
 		s.registerStorage(api)
+		s.registerSnapraid(api)
 	}
 	if deps.Users != nil {
 		s.registerUsers(api)

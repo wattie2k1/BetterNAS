@@ -15,6 +15,7 @@ import (
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
+	"github.com/betternas/betternas/internal/snapraid"
 )
 
 // fakeAgent simuliert den Agent auf Ebene der RPC-Methoden.
@@ -24,6 +25,11 @@ type fakeAgent struct {
 	calls    []string
 	applied  []State
 	applyErr error
+
+	snapApplied []snapraid.State
+	snapErr     error
+	statuses    []snapraid.Status // Antworten von snapraid.status in Reihenfolge; die letzte wiederholt sich
+	started     []map[string]any
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -38,6 +44,30 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		return apierr.New(apierr.Internal, "kein SMART")
 	case "disk.format":
 		out = map[string]string{"partition": "/dev/sdb1", "fsUuid": "new-uuid", "fsType": "ext4", "label": "bnas-x"}
+	case "snapraid.apply":
+		b, _ := json.Marshal(params)
+		var st snapraid.State
+		json.Unmarshal(b, &st)
+		f.snapApplied = append(f.snapApplied, st)
+		if f.snapErr != nil {
+			return f.snapErr
+		}
+		out = map[string]any{"changed": []string{}}
+	case "snapraid.start":
+		b, _ := json.Marshal(params)
+		var req map[string]any
+		json.Unmarshal(b, &req)
+		f.started = append(f.started, req)
+		out = map[string]string{"unit": "betternas-snapraid-x"}
+	case "snapraid.status":
+		var st snapraid.Status
+		if len(f.statuses) > 0 {
+			st = f.statuses[0]
+			if len(f.statuses) > 1 {
+				f.statuses = f.statuses[1:]
+			}
+		}
+		out = st
 	case "storage.apply":
 		b, _ := json.Marshal(params)
 		var st State
@@ -105,6 +135,7 @@ func newEnv(t *testing.T) *env {
 	e.m = NewManager(d, e.agent, e.jobs, hub, func(context.Context, string) ([]string, error) { return e.deps, nil })
 	e.m.statfs = func(string) (uint64, uint64, error) { return 8e12, 6e12, nil }
 	e.m.mounted = func(string) bool { return true }
+	e.m.pollEvery = 5 * time.Millisecond
 	return e
 }
 
