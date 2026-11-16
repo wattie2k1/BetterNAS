@@ -41,3 +41,18 @@ export const preview: FormatPreview = {
   confirmToken: 'tok',
   expiresAt: '2026-11-15T12:00:00Z',
 }
+
+export const parityDisks: DiskView[] = [
+  disk({ id: 'p1', device: '/dev/sde', model: 'Parity 4TB', serial: 'P1', role: 'parity', fsType: 'ext4' }),
+  disk({ id: 'p2', device: '/dev/sdf', model: 'Parity 1TB', serial: 'P2', role: 'parity', fsType: 'ext4', sizeBytes: 1e12 }),
+  disk({ id: 'p3', device: '/dev/sdg', model: 'Parity 4TB b', serial: 'P3', role: 'parity', fsType: 'ext4' }),
+  disk({ id: 'p4', device: '/dev/sdh', model: 'Parity fremd', serial: 'P4', role: 'parity', fsType: 'ext4', pool: 'other' }),
+]
+
+export const snapraidDefaults = {
+  syncSchedule: '*-*-* 03:00:00',
+  scrubSchedule: 'Sun *-*-* 05:00:00',
+  scrubPercent: 8,
+  scrubOlderDays: 10,
+  deleteThreshold: 500,
+}

@@ -12,12 +12,14 @@ const props = defineProps<{ visible: boolean; preview: FormatPreview | null; bus
 const emit = defineEmits<{ 'update:visible': [boolean]; submit: [FormatRequest] }>()
 
 const fsType = ref<'ext4' | 'xfs'>('ext4')
+const role = ref<'data' | 'parity'>('data')
 const confirm = ref('')
 watch(
   () => props.preview,
   () => {
     confirm.value = ''
     fsType.value = 'ext4'
+    role.value = 'data'
   },
 )
 
@@ -26,7 +28,7 @@ const ok = computed(() => !!props.preview && confirm.value === expected.value)
 
 function submit() {
   if (!ok.value || !props.preview) return
-  emit('submit', { fsType: fsType.value, confirmSerial: confirm.value, confirmToken: props.preview.confirmToken })
+  emit('submit', { fsType: fsType.value, role: role.value, confirmSerial: confirm.value, confirmToken: props.preview.confirmToken })
 }
 </script>
 
@@ -58,6 +60,12 @@ function submit() {
         <legend>Dateisystem</legend>
         <label><RadioButton v-model="fsType" value="ext4" input-id="fs-ext4" /> ext4 (empfohlen)</label>
         <label><RadioButton v-model="fsType" value="xfs" input-id="fs-xfs" /> XFS (sehr große Dateien)</label>
+      </fieldset>
+
+      <fieldset class="fs">
+        <legend>Verwendung</legend>
+        <label><RadioButton v-model="role" value="data" input-id="role-data" /> Datenplatte</label>
+        <label><RadioButton v-model="role" value="parity" input-id="role-parity" /> Paritätsplatte (SnapRAID)</label>
       </fieldset>
 
       <label for="confirm-serial" class="confirm-label">

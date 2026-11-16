@@ -48,6 +48,7 @@ export interface FormatPreview {
 
 export interface FormatRequest {
   fsType: 'ext4' | 'xfs'
+  role?: 'data' | 'parity'
   confirmSerial: string
   confirmToken: string
 }
@@ -59,11 +60,62 @@ export interface PoolInput {
   minFree: string
 }
 
+export interface SnapraidSettings {
+  syncSchedule: string
+  scrubSchedule: string
+  scrubPercent: number
+  scrubOlderDays: number
+  deleteThreshold: number
+}
+
+export interface SnapraidInput extends SnapraidSettings {
+  parity: string[]
+}
+
+export interface SnapraidRun {
+  action: string
+  result: 'ok' | 'errors' | 'failed' | 'blocked'
+  message?: string
+  at: string
+  removed?: number
+}
+
+export interface SnapraidDiff {
+  equal: number
+  added: number
+  removed: number
+  updated: number
+  moved: number
+  copied: number
+}
+
+export interface SnapraidStatus {
+  enabled: boolean
+  running: boolean
+  lastSync?: SnapraidRun
+  lastScrub?: SnapraidRun
+  diff?: SnapraidDiff
+  diffAt?: string
+  log?: string
+}
+
+export const SNAPRAID_DEFAULTS: SnapraidSettings = {
+  syncSchedule: '*-*-* 03:00:00',
+  scrubSchedule: 'Sun *-*-* 05:00:00',
+  scrubPercent: 8,
+  scrubOlderDays: 10,
+  deleteThreshold: 500,
+}
+
+/** Anzahl der noch nicht durch Parität gesicherten Änderungen (wie Diff.Unprotected im Backend). */
+export const unprotected = (d: SnapraidDiff) => d.added + d.removed + d.updated + d.moved + d.copied
+
 export interface PoolView extends PoolInput {
   path: string
   sizeBytes: number
   freeBytes: number
   mounted: boolean
+  snapraid?: SnapraidInput
 }
 
 /** Identisch zur Backend-Regel (storage.PoolNameRe). */
@@ -92,9 +144,15 @@ export const storageApi = {
   pools: () => api.get<PoolView[]>('/api/v1/pools'),
   previewFormat: (id: string) => api.post<FormatPreview>(`/api/v1/disks/${enc(id)}/format/preview`),
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),
-  importDisk: (id: string) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/import`),
+  importDisk: (id: string, role?: 'data' | 'parity') =>
+    api.post<JobRef>(`/api/v1/disks/${enc(id)}/import`, role ? { role } : undefined),
   release: (id: string) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/release`),
   createPool: (p: PoolInput) => api.post<JobRef>('/api/v1/pools', p),
   updatePool: (name: string, p: PoolInput) => api.patch<JobRef>(`/api/v1/pools/${enc(name)}`, p),
   deletePool: (name: string) => api.del<JobRef>(`/api/v1/pools/${enc(name)}`),
+  enableSnapraid: (pool: string, in_: SnapraidInput) => api.put<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid`, in_),
+  disableSnapraid: (pool: string) => api.del<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid`),
+  snapraidStatus: (pool: string) => api.get<SnapraidStatus>(`/api/v1/pools/${enc(pool)}/snapraid/status`),
+  runSnapraid: (pool: string, action: 'sync' | 'scrub' | 'diff', force = false) =>
+    api.post<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid/${action}`, { force }),
 }

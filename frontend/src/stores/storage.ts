@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { storageApi, type DiskView, type FormatRequest, type PoolInput, type PoolView } from '@/api/storage'
+import { storageApi, type DiskView, type FormatRequest, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
 import type { EventMessage } from '@/api/ws'
 import { useJobsStore } from './jobs'
 
@@ -47,10 +47,14 @@ export const useStorageStore = defineStore('storage', () => {
     handleEvent,
     previewFormat: storageApi.previewFormat,
     format: (id: string, req: FormatRequest) => runJob(() => storageApi.format(id, req)),
-    importDisk: (id: string) => runJob(() => storageApi.importDisk(id)),
+    importDisk: (id: string, role?: 'data' | 'parity') => runJob(() => storageApi.importDisk(id, role)),
     release: (id: string) => runJob(() => storageApi.release(id)),
     createPool: (p: PoolInput) => runJob(() => storageApi.createPool(p)),
     updatePool: (name: string, p: PoolInput) => runJob(() => storageApi.updatePool(name, p)),
     deletePool: (name: string) => runJob(() => storageApi.deletePool(name)),
+    enableSnapraid: (pool: string, input: SnapraidInput) => runJob(() => storageApi.enableSnapraid(pool, input)),
+    disableSnapraid: (pool: string) => runJob(() => storageApi.disableSnapraid(pool)),
+    runSnapraid: (pool: string, action: 'sync' | 'scrub' | 'diff', force = false) =>
+      runJob(() => storageApi.runSnapraid(pool, action, force)),
   }
 })

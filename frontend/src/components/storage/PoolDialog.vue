@@ -48,6 +48,9 @@ const tooSmall = computed(() => {
   const limit = minFreeBytes(minFree.value)
   return options.value.filter((d) => branches.value.includes(d.id) && limit > 0 && d.sizeBytes <= limit)
 })
+/** Mit aktivem SnapRAID dürfen vorhandene Platten nicht entfernt werden. */
+const locked = (id: string) => editing.value && !!props.pool?.snapraid && props.pool.branches.includes(id)
+
 const policyHint = computed(() => POLICIES.find((p) => p.value === policy.value)?.hint ?? '')
 
 function submit() {
@@ -84,9 +87,13 @@ function submit() {
         data-test="branch-option"
         :data-id="d.id"
       >
-        <Checkbox v-model="branches" :value="d.id" :input-id="`b-${d.id}`" />
+        <Checkbox v-model="branches" :value="d.id" :input-id="`b-${d.id}`" :disabled="locked(d.id)" />
         <label :for="`b-${d.id}`">{{ d.model || d.id }} · {{ d.device }} · {{ formatBytes(d.sizeBytes) }}</label>
       </div>
+
+      <Message v-if="editing && pool?.snapraid" severity="info" :closable="false" data-test="snapraid-lock">
+        Solange SnapRAID aktiv ist, können Datenplatten nicht entfernt werden – dafür SnapRAID zuerst deaktivieren.
+      </Message>
 
       <label for="pool-policy">Verteilung neuer Dateien</label>
       <Select
@@ -109,7 +116,7 @@ function submit() {
         ({{ minFree }}). Dort werden keine neuen Dateien angelegt. Wähle einen kleineren Wert, z. B. 1G.
       </Message>
       <Message severity="info" :closable="false">
-        mergerfs bietet keine Ausfallsicherheit – SnapRAID folgt in einer späteren Version.
+        mergerfs allein bietet keine Ausfallsicherheit – SnapRAID lässt sich nach dem Anlegen am Pool einrichten.
       </Message>
     </div>
     <template #footer>
