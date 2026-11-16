@@ -74,8 +74,15 @@ func checkImage(ctx context.Context, d Deps, ref string) docker.ImageStatus {
 		return st
 	}
 
-	res, err = d.Runner.Run(ctx, nil, "docker", "buildx", "imagetools", "inspect", ref, "--format", "{{.Manifest.Digest}}")
-	remote := strings.TrimSpace(string(res.Stdout))
+	res, err = d.Runner.Run(ctx, nil, "docker", "buildx", "imagetools", "inspect", ref, "--format", "{{json .Manifest}}")
+	// buildx 0.13 ignoriert „{{.Manifest.Digest}}“ und gibt die Textausgabe zurück; das JSON-Objekt ist verlässlich.
+	var manifest struct {
+		Digest string `json:"digest"`
+	}
+	if err == nil && res.ExitCode == 0 {
+		_ = json.Unmarshal(res.Stdout, &manifest)
+	}
+	remote := manifest.Digest
 	if err != nil || res.ExitCode != 0 || !strings.HasPrefix(remote, "sha256:") {
 		st.Error = "Die Registry ist nicht erreichbar oder kennt das Image nicht."
 		return st

@@ -39,7 +39,11 @@ func TestStackImagesErrors(t *testing.T) {
 
 func digestEnv(f *sysexec.FakeRunner, ref, repoDigests, remote string, remoteExit int) {
 	f.Responses["docker image inspect --format {{json .RepoDigests}} "+ref] = sysexec.Result{Stdout: []byte(repoDigests)}
-	f.Responses["docker buildx imagetools inspect "+ref+" --format {{.Manifest.Digest}}"] = sysexec.Result{Stdout: []byte(remote), ExitCode: remoteExit}
+	body := ""
+	if remote != "" {
+		body = `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","digest":"` + strings.TrimSpace(remote) + `","size":1}`
+	}
+	f.Responses["docker buildx imagetools inspect "+ref+" --format {{json .Manifest}}"] = sysexec.Result{Stdout: []byte(body), ExitCode: remoteExit}
 }
 
 func TestImageDigests(t *testing.T) {

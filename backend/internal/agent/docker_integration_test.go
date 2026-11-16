@@ -270,8 +270,9 @@ func TestDockerOps(t *testing.T) {
 		t.Fatalf("%+v %v", sts, err)
 	}
 	if sts[0].Error != "" {
-		t.Logf("Update-Prüfung nicht möglich (Registry erreichbar?): %s", sts[0].Error)
-	} else if sts[0].Outdated {
+		t.Fatalf("Update-Prüfung fehlgeschlagen: %s", sts[0].Error)
+	}
+	if sts[0].Outdated {
 		t.Logf("busybox:stable hat ein Update (%s → %s)", sts[0].Local, sts[0].Remote)
 	}
 }
