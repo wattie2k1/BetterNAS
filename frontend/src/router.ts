@@ -12,6 +12,8 @@ import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
 import GroupsView from '@/views/users/GroupsView.vue'
 import PoolsView from '@/views/storage/PoolsView.vue'
+import StacksView from '@/views/docker/StacksView.vue'
+import ContainersView from '@/views/docker/ContainersView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -26,6 +28,8 @@ export const router = createRouter({
         { path: 'speicher/pools', name: 'pools', component: PoolsView, meta: { title: 'Speicherpools' } },
         { path: SETUP_PATH.slice(1), name: 'setup', component: SetupView, meta: { title: 'Einrichtung' } },
         { path: 'freigaben', name: 'shares', component: SharesView, meta: { title: 'Freigaben' } },
+        { path: 'docker/stacks', name: 'stacks', component: StacksView, meta: { title: 'Docker-Stacks' } },
+        { path: 'docker/container', name: 'containers', component: ContainersView, meta: { title: 'Container' } },
         { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
         { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
         { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },
