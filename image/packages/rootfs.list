@@ -29,6 +29,7 @@ libnss-mdns
 samba
 wsdd2
 mergerfs
+snapraid
 smartmontools
 gdisk
 parted

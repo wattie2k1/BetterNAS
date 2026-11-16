@@ -19,6 +19,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "snapraid-run" {
+		d := agent.Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		code := agent.SnapraidCLI(ctx, d, os.Args[2:], os.Stderr)
+		stop()
+		os.Exit(code)
+	}
 	socket := flag.String("socket", "/run/betternas/agent.sock", "Pfad des Unix-Sockets")
 	group := flag.String("socket-group", "betternas", "Gruppe, die den Socket nutzen darf")
 	apiUser := flag.String("api-user", "betternas", "Systembenutzer der API (darf verbinden)")
