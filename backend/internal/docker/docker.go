@@ -65,3 +65,16 @@ type Status struct {
 	Active    bool   `json:"active"`
 	Version   string `json:"version"`
 }
+
+// StackFiles sind compose.yaml und .env eines Stacks.
+type StackFiles struct {
+	Name    string `json:"name"`
+	Compose string `json:"compose"`
+	Env     string `json:"env"`
+}
+
+// StackCheck ist das Ergebnis der Compose-Prüfung.
+type StackCheck struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}

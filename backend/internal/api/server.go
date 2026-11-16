@@ -8,6 +8,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
+	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/rpc"
@@ -38,6 +39,8 @@ type Deps struct {
 	Shares *shares.Manager
 	// Updates ist optional (nil = keine Update-Routen).
 	Updates *system.Updates
+	// Docker ist optional (nil = keine Docker-Routen).
+	Docker *docker.Manager
 }
 
 type server struct {
@@ -74,6 +77,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Updates != nil {
 		s.registerUpdates(api)
+	}
+	if deps.Docker != nil {
+		s.registerDocker(api)
 	}
 	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, apierr.New(apierr.NotFound, "Unbekannte Schnittstelle"))

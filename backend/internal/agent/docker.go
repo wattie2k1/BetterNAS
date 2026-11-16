@@ -16,23 +16,16 @@ import (
 	"github.com/betternas/betternas/internal/rpc"
 )
 
-// StackFiles sind die Dateien eines Stacks.
-type StackFiles struct {
-	Name    string `json:"name"`
-	Compose string `json:"compose"`
-	Env     string `json:"env"`
-}
+// StackFiles und StackCheck leben im Paket docker (gemeinsam mit der API).
+type (
+	StackFiles = docker.StackFiles
+	StackCheck = docker.StackCheck
+)
 
 // StackSave ist die Eingabe von stack.save. Create verlangt, dass der Stack noch nicht existiert.
 type StackSave struct {
 	StackFiles
 	Create bool `json:"create"`
-}
-
-// StackCheck ist das Ergebnis der Compose-Prüfung.
-type StackCheck struct {
-	OK      bool   `json:"ok"`
-	Message string `json:"message"`
 }
 
 func checkStackName(name string) error {
