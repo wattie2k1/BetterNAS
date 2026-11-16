@@ -8,8 +8,10 @@ import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import PoolDialog from '@/components/storage/PoolDialog.vue'
 import ConfirmDeleteDialog from '@/components/storage/ConfirmDeleteDialog.vue'
+import SnapraidDialog from '@/components/storage/SnapraidDialog.vue'
+import SnapraidPanel from '@/components/storage/SnapraidPanel.vue'
 import { useStorageStore } from '@/stores/storage'
-import { POLICIES, type PoolInput, type PoolView } from '@/api/storage'
+import { POLICIES, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
 
 const store = useStorageStore()
@@ -18,6 +20,9 @@ const showDialog = ref(false)
 const editing = ref<PoolView | null>(null)
 const deleting = ref<PoolView | null>(null)
 const busy = ref(false)
+const snapPool = ref<PoolView | null>(null)
+const disabling = ref<PoolView | null>(null)
+const refreshKey = ref(0)
 
 onMounted(() => store.refresh())
 
@@ -44,11 +49,24 @@ async function run(fn: () => Promise<void>, done: string) {
     toast.add({ severity: 'success', summary: done, life: 4000 })
     showDialog.value = false
     deleting.value = null
+    snapPool.value = null
+    disabling.value = null
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   } finally {
+    refreshKey.value++
     busy.value = false
   }
+}
+
+const actionLabel = { sync: 'Synchronisierung abgeschlossen', scrub: 'Prüfung abgeschlossen', diff: 'Vergleich abgeschlossen' }
+
+function runSnapraid(p: PoolView, action: 'sync' | 'scrub' | 'diff', force: boolean) {
+  run(() => store.runSnapraid(p.name, action, force), actionLabel[action])
+}
+
+function saveSnapraid(input: SnapraidInput) {
+  run(() => store.enableSnapraid(snapPool.value!.name, input), 'SnapRAID gespeichert')
 }
 
 function save(input: PoolInput) {
@@ -83,6 +101,13 @@ function save(input: PoolInput) {
           <li v-for="b in p.branches" :key="b">{{ diskLabel(b) }}</li>
         </ul>
         <p class="sub">Verteilung: {{ policyLabel(p.createPolicy) }} · mind. {{ p.minFree }} frei</p>
+        <SnapraidPanel
+          :pool="p"
+          :refresh-key="refreshKey"
+          @configure="snapPool = p"
+          @run="(action, force) => runSnapraid(p, action, force)"
+          @disable="disabling = p"
+        />
       </template>
       <template #footer>
         <div class="actions">
@@ -93,6 +118,24 @@ function save(input: PoolInput) {
     </Card>
   </div>
   <PoolDialog v-model:visible="showDialog" :disks="store.disks" :pools="store.pools" :pool="editing" :busy="busy" @submit="save" />
+  <SnapraidDialog
+    :visible="!!snapPool"
+    :pool="snapPool"
+    :disks="store.disks"
+    :busy="busy"
+    @update:visible="(v) => !v && (snapPool = null)"
+    @submit="saveSnapraid"
+  />
+  <ConfirmDeleteDialog
+    :visible="!!disabling"
+    :name="disabling?.name ?? ''"
+    header="SnapRAID abschalten"
+    :text="`SnapRAID wird für „${disabling?.name}“ abgeschaltet: Zeitpläne entfallen, die Parität wird nicht mehr aktualisiert. Die Daten bleiben erhalten.`"
+    confirm-label="Abschalten"
+    :busy="busy"
+    @update:visible="(v) => !v && (disabling = null)"
+    @confirm="run(() => store.disableSnapraid(disabling!.name), 'SnapRAID abgeschaltet')"
+  />
   <ConfirmDeleteDialog
     :visible="!!deleting"
     :name="deleting?.name ?? ''"

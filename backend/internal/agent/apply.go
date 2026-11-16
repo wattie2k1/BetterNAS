@@ -46,7 +46,7 @@ func whereOf(content []byte) string {
 // managedUnits liefert die vorhandenen, von BetterNAS verwalteten Mount-Units.
 func managedUnits(d Deps) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	for _, pattern := range []string{"srv-disks-*.mount", "srv-pools-*.mount"} {
+	for _, pattern := range []string{"srv-disks-*.mount", "srv-parity-*.mount", "srv-pools-*.mount"} {
 		files, err := d.FS.Glob(path.Join(unitDir, pattern))
 		if err != nil {
 			return nil, err

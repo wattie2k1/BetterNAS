@@ -15,12 +15,16 @@ func RenderUnits(s State) (map[string][]byte, error) {
 	}
 	out := map[string][]byte{}
 	for _, d := range s.Disks {
-		where := DiskPath(d.DiskID)
+		where := d.Path()
+		what := "Datenplatte"
+		if d.IsParity() {
+			what = "Paritätsplatte"
+		}
 		// WantedBy auf die Geräte-Unit: Kehrt die Platte zurück, hängt systemd sie von selbst ein.
 		device := EscapePath("/dev/disk/by-uuid/"+d.FSUUID) + ".device"
 		out[UnitName(where)] = []byte(fmt.Sprintf(`%s
 [Unit]
-Description=BetterNAS Datenplatte %s
+Description=BetterNAS %s %s
 
 [Mount]
 What=/dev/disk/by-uuid/%s
@@ -30,7 +34,7 @@ Options=defaults,noatime,nofail
 
 [Install]
 WantedBy=multi-user.target %s
-`, ManagedHeader, d.DiskID, d.FSUUID, where, d.FSType, device))
+`, ManagedHeader, what, d.DiskID, d.FSUUID, where, d.FSType, device))
 	}
 	for _, p := range s.Pools {
 		var paths, units []string

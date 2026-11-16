@@ -1,0 +1,12 @@
+# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS SnapRAID Prüfung (media)
+
+[Timer]
+OnCalendar=Sun *-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=betternas-snapraid-scrub@media.service
+
+[Install]
+WantedBy=timers.target

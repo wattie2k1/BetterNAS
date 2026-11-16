@@ -12,7 +12,7 @@ err() { echo "FEHLER: $*"; fail=1; }
 [ -s "$W/etc/machine-id" ] && err "etc/machine-id ist nicht leer"
 [ -e "$W/etc/machine-id" ] || err "etc/machine-id fehlt"
 ls "$W"/etc/ssh/ssh_host_* >/dev/null 2>&1 && err "SSH-Host-Keys im Image"
-for f in usr/bin/mergerfs usr/sbin/smbd usr/lib/shim/shimx64.efi.signed usr/lib/grub/i386-pc/modinfo.sh \
+for f in usr/bin/mergerfs usr/bin/snapraid usr/sbin/smbd usr/lib/shim/shimx64.efi.signed usr/lib/grub/i386-pc/modinfo.sh \
          usr/sbin/grub-install usr/sbin/sgdisk etc/issue.d/betternas.issue; do
 	[ -e "$W/$f" ] || err "$f fehlt"
 done

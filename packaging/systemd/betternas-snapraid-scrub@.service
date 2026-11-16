@@ -1,0 +1,9 @@
+[Unit]
+Description=BetterNAS SnapRAID %i (Prüfung)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/betternas-agent snapraid-run scrub %i
+Nice=10
+IOSchedulingClass=idle

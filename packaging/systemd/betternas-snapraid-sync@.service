@@ -1,0 +1,9 @@
+[Unit]
+Description=BetterNAS SnapRAID %i (Synchronisierung)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/betternas-agent snapraid-run sync %i
+Nice=10
+IOSchedulingClass=idle

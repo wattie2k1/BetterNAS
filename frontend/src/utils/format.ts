@@ -21,3 +21,9 @@ export function formatUptime(seconds: number): string {
   if (h > 0) return `${h} Std. ${m} Min.`
   return `${m} Min.`
 }
+
+/** Formatiert einen ISO-Zeitstempel als „16.11.2026, 03:00“. */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+}

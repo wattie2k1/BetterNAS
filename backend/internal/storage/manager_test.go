@@ -15,6 +15,7 @@ import (
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
+	"github.com/betternas/betternas/internal/snapraid"
 )
 
 // fakeAgent simuliert den Agent auf Ebene der RPC-Methoden.
@@ -24,6 +25,11 @@ type fakeAgent struct {
 	calls    []string
 	applied  []State
 	applyErr error
+
+	snapApplied []snapraid.State
+	snapErr     error
+	statuses    []snapraid.Status // Antworten von snapraid.status in Reihenfolge; die letzte wiederholt sich
+	started     []map[string]any
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -38,6 +44,30 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		return apierr.New(apierr.Internal, "kein SMART")
 	case "disk.format":
 		out = map[string]string{"partition": "/dev/sdb1", "fsUuid": "new-uuid", "fsType": "ext4", "label": "bnas-x"}
+	case "snapraid.apply":
+		b, _ := json.Marshal(params)
+		var st snapraid.State
+		json.Unmarshal(b, &st)
+		f.snapApplied = append(f.snapApplied, st)
+		if f.snapErr != nil {
+			return f.snapErr
+		}
+		out = map[string]any{"changed": []string{}}
+	case "snapraid.start":
+		b, _ := json.Marshal(params)
+		var req map[string]any
+		json.Unmarshal(b, &req)
+		f.started = append(f.started, req)
+		out = map[string]string{"unit": "betternas-snapraid-x"}
+	case "snapraid.status":
+		var st snapraid.Status
+		if len(f.statuses) > 0 {
+			st = f.statuses[0]
+			if len(f.statuses) > 1 {
+				f.statuses = f.statuses[1:]
+			}
+		}
+		out = st
 	case "storage.apply":
 		b, _ := json.Marshal(params)
 		var st State
@@ -105,6 +135,7 @@ func newEnv(t *testing.T) *env {
 	e.m = NewManager(d, e.agent, e.jobs, hub, func(context.Context, string) ([]string, error) { return e.deps, nil })
 	e.m.statfs = func(string) (uint64, uint64, error) { return 8e12, 6e12, nil }
 	e.m.mounted = func(string) bool { return true }
+	e.m.pollEvery = 5 * time.Millisecond
 	return e
 }
 
@@ -228,13 +259,13 @@ func TestPreviewRejectsSystemAndManaged(t *testing.T) {
 
 func TestImportExistingFilesystem(t *testing.T) {
 	e := newEnv(t)
-	jid, err := e.m.Import(e.ctx, "anna", "d3")
+	jid, err := e.m.Import(e.ctx, "anna", "d3", "")
 	e.mustSucceed(t, jid, err)
 	st := e.agent.lastApplied()
 	if len(st.Disks) != 1 || st.Disks[0].FSUUID != "uuid-3" || st.Disks[0].FSType != "ext4" {
 		t.Fatalf("%+v", st)
 	}
-	if _, err := e.m.Import(e.ctx, "anna", "d2"); codeOf(err) != apierr.InvalidParams {
+	if _, err := e.m.Import(e.ctx, "anna", "d2", ""); codeOf(err) != apierr.InvalidParams {
 		t.Fatal(err)
 	}
 }
@@ -369,5 +400,45 @@ func TestReconcileAppliesStoredState(t *testing.T) {
 	st := e.agent.lastApplied()
 	if len(st.Disks) != 2 || len(st.Pools) != 1 || st.Pools[0].Name != "media" {
 		t.Fatalf("falscher Zustand: %+v", st)
+	}
+}
+
+func TestFormatAsParityStoresRole(t *testing.T) {
+	e := newEnv(t)
+	p, err := e.m.PreviewFormat(e.ctx, "d2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jid, err := e.m.Format(e.ctx, "anna", "d2", FormatRequest{FSType: "ext4", Role: "parity", ConfirmSerial: "SER2", ConfirmToken: p.ConfirmToken})
+	e.mustSucceed(t, jid, err)
+	st := e.agent.lastApplied()
+	if len(st.Disks) != 1 || st.Disks[0].Role != "parity" {
+		t.Fatalf("%+v", st)
+	}
+	views, _ := e.m.ListDisks(e.ctx)
+	for _, v := range views {
+		if v.ID == "d2" && v.Role != "parity" {
+			t.Fatalf("%+v", v)
+		}
+	}
+	// Eine Paritätsplatte kann nicht in einen Pool.
+	if _, err := e.m.CreatePool(e.ctx, "anna", PoolInput{Name: "x", Branches: []string{"d2"}}); codeOf(err) != apierr.InvalidParams {
+		t.Fatalf("pool with parity disk: %v", err)
+	}
+	p2, _ := e.m.PreviewFormat(e.ctx, "d1")
+	if _, err := e.m.Format(e.ctx, "anna", "d1", FormatRequest{FSType: "ext4", Role: "boss", ConfirmSerial: "SER1", ConfirmToken: p2.ConfirmToken}); codeOf(err) != apierr.InvalidParams {
+		t.Fatalf("bad role: %v", err)
+	}
+}
+
+func TestImportWithRole(t *testing.T) {
+	e := newEnv(t)
+	jid, err := e.m.Import(e.ctx, "anna", "d3", "parity")
+	e.mustSucceed(t, jid, err)
+	if st := e.agent.lastApplied(); len(st.Disks) != 1 || st.Disks[0].Role != "parity" {
+		t.Fatalf("%+v", st)
+	}
+	if _, err := e.m.Import(e.ctx, "anna", "d3", "boss"); codeOf(err) != apierr.InvalidParams {
+		t.Fatal(err)
 	}
 }

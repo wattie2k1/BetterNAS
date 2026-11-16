@@ -16,7 +16,7 @@ func TestOpenRunsMigrationsOnce(t *testing.T) {
 		if err := d.QueryRow(`SELECT MAX(version), COUNT(*) FROM schema_version`).Scan(&v, &n); err != nil {
 			t.Fatal(err)
 		}
-		if v != 2 || n != 2 {
+		if v != 3 || n != 3 {
 			t.Fatalf("version %d rows %d", v, n)
 		}
 		d.Close()

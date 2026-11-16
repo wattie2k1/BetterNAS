@@ -9,7 +9,8 @@ if [ "$1" = "configure" ]; then
 	getent group betternas-admin >/dev/null || addgroup --quiet --system betternas-admin
 
 	install -d -o betternas -g betternas -m 0750 /etc/betternas/tls /var/lib/betternas
-	install -d -m 0755 /srv/disks /srv/pools /srv/appdata /srv/vms
+	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms
+	install -d -m 0755 /etc/betternas/snapraid /var/lib/betternas/snapraid
 
 	# Samba: Freigaben liegen in /etc/samba/betternas.d. Die smb.conf wird nur ersetzt, wenn sie noch der
 	# Debian-Auslieferung entspricht oder fehlt; eigene Konfiguration bleibt unangetastet.

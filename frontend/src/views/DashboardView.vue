@@ -5,7 +5,8 @@ import ProgressBar from 'primevue/progressbar'
 import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
 import { api } from '@/api/client'
-import { formatBytes, formatUptime } from '@/utils/format'
+import { storageApi, unprotected, type PoolView, type SnapraidStatus } from '@/api/storage'
+import { formatBytes, formatDateTime, formatUptime } from '@/utils/format'
 
 interface SystemInfo {
   hostname: string
@@ -19,6 +20,7 @@ interface SystemInfo {
 }
 
 const info = ref<SystemInfo | null>(null)
+const snap = ref<{ pool: PoolView; status: SnapraidStatus }[]>([])
 const error = ref('')
 let timer: ReturnType<typeof setInterval> | undefined
 
@@ -31,8 +33,18 @@ async function load() {
   }
 }
 
+async function loadSnapraid() {
+  try {
+    const pools = (await storageApi.pools()).filter((p) => p.snapraid)
+    snap.value = await Promise.all(pools.map(async (pool) => ({ pool, status: await storageApi.snapraidStatus(pool.name) })))
+  } catch {
+    snap.value = [] // Speicherstatus ist optional; Fehler zeigt die Speicherseite
+  }
+}
+
 onMounted(() => {
   load()
+  loadSnapraid()
   timer = setInterval(load, 10000)
 })
 onUnmounted(() => clearInterval(timer))
@@ -71,6 +83,22 @@ const memPercent = computed(() => (info.value ? Math.round((memUsed.value / info
           <p class="sub">{{ info.cpuCount }} CPU-Kerne</p>
         </template>
         <Skeleton v-else height="4rem" />
+      </template>
+    </Card>
+    <Card v-if="snap.length" data-test="snapraid-summary">
+      <template #title>SnapRAID</template>
+      <template #content>
+        <dl>
+          <template v-for="s in snap" :key="s.pool.name">
+            <dt>{{ s.pool.name }}</dt>
+            <dd>
+              <template v-if="s.status.running">läuft gerade</template>
+              <template v-else-if="s.status.lastSync">Sync {{ formatDateTime(s.status.lastSync.at) }}<template v-if="s.status.lastSync.result !== 'ok'"> ({{ s.status.lastSync.result === 'blocked' ? 'gestoppt' : 'Fehler' }})</template></template>
+              <template v-else>noch nicht synchronisiert</template>
+              <div v-if="s.status.diff" class="sub">{{ unprotected(s.status.diff) }} ungeschützte Änderungen</div>
+            </dd>
+          </template>
+        </dl>
       </template>
     </Card>
   </div>

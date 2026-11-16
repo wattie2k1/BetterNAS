@@ -133,6 +133,7 @@ check "/srv/appdata eingehängt"     'findmnt /srv/appdata'
 check "Admin in betternas-admin"    'id -nG | grep -qw betternas-admin'
 check "Samba-Benutzer angelegt"     "echo $PASSWORD | sudo -S pdbedit -L | grep -q '^ittest:'"
 check "mergerfs installiert"        'command -v mergerfs'
+check "snapraid installiert"        'command -v snapraid'
 check "systemd ohne Fehler"         'test "$(systemctl is-system-running)" = running'
 check "BetterNAS-Dienste aktiv"     'systemctl is-active betternas-agent betternas-api'
 code="$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:$HTTPS_PORT/" || true)"

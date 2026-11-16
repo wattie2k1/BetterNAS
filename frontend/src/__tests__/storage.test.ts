@@ -27,7 +27,7 @@ describe('FormatDialog', () => {
     await w.find('input#confirm-serial').setValue('WD-WCC7K1234567')
     expect(btn().attributes('disabled')).toBeUndefined()
     await btn().trigger('click')
-    expect(w.emitted('submit')?.[0]).toEqual([{ fsType: 'ext4', confirmSerial: 'WD-WCC7K1234567', confirmToken: 'tok' }])
+    expect(w.emitted('submit')?.[0]).toEqual([{ fsType: 'ext4', role: 'data', confirmSerial: 'WD-WCC7K1234567', confirmToken: 'tok' }])
   })
 
   it('warnt vor vorhandenen Daten', () => {

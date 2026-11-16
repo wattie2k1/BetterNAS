@@ -133,3 +133,40 @@ func TestUnitsRemountWhenDeviceReturns(t *testing.T) {
 		t.Fatalf("Pool wird beim Einhängen seiner Platten nicht gestartet:\n%s", pool)
 	}
 }
+
+func parityState() State {
+	st := testState()
+	st.Disks = append(st.Disks, DiskMount{DiskID: "p1", FSUUID: "33333333-3333-3333-3333-333333333333", FSType: "ext4", Role: "parity"})
+	return st
+}
+
+func TestRenderParityUnit(t *testing.T) {
+	units, err := RenderUnits(parityState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := units["srv-parity-p1.mount"]
+	if !ok {
+		t.Fatalf("no parity unit: %v", units)
+	}
+	if !strings.Contains(string(got), "Where=/srv/parity/p1") || !strings.Contains(string(got), "Paritätsplatte p1") {
+		t.Fatalf("%s", got)
+	}
+	golden(t, "srv-parity-p1.mount", got)
+	if _, ok := units["srv-disks-p1.mount"]; ok {
+		t.Fatal("parity disk also rendered as data disk")
+	}
+}
+
+func TestValidateRejectsParityInPool(t *testing.T) {
+	st := parityState()
+	st.Pools[0].Branches = append(st.Pools[0].Branches, "p1")
+	if err := st.Validate(); err == nil {
+		t.Fatal("parity disk in pool accepted")
+	}
+	st = parityState()
+	st.Disks[2].Role = "bogus"
+	if err := st.Validate(); err == nil {
+		t.Fatal("unknown role accepted")
+	}
+}

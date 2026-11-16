@@ -308,3 +308,28 @@ func TestApplyDoesNotChattrMountedDisk(t *testing.T) {
 		t.Fatal("chattr on a mounted filesystem root")
 	}
 }
+
+func TestApplyWritesParityUnitAndProtectsMountpoint(t *testing.T) {
+	d, f, root := storageEnv(t)
+	st := applyState()
+	st.Disks = append(st.Disks, storage.DiskMount{DiskID: "p1", FSUUID: "u3", FSType: "ext4", Role: "parity"})
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, unitDir, "srv-parity-p1.mount")); err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, f, "chattr +i /srv/parity/p1", "systemctl enable --now srv-parity-p1.mount", "systemctl enable --now srv-pools-media.mount")
+	// Zweiter Lauf erkennt die vorhandene Paritäts-Unit (idempotent).
+	res, err := Apply(context.Background(), d, st)
+	if err != nil || len(res.Changed) != 0 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	// Entfällt die Platte, wird die Unit entfernt.
+	if _, err := Apply(context.Background(), d, applyState()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, unitDir, "srv-parity-p1.mount")); err == nil {
+		t.Fatal("stale parity unit kept")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/shares"
+	"github.com/betternas/betternas/internal/snapraid"
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/sysexec"
 )
@@ -159,6 +160,39 @@ func Register(s *rpc.Server, d Deps) {
 			return nil, err
 		}
 		return UpdateStatus(ctx, d, req.Unit)
+	})
+	s.Handle("snapraid.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var st snapraid.State
+		if err := decode(p, &st); err != nil {
+			return nil, err
+		}
+		mutate.Lock()
+		defer mutate.Unlock()
+		return ApplySnapraid(ctx, d, st)
+	})
+	s.Handle("snapraid.start", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Pool   string `json:"pool"`
+			Action string `json:"action"`
+			Force  bool   `json:"force"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		unit, err := StartSnapraid(ctx, d, req.Pool, req.Action, req.Force)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"unit": unit}, nil
+	})
+	s.Handle("snapraid.status", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Pool string `json:"pool"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return SnapraidStatus(ctx, d, req.Pool)
 	})
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State

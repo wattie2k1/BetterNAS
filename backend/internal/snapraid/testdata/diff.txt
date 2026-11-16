@@ -1,0 +1,17 @@
+Loading state from /var/lib/betternas/snapraid/media.content...
+Comparing...
+add Fotos/neu.jpg
+add Fotos/neu2.jpg
+add Fotos/neu3.jpg
+remove alt.txt
+update Doku/a.pdf
+update Doku/b.pdf
+
+       12 equal
+        3 added
+        1 removed
+        2 updated
+        0 moved
+        0 copied
+        0 restored
+There are differences!

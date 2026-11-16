@@ -57,7 +57,13 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		accepted(w, id, err)
 	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/import", func(w http.ResponseWriter, r *http.Request) {
-		id, err := m.Import(r.Context(), actor(r), r.PathValue("id"))
+		var req struct {
+			Role string `json:"role"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		id, err := m.Import(r.Context(), actor(r), r.PathValue("id"), req.Role)
 		accepted(w, id, err)
 	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/release", func(w http.ResponseWriter, r *http.Request) {

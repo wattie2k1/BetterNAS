@@ -112,7 +112,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
               />
             </template>
             <Button
-              v-else-if="d.role === 'data' && !d.pool"
+              v-else-if="(d.role === 'data' || d.role === 'parity') && !d.pool"
               label="Freigeben"
               size="small"
               text
