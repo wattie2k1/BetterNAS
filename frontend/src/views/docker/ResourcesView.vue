@@ -67,6 +67,11 @@ async function confirm() {
 </script>
 
 <template>
+  <div class="toolbar">
+    <Button v-if="tab === 'images'" data-test="prune-images" label="Unbenannte Images aufräumen" icon="pi pi-trash" severity="secondary" @click="pending = { kind: 'images', label: 'Images', prune: true }" />
+    <Button v-if="tab === 'networks'" data-test="prune-networks" label="Ungenutzte aufräumen" icon="pi pi-trash" severity="secondary" @click="pending = { kind: 'networks', label: 'Netzwerke', prune: true }" />
+    <Button v-if="tab === 'volumes'" data-test="prune-volumes" label="Ungenutzte Volumes löschen" icon="pi pi-trash" severity="danger" outlined @click="pending = { kind: 'volumes', label: 'Volumes', prune: true }" />
+  </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <Message v-if="dockerDown" severity="warn" :closable="false" data-test="docker-down">
     {{ store.status?.installed ? 'Der Docker-Dienst läuft nicht.' : 'Docker ist nicht installiert.' }}
@@ -79,11 +84,8 @@ async function confirm() {
     </TabList>
     <TabPanels>
       <TabPanel value="images">
-        <div class="toolbar">
-          <Button data-test="prune-images" label="Unbenannte Images aufräumen" icon="pi pi-trash" severity="secondary" size="small" @click="pending = { kind: 'images', label: 'Images', prune: true }" />
-        </div>
         <div class="table-wrap">
-          <table class="res">
+          <table>
             <thead><tr><th>Image</th><th>Größe</th><th>Erstellt</th><th /></tr></thead>
             <tbody>
               <tr v-for="im in store.images" :key="im.id + im.ref" :data-test="`image-${im.ref}`">
@@ -104,11 +106,8 @@ async function confirm() {
         <p v-if="!store.images.length" class="empty">Keine Images vorhanden.</p>
       </TabPanel>
       <TabPanel value="networks">
-        <div class="toolbar">
-          <Button data-test="prune-networks" label="Ungenutzte aufräumen" icon="pi pi-trash" severity="secondary" size="small" @click="pending = { kind: 'networks', label: 'Netzwerke', prune: true }" />
-        </div>
         <div class="table-wrap">
-          <table class="res">
+          <table>
             <thead><tr><th>Name</th><th>Treiber</th><th>Bereich</th><th /></tr></thead>
             <tbody>
               <tr v-for="n in store.networks" :key="n.id" :data-test="`network-${n.name}`">
@@ -128,11 +127,8 @@ async function confirm() {
         </div>
       </TabPanel>
       <TabPanel value="volumes">
-        <div class="toolbar">
-          <Button data-test="prune-volumes" label="Ungenutzte Volumes löschen" icon="pi pi-trash" severity="danger" size="small" outlined @click="pending = { kind: 'volumes', label: 'Volumes', prune: true }" />
-        </div>
         <div class="table-wrap">
-          <table class="res">
+          <table>
             <thead><tr><th>Name</th><th>Treiber</th><th>Verwendung</th><th /></tr></thead>
             <tbody>
               <tr v-for="v in store.volumes" :key="v.name" :data-test="`volume-${v.name}`">
@@ -162,26 +158,9 @@ async function confirm() {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.75rem;
-}
-.res {
-  width: 100%;
-  border-collapse: collapse;
-}
-.res th,
-.res td {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  vertical-align: top;
-}
-.sub,
 .empty {
   color: var(--p-text-muted-color);
-  font-size: 0.8rem;
-  overflow-wrap: anywhere;
+  font-size: 0.875rem;
 }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

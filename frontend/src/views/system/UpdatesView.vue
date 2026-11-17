@@ -138,11 +138,6 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
 .pkgs {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bn-glass);
-  border: 1px solid var(--bn-border);
-  border-radius: var(--bn-radius);
-  box-shadow: var(--bn-shadow);
-  backdrop-filter: var(--bn-blur);
 }
 th,
 td {

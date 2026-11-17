@@ -87,6 +87,7 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
 </script>
 
 <template>
+  <div class="toolbar" />
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
 
   <section class="card glass">

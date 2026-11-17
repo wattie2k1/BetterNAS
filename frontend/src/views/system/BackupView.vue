@@ -186,11 +186,6 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
 .backups {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bn-glass);
-  border: 1px solid var(--bn-border);
-  border-radius: var(--bn-radius);
-  box-shadow: var(--bn-shadow);
-  backdrop-filter: var(--bn-blur);
 }
 th,
 td {

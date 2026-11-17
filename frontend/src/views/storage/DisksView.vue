@@ -77,6 +77,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
 </script>
 
 <template>
+  <div class="toolbar" />
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <div class="table-wrap">
     <table class="disks">
@@ -166,11 +167,6 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
 .disks {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bn-glass);
-  border: 1px solid var(--bn-border);
-  border-radius: var(--bn-radius);
-  box-shadow: var(--bn-shadow);
-  backdrop-filter: var(--bn-blur);
 }
 th,
 td {

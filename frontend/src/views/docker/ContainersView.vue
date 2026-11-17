@@ -64,6 +64,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 </script>
 
 <template>
+  <div class="toolbar" />
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <Message v-if="dockerDown" severity="warn" :closable="false" data-test="docker-down">
     {{ store.status?.installed ? 'Der Docker-Dienst läuft nicht.' : 'Docker ist nicht installiert.' }}
@@ -145,11 +146,6 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 .containers {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bn-glass);
-  border: 1px solid var(--bn-border);
-  border-radius: var(--bn-radius);
-  box-shadow: var(--bn-shadow);
-  backdrop-filter: var(--bn-blur);
 }
 th,
 td {

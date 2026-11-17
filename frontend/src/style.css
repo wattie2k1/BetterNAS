@@ -145,14 +145,66 @@ html .page-sub {
 }
 
 /* Werkzeugleiste mit Hauptaktion über den Inhalten */
-html .toolbar {
+html .toolbar,
+html .bar {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  margin: -6px 0 18px;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin: 0 0 1rem;
 }
 html .toolbar .p-button {
   height: 44px;
   padding-inline: 1.3rem;
+}
+
+/* Tabellen: Glas-Fläche mit Rundung auf dem Rahmen, damit nichts über die Ecken ragt */
+html .table-wrap {
+  overflow-x: auto;
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
+  -webkit-backdrop-filter: var(--bn-blur);
+  margin-bottom: 1rem;
+}
+html .table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+}
+html .table-wrap th,
+html .table-wrap td {
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--bn-border-soft);
+}
+html .table-wrap th {
+  color: var(--p-text-muted-color);
+  font-weight: 600;
+}
+html .table-wrap .sub {
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+/* Tabs (Docker-Ressourcen): transparent, ohne eigene graue Flächen */
+html .p-tabs,
+html .p-tablist,
+html .p-tablist-tab-list,
+html .p-tabpanels,
+html .p-tabpanel {
+  background: transparent;
+}
+html .p-tabpanels {
+  padding: 1rem 0 0;
+}
+html .p-tablist-tab-list {
+  border-color: var(--bn-border-soft);
 }
 
 /* Leerzustand */
@@ -189,11 +241,6 @@ html .p-card-body {
 }
 
 /* Tabellen */
-html .table-wrap table {
-  border-collapse: separate;
-  border-spacing: 0;
-  overflow: hidden;
-}
 html .table-wrap th {
   text-transform: uppercase;
   letter-spacing: 0.06em;
