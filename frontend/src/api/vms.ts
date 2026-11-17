@@ -43,6 +43,7 @@ export interface VmConfig {
   firmware: 'uefi' | 'bios'
   secureBoot: boolean
   tpm: boolean
+  guestAgent: boolean
   network: string
   hasCdrom: boolean
   media: string
@@ -56,6 +57,7 @@ export interface VmConfigUpdate {
   secureBoot: boolean
   network: string
   media: string
+  guestAgent: boolean
 }
 
 export interface VmSnapshot {

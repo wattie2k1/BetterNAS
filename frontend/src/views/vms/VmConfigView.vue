@@ -24,6 +24,7 @@ const error = ref('')
 const vcpus = ref<number | null>(2)
 const ramMiB = ref<number | null>(2048)
 const secureBoot = ref(false)
+const guestAgent = ref(false)
 const network = ref('default')
 const media = ref('')
 const isos = ref<string[]>([])
@@ -39,6 +40,7 @@ const dirty = computed(
     (vcpus.value !== cfg.value.vcpus ||
       ramMiB.value !== cfg.value.memoryMiB ||
       secureBoot.value !== cfg.value.secureBoot ||
+      guestAgent.value !== cfg.value.guestAgent ||
       network.value !== cfg.value.network ||
       media.value !== cfg.value.media),
 )
@@ -62,6 +64,7 @@ function apply(c: VmConfig) {
   vcpus.value = c.vcpus
   ramMiB.value = c.memoryMiB
   secureBoot.value = c.secureBoot
+  guestAgent.value = c.guestAgent
   network.value = c.network
   media.value = c.media
 }
@@ -87,7 +90,7 @@ async function save() {
   if (!cfg.value || !valid.value) return
   saving.value = true
   try {
-    await vmsApi.configure(name, { vcpus: vcpus.value!, memoryMiB: ramMiB.value!, secureBoot: secureBoot.value, network: network.value, media: media.value })
+    await vmsApi.configure(name, { vcpus: vcpus.value!, memoryMiB: ramMiB.value!, secureBoot: secureBoot.value, network: network.value, media: media.value, guestAgent: guestAgent.value })
     toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', detail: name, life: 3000 })
     await load()
     void store.refresh()
@@ -151,6 +154,13 @@ const back = () => router?.push('/vms')
       </label>
       <small class="hint">Nur für signierte Systeme (z. B. Windows 11). Home Assistant OS und viele Linux-Images starten damit nicht („Access Denied“).</small>
       <Message v-if="secureBootChanged" severity="warn" :closable="false" data-test="cfg-sb-warn">Beim Ändern werden die gespeicherten UEFI-Einstellungen der VM zurückgesetzt.</Message>
+    </div>
+    <div class="field">
+      <label class="row">
+        <ToggleSwitch v-model="guestAgent" :disabled="!editable" aria-label="Guest-Agent" data-test="cfg-guestagent" />
+        <span>QEMU-Guest-Agent</span>
+      </label>
+      <small class="hint">Ermöglicht sauberes Herunterfahren aus der Oberfläche. Das System in der VM braucht den Agent (Home Assistant OS bringt ihn mit; unter Linux: Paket qemu-guest-agent). Ohne ihn reagieren manche Systeme nicht auf „Herunterfahren“.</small>
     </div>
     <div class="field">
       <label class="row">

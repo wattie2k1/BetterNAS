@@ -9,6 +9,11 @@ import (
 )
 
 // NvramDir ist das Verzeichnis, aus dem der Agent UEFI-Variablen-Dateien entfernen darf.
+const guestAgentName = "org.qemu.guest_agent.0"
+
+// GuestAgentChannel ist das Gerät, über das libvirt mit dem Guest-Agent in der VM spricht.
+const GuestAgentChannel = "    <channel type='unix'>\n      <target type='virtio' name='" + guestAgentName + "'/>\n    </channel>\n"
+
 const NvramDir = "/var/lib/libvirt/qemu/nvram/"
 
 // Config ist die änderbare Konfiguration einer VM (aus der inaktiven Domain-XML gelesen).
@@ -21,9 +26,10 @@ type Config struct {
 	Firmware   string   `json:"firmware"` // uefi | bios
 	SecureBoot bool     `json:"secureBoot"`
 	TPM        bool     `json:"tpm"`
-	Network    string   `json:"network"`  // „default“, „direct:eno1“ oder „bridge:br0“
-	HasCDROM   bool     `json:"hasCdrom"` // mindestens ein CD-Laufwerk
-	Media      string   `json:"media"`    // Dateiname der eingelegten ISO ("" = leer)
+	GuestAgent bool     `json:"guestAgent"` // Kanal für den QEMU-Guest-Agent (Herunterfahren, IP-Anzeige)
+	Network    string   `json:"network"`    // „default“, „direct:eno1“ oder „bridge:br0“
+	HasCDROM   bool     `json:"hasCdrom"`   // mindestens ein CD-Laufwerk
+	Media      string   `json:"media"`      // Dateiname der eingelegten ISO ("" = leer)
 	Disks      []string `json:"disks"`
 }
 
@@ -34,6 +40,7 @@ type ConfigUpdate struct {
 	SecureBoot bool   `json:"secureBoot"`
 	Network    string `json:"network"`
 	Media      string `json:"media"` // "" = Laufwerk leer
+	GuestAgent bool   `json:"guestAgent"`
 }
 
 // Validate prüft alle Felder gegen die festen Grenzen.
@@ -86,7 +93,12 @@ type domXML struct {
 				Dev     string `xml:"dev,attr"`
 			} `xml:"source"`
 		} `xml:"interface"`
-		TPM *struct{} `xml:"tpm"`
+		TPM      *struct{} `xml:"tpm"`
+		Channels []struct {
+			Target struct {
+				Name string `xml:"name,attr"`
+			} `xml:"target"`
+		} `xml:"channel"`
 	} `xml:"devices"`
 }
 
@@ -110,6 +122,11 @@ func ParseConfig(xmlData []byte) (Config, error) {
 		}
 	}
 	c.TPM = d.Devices.TPM != nil
+	for _, ch := range d.Devices.Channels {
+		if ch.Target.Name == guestAgentName {
+			c.GuestAgent = true
+		}
+	}
 	for _, disk := range d.Devices.Disks {
 		switch disk.Device {
 		case "disk":
@@ -154,6 +171,7 @@ var (
 	reCDSource   = regexp.MustCompile(`[ \t]*<source\b[^>]*/>\n?`)
 	reCDDriver   = regexp.MustCompile(`<driver\b[^>]*/>`)
 	reOSFirmware = regexp.MustCompile(`<os firmware='efi'>`)
+	reChannel    = regexp.MustCompile(`(?s)[ \t]*<channel\b.*?</channel>\n?`)
 )
 
 func secureBootFirmware(on bool) string {
@@ -242,6 +260,18 @@ func ApplyConfig(xmlStr string, u ConfigUpdate) (string, string, error) {
 				return "", "", invalid("Das Laufwerk sdb ist bereits belegt")
 			}
 			out = strings.Replace(out, "  </devices>", cdrom("sdb", ISOPath(u.Media))+"  </devices>", 1)
+		}
+	}
+	if u.GuestAgent != cur.GuestAgent {
+		if u.GuestAgent {
+			out = strings.Replace(out, "  </devices>", GuestAgentChannel+"  </devices>", 1)
+		} else {
+			out = reChannel.ReplaceAllStringFunc(out, func(blk string) string {
+				if strings.Contains(blk, guestAgentName) {
+					return ""
+				}
+				return blk
+			})
 		}
 	}
 	return out, nvram, nil

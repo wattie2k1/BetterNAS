@@ -271,12 +271,30 @@ func TestVMConfigureLibvirt(t *testing.T) {
 	if err != nil || !c.SecureBoot || c.Firmware != "uefi" || c.State != "shutoff" {
 		t.Fatalf("Ausgangszustand: %+v %v", c, err)
 	}
-	u := vm.ConfigUpdate{VCPUs: 2, MemoryMiB: 512, SecureBoot: false, Network: "default"}
+	u := vm.ConfigUpdate{VCPUs: 2, MemoryMiB: 512, SecureBoot: false, Network: "default", GuestAgent: true}
 	if err := VMConfigure(ctx, d, name, u); err != nil {
 		t.Fatal(err)
 	}
 	if c, err = VMConfig(ctx, d, name); err != nil || c.SecureBoot || c.VCPUs != 2 || c.MemoryMiB != 512 || c.Firmware != "uefi" {
 		t.Fatalf("nach Änderung: %+v %v", c, err)
+	}
+	// Neue VMs haben den Guest-Agent-Kanal; er lässt sich aus- und wieder einschalten.
+	if !c.GuestAgent {
+		t.Fatalf("Guest-Agent-Kanal erwartet: %+v", c)
+	}
+	u.GuestAgent = false
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ = VMConfig(ctx, d, name); c.GuestAgent {
+		t.Fatal("Guest-Agent sollte aus sein")
+	}
+	u.GuestAgent = true
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ = VMConfig(ctx, d, name); !c.GuestAgent {
+		t.Fatal("Guest-Agent sollte an sein")
 	}
 	// Wieder einschalten, starten, laufende VM ist nicht änderbar.
 	u.SecureBoot = true

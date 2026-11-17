@@ -8,7 +8,7 @@ import VmConfigView from '@/views/vms/VmConfigView.vue'
 
 const res = (body: unknown, status = 200) => Promise.resolve(new Response(status === 204 ? null : JSON.stringify(body), { status }))
 const config = (state = 'shutoff', over: object = {}) => ({
-  name: 'ha', state, vcpus: 2, memoryMiB: 4096, autostart: false, firmware: 'uefi', secureBoot: true, tpm: false,
+  name: 'ha', state, vcpus: 2, memoryMiB: 4096, autostart: false, firmware: 'uefi', secureBoot: true, tpm: false, guestAgent: false,
   network: 'default', hasCdrom: false, media: '', disks: ['/srv/vms/disks/ha.qcow2'], ...over,
 })
 
@@ -64,7 +64,19 @@ describe('VmConfigView', () => {
     await flushPromises()
     const post = fn.mock.calls.find((c) => c[1]?.method === 'POST' && c[0] === '/api/v1/vms/ha/config')
     expect(post).toBeTruthy()
-    expect(JSON.parse(post![1].body)).toEqual({ vcpus: 2, memoryMiB: 4096, secureBoot: false, network: 'default', media: '' })
+    expect(JSON.parse(post![1].body)).toEqual({ vcpus: 2, memoryMiB: 4096, secureBoot: false, network: 'default', media: '', guestAgent: false })
+    w.unmount()
+  })
+
+  it('schaltet den Guest-Agent ein', async () => {
+    const fn = route(config())
+    const w = await mountView()
+    await w.find('[data-test="cfg-guestagent"]').trigger('click')
+    await flushPromises()
+    await w.find('button[data-test="cfg-save"]').trigger('click')
+    await flushPromises()
+    const post = fn.mock.calls.find((c) => c[1]?.method === 'POST' && c[0] === '/api/v1/vms/ha/config')
+    expect(JSON.parse(post![1].body).guestAgent).toBe(true)
     w.unmount()
   })
 

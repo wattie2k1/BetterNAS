@@ -116,3 +116,33 @@ func TestApplyConfigEjectAndBios(t *testing.T) {
 		t.Fatal("Secure Boot ohne UEFI")
 	}
 }
+
+func TestGuestAgent(t *testing.T) {
+	// Neue VMs bekommen den Kanal für den QEMU-Guest-Agent (sauberes Herunterfahren).
+	x, _ := BuildXML(okSpec(), true)
+	if !strings.Contains(x, "org.qemu.guest_agent.0") {
+		t.Fatal("BuildXML ohne Guest-Agent-Kanal")
+	}
+	c, _ := ParseConfig([]byte(x))
+	if !c.GuestAgent {
+		t.Fatalf("%+v", c)
+	}
+	// Bestehende VM ohne Kanal: einschalten und wieder ausschalten.
+	base := ConfigUpdate{VCPUs: 2, MemoryMiB: 4096, SecureBoot: true, Network: "default"}
+	if c, _ := ParseConfig(haosXML(t)); c.GuestAgent {
+		t.Fatal("Fixture hat keinen Kanal")
+	}
+	base.GuestAgent = true
+	out, _, err := ApplyConfig(string(haosXML(t)), base)
+	if err != nil || strings.Count(out, "org.qemu.guest_agent.0") != 1 {
+		t.Fatal(err, out)
+	}
+	if c, _ := ParseConfig([]byte(out)); !c.GuestAgent {
+		t.Fatal("Kanal nicht erkannt")
+	}
+	base.GuestAgent = false
+	out2, _, err := ApplyConfig(out, base)
+	if err != nil || strings.Contains(out2, "guest_agent") {
+		t.Fatal(err, out2)
+	}
+}
