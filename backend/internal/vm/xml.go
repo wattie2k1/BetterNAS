@@ -47,6 +47,11 @@ func BuildXML(s Spec, kvm bool) (string, error) {
 	fmt.Fprintf(&b, "  <memory unit='MiB'>%d</memory>\n  <vcpu>%d</vcpu>\n", s.MemoryMiB, s.VCPUs)
 	if s.Firmware == "uefi" {
 		b.WriteString("  <os firmware='efi'>\n")
+		if !win {
+			// Ohne Angabe wählt libvirt OVMF mit Secure Boot und Microsoft-Schlüsseln; Linux-Installer
+			// und fertige Images (Home Assistant OS) sind nicht signiert und scheiterten mit „Access Denied“.
+			b.WriteString("    <firmware>\n      <feature enabled='no' name='enrolled-keys'/>\n      <feature enabled='no' name='secure-boot'/>\n    </firmware>\n")
+		}
 	} else {
 		b.WriteString("  <os>\n")
 	}
