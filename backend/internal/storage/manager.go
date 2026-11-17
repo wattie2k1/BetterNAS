@@ -29,9 +29,12 @@ type DependentsFunc func(ctx context.Context, pool string) ([]string, error)
 
 // SmartInfo ist eine Zusammenfassung der SMART-Werte.
 type SmartInfo struct {
-	Passed       bool `json:"passed"`
-	TemperatureC int  `json:"temperatureC"`
-	PowerOnHours int  `json:"powerOnHours"`
+	Passed             bool `json:"passed"`
+	TemperatureC       int  `json:"temperatureC"`
+	PowerOnHours       int  `json:"powerOnHours"`
+	Standby            bool `json:"standby"`
+	ReallocatedSectors int  `json:"reallocatedSectors"`
+	PendingSectors     int  `json:"pendingSectors"`
 }
 
 // DiskView ist ein Datenträger aus Sicht der Oberfläche.
@@ -261,6 +264,12 @@ func (m *Manager) smartFor(ctx context.Context, device string) *SmartInfo {
 	var res *SmartInfo
 	if err := m.agent.Call(ctx, "disk.smart", map[string]string{"device": device}, &info); err == nil {
 		res = &info
+		// Schlafende Platte: letzte bekannte Werte behalten, nur das Etikett setzen.
+		if info.Standby && ok && e.info != nil {
+			kept := *e.info
+			kept.Standby = true
+			res = &kept
+		}
 	}
 	m.tmu.Lock()
 	m.smart[device] = smartEntry{info: res, at: m.now()}

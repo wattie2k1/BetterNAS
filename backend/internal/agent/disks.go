@@ -47,12 +47,15 @@ func findDisk(disks []storage.Disk, pred func(storage.Disk) bool) (storage.Disk,
 
 // SmartInfo ist eine Zusammenfassung der SMART-Werte.
 type SmartInfo struct {
-	Passed       bool `json:"passed"`
-	TemperatureC int  `json:"temperatureC"`
-	PowerOnHours int  `json:"powerOnHours"`
+	Passed             bool `json:"passed"`
+	TemperatureC       int  `json:"temperatureC"`
+	PowerOnHours       int  `json:"powerOnHours"`
+	Standby            bool `json:"standby"`
+	ReallocatedSectors int  `json:"reallocatedSectors"`
+	PendingSectors     int  `json:"pendingSectors"`
 }
 
-// Smart liest SMART-Werte eines erkannten Datenträgers.
+// Smart liest SMART-Werte eines erkannten Datenträgers. Schlafende Platten werden nicht geweckt (-n standby).
 func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 	disks, err := ListDisks(ctx, d)
 	if err != nil {
@@ -61,13 +64,27 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 	if _, ok := findDisk(disks, func(x storage.Disk) bool { return x.Device == device }); !ok {
 		return SmartInfo{}, apierr.New(apierr.NotFound, "Unbekannter Datenträger")
 	}
-	res, err := d.Runner.Run(ctx, nil, "smartctl", "--json", "-H", "-A", device)
+	base := []string{"--json", "-H", "-A", "-n", "standby"}
+	res, err := d.Runner.Run(ctx, nil, "smartctl", append(base, device)...)
 	if err != nil {
 		return SmartInfo{}, err
 	}
+	if res.ExitCode&2 != 0 && strings.Contains(strings.ToUpper(string(res.Stdout)+string(res.Stderr)), "STANDBY") {
+		return SmartInfo{Standby: true}, nil
+	}
 	// Bits 0 und 1 bedeuten: Aufruf- bzw. Öffnungsfehler. Höhere Bits sind Befunde, die Daten sind gültig.
 	if res.ExitCode&3 != 0 {
-		return SmartInfo{}, fmt.Errorf("smartctl %s: Exit %d", device, res.ExitCode)
+		// USB-SATA-Gehäuse brauchen oft -d sat.
+		res, err = d.Runner.Run(ctx, nil, "smartctl", append(append(base, "-d", "sat"), device)...)
+		if err != nil {
+			return SmartInfo{}, err
+		}
+		if res.ExitCode&2 != 0 && strings.Contains(strings.ToUpper(string(res.Stdout)+string(res.Stderr)), "STANDBY") {
+			return SmartInfo{Standby: true}, nil
+		}
+		if res.ExitCode&3 != 0 {
+			return SmartInfo{}, fmt.Errorf("smartctl %s: Exit %d", device, res.ExitCode)
+		}
 	}
 	var raw struct {
 		SmartStatus struct {
@@ -79,9 +96,26 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 		PowerOnTime struct {
 			Hours int `json:"hours"`
 		} `json:"power_on_time"`
+		ATA struct {
+			Table []struct {
+				ID  int `json:"id"`
+				Raw struct {
+					Value int `json:"value"`
+				} `json:"raw"`
+			} `json:"table"`
+		} `json:"ata_smart_attributes"`
 	}
 	if err := json.Unmarshal(res.Stdout, &raw); err != nil {
 		return SmartInfo{}, fmt.Errorf("smartctl-ausgabe ungültig: %w", err)
 	}
-	return SmartInfo{Passed: raw.SmartStatus.Passed, TemperatureC: raw.Temperature.Current, PowerOnHours: raw.PowerOnTime.Hours}, nil
+	info := SmartInfo{Passed: raw.SmartStatus.Passed, TemperatureC: raw.Temperature.Current, PowerOnHours: raw.PowerOnTime.Hours}
+	for _, a := range raw.ATA.Table {
+		switch a.ID {
+		case 5:
+			info.ReallocatedSectors = a.Raw.Value
+		case 197:
+			info.PendingSectors = a.Raw.Value
+		}
+	}
+	return info, nil
 }
