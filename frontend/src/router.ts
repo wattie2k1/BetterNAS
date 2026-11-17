@@ -8,6 +8,7 @@ import DashboardView from '@/views/DashboardView.vue'
 import DisksView from '@/views/storage/DisksView.vue'
 import UsersView from '@/views/users/UsersView.vue'
 import UpdatesView from '@/views/system/UpdatesView.vue'
+import NotificationsView from '@/views/system/NotificationsView.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
 import GroupsView from '@/views/users/GroupsView.vue'
@@ -36,6 +37,7 @@ export const router = createRouter({
         { path: 'docker/ressourcen', name: 'resources', component: ResourcesView, meta: { title: 'Docker-Ressourcen' } },
         { path: 'vms', name: 'vms', component: VmsView, meta: { title: 'Virtuelle Maschinen' } },
         { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
+        { path: 'system/benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Benachrichtigungen' } },
         { path: 'profil', name: 'profile', component: ProfileView, meta: { title: 'Profil' } },
         { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
         { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },

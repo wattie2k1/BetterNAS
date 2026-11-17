@@ -48,6 +48,10 @@ export const useStorageStore = defineStore('storage', () => {
     previewFormat: storageApi.previewFormat,
     format: (id: string, req: FormatRequest) => runJob(() => storageApi.format(id, req)),
     importDisk: (id: string, role?: 'data' | 'parity') => runJob(() => storageApi.importDisk(id, role)),
+    setSpindown: async (id: string, minutes: number) => {
+      await storageApi.setSpindown(id, minutes)
+      await refresh()
+    },
     release: (id: string) => runJob(() => storageApi.release(id)),
     createPool: (p: PoolInput) => runJob(() => storageApi.createPool(p)),
     updatePool: (name: string, p: PoolInput) => runJob(() => storageApi.updatePool(name, p)),

@@ -9,6 +9,7 @@ import QuickTiles from '@/components/QuickTiles.vue'
 import DockerTile from '@/components/docker/DockerTile.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useStorageStore } from '@/stores/storage'
+import { useNotificationsStore } from '@/stores/notifications'
 import { storageApi, unprotected, type PoolView, type SnapraidStatus } from '@/api/storage'
 import { formatBytes, formatDateTime, formatUptime } from '@/utils/format'
 import { moveTile, shiftTile, useTileOrder } from '@/utils/tileOrder'
@@ -30,6 +31,7 @@ interface SystemInfo {
 
 const auth = useAuthStore()
 const store = useStorageStore()
+const notifications = useNotificationsStore()
 const info = ref<SystemInfo | null>(null)
 const snap = ref<{ pool: PoolView; status: SnapraidStatus }[]>([])
 const error = ref('')
@@ -72,6 +74,7 @@ async function loadSnapraid() {
 
 onMounted(() => {
   load()
+  void notifications.loadAlerts()
   loadSnapraid()
   firstCpu = setTimeout(load, 1500) // zweite Messung, damit die CPU-Kachel schnell einen Wert zeigt
   timer = setInterval(load, 5000)
@@ -98,8 +101,9 @@ const storagePercent = computed(() => (storageTotal.value ? (storageUsed.value /
 const poolPercent = (p: PoolView) => (p.sizeBytes ? Math.round(((p.sizeBytes - p.freeBytes) / p.sizeBytes) * 100) : 0)
 
 // --- Kacheln: vom Nutzer sortierbar, Reihenfolge wird im Browser gemerkt ---
-const TILES = ['storage', 'cpu', 'memory', 'disks', 'snapraid', 'docker', 'system'] as const
+const TILES = ['alerts', 'storage', 'cpu', 'memory', 'disks', 'snapraid', 'docker', 'system'] as const
 const tileMeta: Record<string, { icon: string; title: string }> = {
+  alerts: { icon: 'pi pi-bell', title: 'Meldungen' },
   storage: { icon: 'pi pi-database', title: 'Speicher' },
   cpu: { icon: 'pi pi-bolt', title: 'Prozessor' },
   memory: { icon: 'pi pi-microchip', title: 'Arbeitsspeicher' },
@@ -109,7 +113,10 @@ const tileMeta: Record<string, { icon: string; title: string }> = {
   system: { icon: 'pi pi-info-circle', title: 'System' },
 }
 const tiles = useTileOrder(() => `bn-dashboard-tiles:${auth.user ?? ''}`, TILES)
-const visibleTiles = computed(() => tiles.order.value.filter((id) => id !== 'snapraid' || snap.value.length > 0))
+const visibleTiles = computed(() =>
+  tiles.order.value.filter((id) => (id !== 'snapraid' || snap.value.length > 0) && (id !== 'alerts' || notifications.alerts.length > 0)),
+)
+const alertsCrit = computed(() => notifications.alerts.some((a) => a.level === 'crit'))
 const customOrder = computed(() => tiles.order.value.join() !== TILES.join())
 const dragging = ref<string | null>(null)
 
@@ -157,7 +164,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
       v-for="id in visibleTiles"
       :key="id"
       class="widget glass"
-      :class="{ storage: id === 'storage', dragging: dragging === id }"
+      :class="{ storage: id === 'storage', dragging: dragging === id, crit: id === 'alerts' && alertsCrit }"
       :data-test="`tile-${id}`"
       draggable="true"
       @dragstart="onDragStart($event, id)"
@@ -179,7 +186,15 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
         </button>
       </header>
 
-      <div v-if="id === 'storage'" class="storage-body">
+      <div v-if="id === 'alerts'" data-test="alerts-summary">
+        <p class="big">{{ notifications.alerts.length }} {{ notifications.alerts.length === 1 ? 'Meldung' : 'Meldungen' }}</p>
+        <ul class="alert-list">
+          <li v-for="a in notifications.alerts.slice(0, 4)" :key="a.key" :class="a.level">{{ a.title }}</li>
+        </ul>
+        <RouterLink to="/system/benachrichtigungen" class="soft">Details ansehen</RouterLink>
+      </div>
+
+      <div v-else-if="id === 'storage'" class="storage-body">
         <RingGauge :value="storagePercent" label="belegt" />
         <div class="storage-side">
           <template v-if="mountedPools.length">
@@ -277,6 +292,23 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
 .widget {
   padding: 20px 22px;
   cursor: grab;
+}
+.widget.crit {
+  border-color: rgb(239 68 68 / 55%);
+}
+.alert-list {
+  list-style: none;
+  margin: 0.4rem 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.alert-list li::before {
+  content: '●';
+  margin-right: 0.4rem;
+  color: var(--p-orange-400);
+}
+.alert-list li.crit::before {
+  color: var(--p-red-500);
 }
 .widget.dragging {
   opacity: 0.45;

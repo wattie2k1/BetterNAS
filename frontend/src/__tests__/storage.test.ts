@@ -102,6 +102,59 @@ describe('DisksView', () => {
   })
 })
 
+describe('DisksView: Ruhezustand', () => {
+  const smart = { passed: true, temperatureC: 41, powerOnHours: 100, standby: false, reallocatedSectors: 0, pendingSectors: 0 }
+  const rows = [
+    ...disks.filter((d) => d.id === 'sys' || d.id === 'd3'),
+    { ...disks[1], smart: { ...smart, pendingSectors: 2 }, spindown: 60 },
+    { ...disks[2], smart: { ...smart, standby: true }, spindown: 0 },
+  ]
+  function stubDisks(putResponse: () => Response) {
+    const puts: { url: string; body: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') {
+          puts.push({ url, body: init.body as string })
+          return putResponse()
+        }
+        return new Response(JSON.stringify(url.includes('/disks') ? rows : pools), { status: 200 })
+      }),
+    )
+    return puts
+  }
+
+  it('zeigt schlafende Platten, Sektor-Warnung und nur für Daten-/Paritätsplatten eine Auswahl', async () => {
+    stubDisks(() => new Response(null, { status: 204 }))
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    expect(w.find('[data-test="disk-d2"]').text()).toContain('schläft')
+    expect(w.find('[data-test="sectors-d1"]').exists()).toBe(true)
+    expect((w.find('[data-test="spindown-d1"]').element as HTMLSelectElement).value).toBe('60')
+    expect(w.find('[data-test="spindown-sys"]').exists()).toBe(false)
+    expect(w.find('[data-test="spindown-d3"]').exists()).toBe(false)
+  })
+
+  it('speichert die Auswahl per PUT', async () => {
+    const puts = stubDisks(() => new Response(null, { status: 204 }))
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    await w.find('[data-test="spindown-d2"]').setValue('120')
+    await flushPromises()
+    expect(puts).toEqual([{ url: '/api/v1/disks/d2/spindown', body: JSON.stringify({ minutes: 120 }) }])
+  })
+
+  it('zeigt die Ablehnung der API und springt zurück', async () => {
+    stubDisks(() => new Response(JSON.stringify({ error: { code: 'conflict', message: 'Diese Platte unterstützt keinen Ruhezustand' } }), { status: 409 }))
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    await w.find('[data-test="spindown-d2"]').setValue('120')
+    await flushPromises()
+    expect(w.find('[data-test="spindown-error-d2"]').text()).toContain('unterstützt keinen Ruhezustand')
+    expect((w.find('[data-test="spindown-d2"]').element as HTMLSelectElement).value).toBe('0')
+  })
+})
+
 describe('storage store', () => {
   it('lädt bei pools.changed neu', async () => {
     setActivePinia(createPinia())
