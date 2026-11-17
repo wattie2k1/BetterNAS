@@ -15,6 +15,7 @@ function route(createStatus = 201) {
     const key = `${init?.method ?? 'GET'} ${url}`
     if (key === 'GET /api/v1/vms/isos') return res(['debian.iso', 'virtio-win.iso'])
     if (key === 'GET /api/v1/vms/networks') return res(['default'])
+    if (key === 'GET /api/v1/vms/interfaces') return res(['eno1'])
     if (key === 'GET /api/v1/vms/status') return res({ installed: true, active: true, kvm: true })
     if (key === 'GET /api/v1/vms') return res([])
     if (key === 'POST /api/v1/vms')
@@ -62,6 +63,24 @@ describe('VmWizard', () => {
       vcpus: 2, memoryMiB: 4096, diskGiB: 40, tpm: false, start: true,
     })
     expect(w.emitted('update:visible')).toEqual([[false]])
+  })
+
+  it('bietet LAN-Schnittstellen als direct:-Netz an und sendet sie', async () => {
+    const fn = route()
+    const w = mountWizard()
+    await flushPromises()
+    await w.find('input#vm-name').setValue('debian')
+    await next(w).trigger('click')
+    await next(w).trigger('click')
+    const net = w.findComponent('[data-test="vm-network"]') as unknown as VueWrapper
+    expect((net.props('options') as { value: string }[]).map((o) => o.value)).toEqual(['default', 'direct:eno1'])
+    expect(w.find('[data-test="vm-lan-hint"]').exists()).toBe(false)
+    net.vm.$emit('update:modelValue', 'direct:eno1')
+    await flushPromises()
+    expect(w.find('[data-test="vm-lan-hint"]').exists()).toBe(true)
+    await w.find('button[data-test="vm-create"]').trigger('click')
+    await flushPromises()
+    expect(created(fn).network).toBe('direct:eno1')
   })
 
   it('belegt Windows mit TPM, 80 GiB und Treiber-ISO-Auswahl vor', async () => {

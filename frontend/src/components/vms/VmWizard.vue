@@ -32,6 +32,7 @@ const network = ref('default')
 const start = ref(true)
 const isos = ref<string[]>([])
 const networks = ref<string[]>(['default'])
+const ifaces = ref<string[]>([])
 const busy = ref(false)
 const error = ref('')
 
@@ -53,7 +54,7 @@ watch(
     start.value = true
     error.value = ''
     try {
-      ;[isos.value, networks.value] = await Promise.all([vmsApi.isos(), vmsApi.networks()])
+      ;[isos.value, networks.value, ifaces.value] = await Promise.all([vmsApi.isos(), vmsApi.networks(), vmsApi.interfaces().catch(() => [])])
       if (networks.value.length && !networks.value.includes(network.value)) network.value = networks.value[0]
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -115,6 +116,10 @@ const fwOptions = [
 ]
 const isoOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.map((i) => ({ label: i.endsWith('.qcow2') ? `${i} (Festplatten-Image)` : i, value: i }))])
 const driverOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.filter((i) => !i.endsWith('.qcow2')).map((i) => ({ label: i, value: i }))])
+const netOptions = computed(() => [
+  ...networks.value.map((n) => ({ label: n === 'default' ? 'NAT (default) – Zugriff ins Internet, Host erreichbar' : n, value: n })),
+  ...ifaces.value.map((i) => ({ label: `LAN über ${i} – eigene IP im Heimnetz`, value: `direct:${i}` })),
+])
 const isImage = computed(() => iso.value.endsWith('.qcow2'))
 </script>
 
@@ -169,7 +174,7 @@ const isImage = computed(() => iso.value.endsWith('.qcow2'))
       <div class="field">
         <label for="vm-iso">Installations-ISO oder Festplatten-Image (.qcow2)</label>
         <Select v-model="iso" input-id="vm-iso" :options="isoOptions" option-label="label" option-value="value" data-test="vm-iso" />
-        <small v-if="!isos.length" class="hint">ISO- oder qcow2-Dateien unter /srv/vms/iso ablegen – ein Upload folgt.</small>
+        <small v-if="!isos.length" class="hint">Noch keine Dateien – ISO- oder qcow2-Dateien lassen sich auf der VM-Seite über „ISO-Dateien“ hochladen.</small>
         <small v-else-if="isImage" class="hint" data-test="vm-image-hint">Das Image wird als primäre Festplatte kopiert; das Original bleibt unverändert, die Größe aus Schritt 2 gilt dann nicht.</small>
       </div>
       <div v-if="os === 'windows'" class="field">
@@ -178,7 +183,8 @@ const isImage = computed(() => iso.value.endsWith('.qcow2'))
       </div>
       <div class="field">
         <label for="vm-net">Netzwerk</label>
-        <Select v-model="network" input-id="vm-net" :options="networks" data-test="vm-network" />
+        <Select v-model="network" input-id="vm-net" :options="netOptions" option-label="label" option-value="value" data-test="vm-network" />
+        <small v-if="network.startsWith('direct:')" class="hint" data-test="vm-lan-hint">Die VM erscheint mit eigener IP im LAN. Dieses NAS selbst erreicht sie dabei nicht direkt (macvtap-Eigenschaft).</small>
       </div>
       <label class="row">
         <ToggleSwitch v-model="start" data-test="vm-start-after" aria-label="Nach dem Anlegen starten" />

@@ -52,5 +52,10 @@ export const useVmsStore = defineStore('vms', () => {
     await refresh()
   }
 
-  return { status, vms, loading, error, refresh, handleEvent, startPolling, stopPolling, act, remove, create }
+  async function clone(name: string, newName: string) {
+    await vmsApi.clone(name, newName)
+    await refresh()
+  }
+
+  return { status, vms, loading, error, refresh, handleEvent, startPolling, stopPolling, act, remove, create, clone }
 })
