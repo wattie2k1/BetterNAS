@@ -109,6 +109,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 
 	root := http.NewServeMux()
 	root.HandleFunc("POST /api/v1/auth/login", deps.Auth.Login)
+	root.HandleFunc("POST /api/v1/auth/login/totp", deps.Auth.LoginTOTP)
 	root.Handle("/api/", deps.Auth.RequireSession(api))
 	root.Handle("/", spaHandler(cfg.WebDir))
 	return securityHeaders(auth.LANOnly(root))

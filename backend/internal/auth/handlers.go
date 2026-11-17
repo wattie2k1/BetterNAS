@@ -75,11 +75,16 @@ type Handlers struct {
 	inGroup  GroupChecker
 	limiter  *RateLimiter
 	secure   bool
+	totp     *TOTPStore
+	mfa      *mfaTokens
+	now      func() time.Time
 }
 
 // NewHandlers erzeugt die Handler. secure setzt das Secure-Flag am Cookie (aus nur im Dev-Modus).
 func NewHandlers(d *sql.DB, store *Store, v Verifier, g GroupChecker, secure bool) *Handlers {
-	return &Handlers{db: d, store: store, verifier: v, inGroup: g, limiter: NewRateLimiter(5, 5*time.Minute), secure: secure}
+	h := &Handlers{db: d, store: store, verifier: v, inGroup: g, limiter: NewRateLimiter(5, 5*time.Minute), secure: secure, now: time.Now}
+	h.mfa = newMFATokens(func() time.Time { return h.now() })
+	return h
 }
 
 type ctxKey struct{}
@@ -137,14 +142,31 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, errBadLogin)
 		return
 	}
-	token, csrf, err := h.store.Create(r.Context(), req.Username)
+	if h.totp != nil {
+		on, err := h.totp.Enabled(r.Context(), req.Username)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		if on {
+			_ = audit.Record(r.Context(), h.db, audit.Entry{Actor: req.Username, Action: "auth.login", Target: ip, Result: "mfa"})
+			writeJSON(w, http.StatusOK, map[string]any{"mfaRequired": true, "mfaToken": h.mfa.New(req.Username)})
+			return
+		}
+	}
+	h.startSession(w, r, req.Username, "auth.login")
+}
+
+// startSession legt die Sitzung an, setzt das Cookie und protokolliert die Anmeldung.
+func (h *Handlers) startSession(w http.ResponseWriter, r *http.Request, username, action string) {
+	token, csrf, err := h.store.Create(r.Context(), username)
 	if err != nil {
 		apierr.Write(w, err)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: token, Path: "/", HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteStrictMode})
-	_ = audit.Record(r.Context(), h.db, audit.Entry{Actor: req.Username, Action: "auth.login", Target: ip, Result: "ok"})
-	writeJSON(w, http.StatusOK, map[string]string{"username": req.Username, "csrfToken": csrf})
+	_ = audit.Record(r.Context(), h.db, audit.Entry{Actor: username, Action: action, Target: ClientIP(r), Result: "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"username": username, "csrfToken": csrf})
 }
 
 // Logout beendet die Sitzung.
