@@ -10,6 +10,8 @@ import PoolDialog from '@/components/storage/PoolDialog.vue'
 import ConfirmDeleteDialog from '@/components/storage/ConfirmDeleteDialog.vue'
 import SnapraidDialog from '@/components/storage/SnapraidDialog.vue'
 import SnapraidPanel from '@/components/storage/SnapraidPanel.vue'
+import ReplaceDiskDialog from '@/components/storage/ReplaceDiskDialog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useStorageStore } from '@/stores/storage'
 import { POLICIES, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
@@ -22,6 +24,8 @@ const deleting = ref<PoolView | null>(null)
 const busy = ref(false)
 const snapPool = ref<PoolView | null>(null)
 const disabling = ref<PoolView | null>(null)
+const replacing = ref<PoolView | null>(null)
+const cancelling = ref<PoolView | null>(null)
 const refreshKey = ref(0)
 
 onMounted(() => store.refresh())
@@ -51,6 +55,8 @@ async function run(fn: () => Promise<void>, done: string) {
     deleting.value = null
     snapPool.value = null
     disabling.value = null
+    replacing.value = null
+    cancelling.value = null
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   } finally {
@@ -63,6 +69,10 @@ const actionLabel = { sync: 'Synchronisierung abgeschlossen', scrub: 'Prüfung a
 
 function runSnapraid(p: PoolView, action: 'sync' | 'scrub' | 'diff', force: boolean) {
   run(() => store.runSnapraid(p.name, action, force), actionLabel[action])
+}
+
+function replaceDisk(v: { oldDisk: string; newDisk: string }) {
+  run(() => store.replaceDisk(replacing.value!.name, v.oldDisk, v.newDisk), 'Plattenersatz abgeschlossen')
 }
 
 function saveSnapraid(input: SnapraidInput) {
@@ -107,6 +117,9 @@ function save(input: PoolInput) {
           @configure="snapPool = p"
           @run="(action, force) => runSnapraid(p, action, force)"
           @disable="disabling = p"
+          @replace="replacing = p"
+          @retry="run(() => store.retryRecovery(p.name), 'Wiederherstellung abgeschlossen')"
+          @cancel-recovery="cancelling = p"
         />
       </template>
       <template #footer>
@@ -118,6 +131,23 @@ function save(input: PoolInput) {
     </Card>
   </div>
   <PoolDialog v-model:visible="showDialog" :disks="store.disks" :pools="store.pools" :pool="editing" :busy="busy" @submit="save" />
+  <ReplaceDiskDialog
+    :visible="!!replacing"
+    :pool="replacing"
+    :disks="store.disks"
+    :busy="busy"
+    @update:visible="(v) => !v && (replacing = null)"
+    @submit="replaceDisk"
+  />
+  <ConfirmDialog
+    :visible="!!cancelling"
+    header="Wiederherstellung abbrechen"
+    :message="`Die Wiederherstellung für „${cancelling?.name}“ wird abgebrochen. Dateien der ersetzten Platte, die noch nicht zurückgeholt wurden, bleiben verloren; Synchronisierung und Prüfung laufen danach wieder.`"
+    confirm-label="Abbrechen"
+    :busy="busy"
+    @update:visible="(v) => !v && (cancelling = null)"
+    @confirm="run(() => store.cancelRecovery(cancelling!.name), 'Wiederherstellung abgebrochen')"
+  />
   <SnapraidDialog
     :visible="!!snapPool"
     :pool="snapPool"
