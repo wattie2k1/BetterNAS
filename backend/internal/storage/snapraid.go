@@ -314,6 +314,8 @@ func runOf(st snapraid.Status, action string) *snapraid.RunState {
 		return st.LastSync
 	case "scrub":
 		return st.LastScrub
+	case "fix":
+		return st.LastFix
 	}
 	return nil
 }
@@ -355,43 +357,52 @@ func (m *Manager) RunSnapraid(ctx context.Context, actor, pool, action string, f
 			_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: kind, Target: pool, Result: result, Details: map[string]any{"force": force}})
 			m.hub.Publish(events.Message{Type: "pools.changed"})
 		}()
-		log.Printf("Starte SnapRAID %s für Pool %s …", action, pool)
-		req := map[string]any{"pool": pool, "action": action, "force": force}
-		if err := m.agent.Call(ctx, "snapraid.start", req, nil); err != nil {
+		return m.startAndWait(ctx, log, pool, action, force, "", before)
+	}), nil
+}
+
+// startAndWait startet eine SnapRAID-Aktion über den Agent und wartet, bis ein neues Ergebnis vorliegt.
+// before ist der Zustand vor dem Start (zum Erkennen eines neuen Laufs). disk gilt nur für fix.
+func (m *Manager) startAndWait(ctx context.Context, log jobs.Logger, pool, action string, force bool, disk string, before snapraid.Status) error {
+	log.Printf("Starte SnapRAID %s für Pool %s …", action, pool)
+	req := map[string]any{"pool": pool, "action": action, "force": force}
+	if disk != "" {
+		req["disk"] = disk
+	}
+	if err := m.agent.Call(ctx, "snapraid.start", req, nil); err != nil {
+		return err
+	}
+	began, seen := time.Now(), false
+	for {
+		time.Sleep(m.pollEvery)
+		st, err := m.SnapraidStatus(ctx, pool)
+		if err != nil {
 			return err
 		}
-		began, seen := time.Now(), false
-		for {
-			time.Sleep(m.pollEvery)
-			st, err := m.SnapraidStatus(ctx, pool)
-			if err != nil {
-				return err
-			}
-			seen = seen || st.Running
-			if st.Running {
-				continue
-			}
-			if !seen && !stamp(st, action).After(stamp(before, action)) {
-				if time.Since(began) > startTimeout {
-					return apierr.New(apierr.Internal, "Der SnapRAID-Lauf hat nicht gestartet.")
-				}
-				continue
-			}
-			if st.Log != "" {
-				log.Printf("%s", st.Log)
-			}
-			if action == "diff" {
-				return nil
-			}
-			r := runOf(st, action)
-			switch {
-			case r == nil:
-				return apierr.New(apierr.Internal, "Der SnapRAID-Lauf hat kein Ergebnis hinterlassen.")
-			case r.Result == snapraid.ResultOK:
-				return nil
-			default:
-				return apierr.New(apierr.Conflict, r.Message)
-			}
+		seen = seen || st.Running
+		if st.Running {
+			continue
 		}
-	}), nil
+		if !seen && !stamp(st, action).After(stamp(before, action)) {
+			if time.Since(began) > startTimeout {
+				return apierr.New(apierr.Internal, "Der SnapRAID-Lauf hat nicht gestartet.")
+			}
+			continue
+		}
+		if st.Log != "" {
+			log.Printf("%s", st.Log)
+		}
+		if action == "diff" {
+			return nil
+		}
+		r := runOf(st, action)
+		switch {
+		case r == nil:
+			return apierr.New(apierr.Internal, "Der SnapRAID-Lauf hat kein Ergebnis hinterlassen.")
+		case r.Result == snapraid.ResultOK:
+			return nil
+		default:
+			return apierr.New(apierr.Conflict, r.Message)
+		}
+	}
 }
