@@ -131,3 +131,43 @@ func TestParseNetworks(t *testing.T) {
 		t.Fatalf("%v", n)
 	}
 }
+
+func TestDirectNetwork(t *testing.T) {
+	s := okSpec()
+	s.Network = "direct:eno1"
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	x, err := BuildXML(s, true)
+	if err != nil || !strings.Contains(x, "<interface type='direct'>") || !strings.Contains(x, "<source dev='eno1' mode='bridge'/>") {
+		t.Fatalf("%v\n%s", err, x)
+	}
+	for _, bad := range []string{"direct:", "direct:E0", "direct:a b", "direct:../x", "direct:a'/><x", "direct:abcdefghijklmnop"} {
+		s.Network = bad
+		if s.Validate() == nil {
+			t.Errorf("%q muss abgelehnt werden", bad)
+		}
+	}
+}
+
+func TestParseSnapshots(t *testing.T) {
+	out := []byte(" Name    Creation Time               State\n------------------------------------------------\n vor-update   2026-11-17 10:49:12 +0100   shutoff\n s2   2026-11-17 11:00:00 +0100   running\n\n")
+	l := ParseSnapshots(out)
+	if len(l) != 2 || l[0].Name != "vor-update" || l[0].State != "shutoff" || l[1].Created != "2026-11-17 11:00:00 +0100" {
+		t.Fatalf("%+v", l)
+	}
+	if got := ParseSnapshots([]byte(" Name   Creation Time   State\n----\n")); got == nil || len(got) != 0 {
+		t.Fatal("leere Liste erwartet")
+	}
+}
+
+func TestParseDisplayPort(t *testing.T) {
+	if p, ok := ParseDisplayPort([]byte("vnc://127.0.0.1:2\n")); !ok || p != 5902 {
+		t.Fatalf("%d %v", p, ok)
+	}
+	for _, bad := range []string{"", "spice://127.0.0.1:0", "vnc://127.0.0.1:x", "vnc://h:1000"} {
+		if _, ok := ParseDisplayPort([]byte(bad)); ok {
+			t.Errorf("%q", bad)
+		}
+	}
+}

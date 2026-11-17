@@ -1,8 +1,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/coder/websocket"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
@@ -41,6 +48,68 @@ func (s *server) registerVMs(mux *http.ServeMux) {
 		v, err := m.ISOs(r.Context())
 		reply(w, v, err)
 	})
+	mux.HandleFunc("GET /api/v1/vms/interfaces", func(w http.ResponseWriter, r *http.Request) {
+		v, err := m.Interfaces(r.Context())
+		reply(w, v, err)
+	})
+	mux.HandleFunc("PUT /api/v1/vms/isos/{file}", func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > vm.MaxUploadBytes {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Die Datei ist größer als 50 GiB"))
+			return
+		}
+		body := http.MaxBytesReader(w, r.Body, vm.MaxUploadBytes)
+		noContent(w, m.UploadISO(r.Context(), actor(r), r.PathValue("file"), body))
+	})
+	mux.HandleFunc("DELETE /api/v1/vms/isos/{file}", func(w http.ResponseWriter, r *http.Request) {
+		noContent(w, m.DeleteISO(r.Context(), actor(r), r.PathValue("file")))
+	})
+	mux.HandleFunc("GET /api/v1/vms/{name}/snapshots", func(w http.ResponseWriter, r *http.Request) {
+		v, err := m.Snapshots(r.Context(), r.PathValue("name"))
+		reply(w, v, err)
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/snapshots", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		if err := m.SnapshotAction(r.Context(), actor(r), "create", r.PathValue("name"), in.Name); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"name": in.Name})
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/snapshots/{snap}/revert", func(w http.ResponseWriter, r *http.Request) {
+		noContent(w, m.SnapshotAction(r.Context(), actor(r), "revert", r.PathValue("name"), r.PathValue("snap")))
+	})
+	mux.HandleFunc("DELETE /api/v1/vms/{name}/snapshots/{snap}", func(w http.ResponseWriter, r *http.Request) {
+		noContent(w, m.SnapshotAction(r.Context(), actor(r), "delete", r.PathValue("name"), r.PathValue("snap")))
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/clone", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		if err := m.Clone(r.Context(), actor(r), r.PathValue("name"), in.Name); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"name": in.Name})
+	})
+	// Konsole: binäre WebSocket-Frames ↔ VNC-Verbindung (RFB) auf 127.0.0.1 (noVNC-Protokoll „binary“).
+	mux.HandleFunc("GET /api/v1/vms/{name}/console", func(w http.ResponseWriter, r *http.Request) {
+		port, err := m.ConsolePort(r.Context(), actor(r), r.PathValue("name"))
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		proxyVNC(w, r, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	})
 	mux.HandleFunc("GET /api/v1/vms", func(w http.ResponseWriter, r *http.Request) {
 		v, err := m.List(r.Context())
 		reply(w, v, err)
@@ -65,4 +134,58 @@ func (s *server) registerVMs(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/vms/{name}", func(w http.ResponseWriter, r *http.Request) {
 		noContent(w, m.Delete(r.Context(), actor(r), r.PathValue("name"), r.URL.Query().Get("disks") == "1"))
 	})
+}
+
+// proxyVNC verbindet einen WebSocket mit einer lokalen VNC-Verbindung.
+func proxyVNC(w http.ResponseWriter, r *http.Request, addr string) {
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(r.Context(), "tcp", addr)
+	if err != nil {
+		apierr.Write(w, apierr.New(apierr.Internal, "Die VNC-Anzeige ist nicht erreichbar"))
+		return
+	}
+	defer conn.Close()
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"binary"}})
+	if err != nil {
+		return
+	}
+	defer c.CloseNow()
+	c.SetReadLimit(1 << 20)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	go func() { // Browser → VNC
+		defer cancel()
+		for {
+			_, b, err := c.Read(ctx)
+			if err != nil {
+				return
+			}
+			if _, err := conn.Write(b); err != nil {
+				return
+			}
+		}
+	}()
+	go func() { // VNC → Browser
+		defer cancel()
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := conn.Read(buf)
+			if n > 0 {
+				wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
+				werr := c.Write(wctx, websocket.MessageBinary, buf[:n])
+				wcancel()
+				if werr != nil {
+					return
+				}
+			}
+			if err != nil {
+				if err != io.EOF {
+					_ = c.Close(websocket.StatusInternalError, "VNC-Verbindung verloren")
+				}
+				return
+			}
+		}
+	}()
+	<-ctx.Done()
+	_ = c.Close(websocket.StatusNormalClosure, "")
 }

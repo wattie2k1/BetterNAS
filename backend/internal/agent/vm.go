@@ -149,16 +149,8 @@ func VMCreate(ctx context.Context, d Deps, spec vm.Spec, start bool) error {
 			return apierr.New(apierr.NotFound, "ISO-Datei nicht gefunden: "+iso)
 		}
 	}
-	nets, err := VMNetworks(ctx, d)
-	if err != nil {
+	if err := checkNetwork(ctx, d, spec.Network); err != nil {
 		return err
-	}
-	found := false
-	for _, n := range nets {
-		found = found || n == spec.Network
-	}
-	if !found {
-		return apierr.New(apierr.InvalidParams, "Das Netzwerk ist nicht aktiv: "+spec.Network)
 	}
 	xml, err := vm.BuildXML(spec, d.FS.Exists("/dev/kvm"))
 	if err != nil {

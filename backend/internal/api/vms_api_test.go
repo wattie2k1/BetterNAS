@@ -1,9 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/coder/websocket"
+	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,6 +42,12 @@ func (a *vmAgentStub) Call(_ context.Context, method string, params, result any)
 		out = []string{"default"}
 	case "vm.isos":
 		out = []string{"debian.iso"}
+	case "vm.snapshots":
+		out = []vm.Snapshot{{Name: "s1", Created: "2026-11-17 10:00:00 +0100", State: "shutoff"}}
+	case "vm.interfaces":
+		out = []string{"eno1"}
+	case "vm.display":
+		out = map[string]int{"port": 5901}
 	}
 	if result != nil && out != nil {
 		b, _ := json.Marshal(out)
@@ -57,10 +68,12 @@ func newVMAPI(t *testing.T) (*storageAPI, *vmAgentStub) {
 	store := auth.NewStore(d, time.Hour)
 	token, csrf, _ := store.Create(context.Background(), "anna")
 	stub := &vmAgentStub{}
+	mgr := vm.NewManager(d, stub, hub)
+	mgr.SetISODir(t.TempDir())
 	h := NewServer(Config{WebDir: t.TempDir(), Dev: true}, Deps{
 		DB: d, Jobs: jm, Hub: hub,
 		Auth: auth.NewHandlers(d, store, nil, nil, false),
-		VMs:  vm.NewManager(d, stub, hub),
+		VMs:  mgr,
 	})
 	return &storageAPI{h: h, cookie: &http.Cookie{Name: auth.CookieName, Value: token}, csrf: csrf, jobs: jm}, stub
 }
@@ -117,6 +130,111 @@ func TestVMRoutesRequireAuth(t *testing.T) {
 	s, _ := newVMAPI(t)
 	s.cookie = &http.Cookie{Name: auth.CookieName, Value: "ungueltig"}
 	if w := s.do("GET", "/api/v1/vms", ""); w.Code != 401 {
+		t.Fatalf("%d", w.Code)
+	}
+}
+
+func TestSnapshotAndCloneRoutes(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vms/debian/snapshots", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"s1"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/snapshots", `{"name":"vor-update"}`); w.Code != 201 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.snapshot.create"].(map[string]any); p["snapshot"] != "vor-update" || p["name"] != "debian" {
+		t.Fatalf("%v", stub.calls["vm.snapshot.create"])
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/snapshots", `{"name":"--all"}`); w.Code != 400 {
+		t.Fatalf("ungültiger Name %d", w.Code)
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/snapshots/s1/revert", ""); w.Code != 204 {
+		t.Fatalf("%d", w.Code)
+	}
+	if w := s.do("DELETE", "/api/v1/vms/debian/snapshots/s1", ""); w.Code != 204 {
+		t.Fatalf("%d", w.Code)
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/clone", `{"name":"debian2"}`); w.Code != 201 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.clone"].(map[string]any); p["newName"] != "debian2" {
+		t.Fatalf("%v", stub.calls["vm.clone"])
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/clone", `{"name":"../x"}`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+	if w := s.do("GET", "/api/v1/vms/interfaces", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "eno1") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+func TestISOUploadRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("PUT", "/api/v1/vms/isos/neu.iso", "inhalt"); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/vms/isos/neu.iso", "zweite"); w.Code != 409 {
+		t.Fatalf("keine Überschreibung: %d", w.Code)
+	}
+	for _, name := range []string{"x.txt", ".iso", "a..b.exe"} {
+		if w := s.do("PUT", "/api/v1/vms/isos/"+name, "x"); w.Code != 400 {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	if w := s.do("DELETE", "/api/v1/vms/isos/neu.iso", ""); w.Code != 204 {
+		t.Fatalf("%d", w.Code)
+	}
+	if p, _ := stub.calls["vm.iso.delete"].(map[string]any); p["file"] != "neu.iso" {
+		t.Fatalf("%v", stub.calls["vm.iso.delete"])
+	}
+}
+
+func TestProxyVNC(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() { // Mini-VNC-Server: Banner senden, danach alles zurückspiegeln
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		_, _ = c.Write([]byte("RFB 003.008\n"))
+		_, _ = io.Copy(c, c)
+	}()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { proxyVNC(w, r, ln.Addr().String()) }))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{Subprotocols: []string{"binary"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	if c.Subprotocol() != "binary" {
+		t.Fatalf("Subprotokoll %q", c.Subprotocol())
+	}
+	typ, b, err := c.Read(ctx)
+	if err != nil || typ != websocket.MessageBinary || string(b) != "RFB 003.008\n" {
+		t.Fatalf("%v %v %q", typ, err, b)
+	}
+	if err := c.Write(ctx, websocket.MessageBinary, []byte("hallo")); err != nil {
+		t.Fatal(err)
+	}
+	if _, b, err = c.Read(ctx); err != nil || !bytes.Equal(b, []byte("hallo")) {
+		t.Fatalf("%v %q", err, b)
+	}
+}
+
+func TestConsoleRouteNeedsAuthAndVM(t *testing.T) {
+	s, _ := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vms/-bad/console", ""); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+	s.cookie = &http.Cookie{Name: auth.CookieName, Value: "ungueltig"}
+	if w := s.do("GET", "/api/v1/vms/debian/console", ""); w.Code != 401 {
 		t.Fatalf("%d", w.Code)
 	}
 }
