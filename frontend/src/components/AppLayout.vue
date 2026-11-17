@@ -96,8 +96,10 @@ async function logout() {
           <Badge v-if="jobs.running.length" :value="jobs.running.length" severity="info" class="badge" />
         </button>
         <div class="chip user glass">
-          <span class="avatar">{{ initial }}</span>
-          <span class="name">{{ auth.user }}</span>
+          <RouterLink to="/profil" class="profile-link" aria-label="Profil" title="Profil">
+            <span class="avatar">{{ initial }}</span>
+            <span class="name">{{ auth.user }}</span>
+          </RouterLink>
           <button class="logout" aria-label="Abmelden" title="Abmelden" @click="logout"><i class="pi pi-sign-out" /></button>
         </div>
       </header>
@@ -260,6 +262,13 @@ async function logout() {
   font-size: 0.85rem;
   color: #fff;
   background: linear-gradient(135deg, var(--bn-accent-1), var(--bn-accent-3));
+}
+.profile-link {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  color: inherit;
+  text-decoration: none;
 }
 .logout {
   all: unset;

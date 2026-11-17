@@ -40,7 +40,7 @@ func renderShare(s Share) []byte {
 		line("comment = %s", s.Comment)
 	}
 	line("browseable = %s", yesNo(s.Browsable))
-	line("read only = yes")
+	line("read only = %s", yesNo(!(s.Guest && s.GuestWrite)))
 	line("guest ok = %s", yesNo(s.Guest))
 	ro, rw, none := principals(s.ACL, AccessRO), principals(s.ACL, AccessRW), principals(s.ACL, AccessNone)
 	if !s.Guest {
@@ -51,7 +51,7 @@ func renderShare(s Share) []byte {
 	if ro != "" {
 		line("read list = %s", ro)
 	}
-	if rw != "" {
+	if rw != "" && !(s.Guest && s.GuestWrite) {
 		line("write list = %s", rw)
 	}
 	line("force group = users")

@@ -23,6 +23,8 @@ var (
 	NameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 	// ISORe erlaubt nur Dateinamen direkt unter ISODir.
 	ISORe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.iso$`)
+	// ImageRe erlaubt fertige Festplatten-Images direkt unter ISODir, die als primäre Disk dienen.
+	ImageRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.qcow2$`)
 	// DomainRe erlaubt auch Namen bestehender, nicht von BetterNAS angelegter VMs (ohne führendes `-`).
 	DomainRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	// NetworkRe ist ein libvirt-Netzname.
@@ -34,6 +36,9 @@ var Actions = map[string]bool{"start": true, "shutdown": true, "destroy": true, 
 
 // DiskPath ist die Disk-Datei einer VM. Der Name muss vorher mit NameRe geprüft sein.
 func DiskPath(name string) string { return path.Join(DiskDir, name+".qcow2") }
+
+// IsImage meldet, ob die Auswahl ein Festplatten-Image (.qcow2) statt einer Installations-ISO ist.
+func (s Spec) IsImage() bool { return ImageRe.MatchString(s.ISO) }
 
 // ISOPath ist der Pfad einer ISO-Datei. Der Dateiname muss vorher mit ISORe geprüft sein.
 func ISOPath(file string) string { return path.Join(ISODir, file) }
@@ -71,8 +76,8 @@ func (s Spec) Validate() error {
 		return invalid("Arbeitsspeicher: 256 MiB bis 256 GiB")
 	case s.DiskGiB < MinDiskGiB || s.DiskGiB > MaxDiskGiB:
 		return invalid("Festplatte: 1 bis 65536 GiB")
-	case s.ISO != "" && !ISORe.MatchString(s.ISO):
-		return invalid("Ungültiger ISO-Dateiname")
+	case s.ISO != "" && !ISORe.MatchString(s.ISO) && !ImageRe.MatchString(s.ISO):
+		return invalid("Ungültiger ISO- oder Image-Dateiname")
 	case s.DriverISO != "" && !ISORe.MatchString(s.DriverISO):
 		return invalid("Ungültiger Dateiname der Treiber-ISO")
 	case s.TPM && s.Firmware != "uefi":

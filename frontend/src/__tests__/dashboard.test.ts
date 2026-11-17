@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
+import ToastService from 'primevue/toastservice'
 import DashboardView from '@/views/DashboardView.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -15,7 +16,8 @@ function stubFetch(samples: ReturnType<typeof info>[]) {
   vi.stubGlobal(
     'fetch',
     vi.fn().mockImplementation(async (url: string) => {
-      const body = String(url).includes('/system/info') ? samples[Math.min(n++, samples.length - 1)] : []
+      const u = String(url)
+      const body = u.includes('/system/info') ? samples[Math.min(n++, samples.length - 1)] : u.includes('/docker/status') ? { installed: true, active: true, version: '27' } : []
       return new Response(JSON.stringify(body), { status: 200 })
     }),
   )
@@ -25,7 +27,7 @@ function mountDash() {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().user = 'anna'
-  return mount(DashboardView, { global: { plugins: [pinia, PrimeVue], stubs: { RouterLink: true } } })
+  return mount(DashboardView, { global: { plugins: [pinia, PrimeVue, ToastService], stubs: { RouterLink: true } } })
 }
 const ids = (w: ReturnType<typeof mountDash>) => w.findAll('article.widget').map((a) => a.attributes('data-test')!.replace('tile-', ''))
 
@@ -71,7 +73,7 @@ describe('Dashboard: Kacheln sortieren', () => {
     stubFetch([info(1, 1)])
     const w = mountDash()
     await flushPromises()
-    expect(ids(w)).toEqual(['storage', 'cpu', 'memory', 'disks', 'system'])
+    expect(ids(w)).toEqual(['storage', 'cpu', 'memory', 'disks', 'docker', 'system'])
     expect(w.find('[data-test="tiles-reset"]').exists()).toBe(false)
     w.unmount()
   })
@@ -81,15 +83,15 @@ describe('Dashboard: Kacheln sortieren', () => {
     const w = mountDash()
     await flushPromises()
     await dragTo(w, 'system', 'storage')
-    expect(ids(w)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks'])
+    expect(ids(w)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks', 'docker'])
     expect(JSON.parse(localStorage.getItem('bn-dashboard-tiles:anna')!)).toContain('system')
     w.unmount()
 
     const w2 = mountDash()
     await flushPromises()
-    expect(ids(w2)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks'])
+    expect(ids(w2)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks', 'docker'])
     await w2.find('[data-test="tiles-reset"]').trigger('click')
-    expect(ids(w2)).toEqual(['storage', 'cpu', 'memory', 'disks', 'system'])
+    expect(ids(w2)).toEqual(['storage', 'cpu', 'memory', 'disks', 'docker', 'system'])
     expect(localStorage.getItem('bn-dashboard-tiles:anna')).toBeNull()
     w2.unmount()
   })
@@ -99,11 +101,11 @@ describe('Dashboard: Kacheln sortieren', () => {
     const w = mountDash()
     await flushPromises()
     await w.find('[data-test="tile-cpu"] .handle').trigger('keydown', { key: 'ArrowLeft' })
-    expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'system'])
+    expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'docker', 'system'])
     await w.find('[data-test="tile-cpu"] .handle').trigger('keydown', { key: 'ArrowLeft' }) // schon ganz vorn
-    expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'system'])
+    expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'docker', 'system'])
     await w.find('[data-test="tile-cpu"] .handle').trigger('keydown', { key: 'a' })
-    expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'system'])
+    expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'docker', 'system'])
     w.unmount()
   })
 
@@ -112,7 +114,7 @@ describe('Dashboard: Kacheln sortieren', () => {
     stubFetch([info(1, 1)])
     const w = mountDash()
     await flushPromises()
-    expect(ids(w)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks'])
+    expect(ids(w)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks', 'docker'])
     w.unmount()
   })
 })

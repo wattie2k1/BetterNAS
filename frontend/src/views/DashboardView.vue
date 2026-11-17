@@ -5,6 +5,7 @@ import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
 import { api } from '@/api/client'
 import RingGauge from '@/components/RingGauge.vue'
+import DockerTile from '@/components/docker/DockerTile.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useStorageStore } from '@/stores/storage'
 import { storageApi, unprotected, type PoolView, type SnapraidStatus } from '@/api/storage'
@@ -96,13 +97,14 @@ const storagePercent = computed(() => (storageTotal.value ? (storageUsed.value /
 const poolPercent = (p: PoolView) => (p.sizeBytes ? Math.round(((p.sizeBytes - p.freeBytes) / p.sizeBytes) * 100) : 0)
 
 // --- Kacheln: vom Nutzer sortierbar, Reihenfolge wird im Browser gemerkt ---
-const TILES = ['storage', 'cpu', 'memory', 'disks', 'snapraid', 'system'] as const
+const TILES = ['storage', 'cpu', 'memory', 'disks', 'snapraid', 'docker', 'system'] as const
 const tileMeta: Record<string, { icon: string; title: string }> = {
   storage: { icon: 'pi pi-database', title: 'Speicher' },
   cpu: { icon: 'pi pi-bolt', title: 'Prozessor' },
   memory: { icon: 'pi pi-microchip', title: 'Arbeitsspeicher' },
   disks: { icon: 'pi pi-hard-drive', title: 'Datenträger' },
   snapraid: { icon: 'pi pi-shield', title: 'SnapRAID' },
+  docker: { icon: 'pi pi-box', title: 'Docker-Container' },
   system: { icon: 'pi pi-info-circle', title: 'System' },
 }
 const tiles = useTileOrder(() => `bn-dashboard-tiles:${auth.user ?? ''}`, TILES)
@@ -134,15 +136,6 @@ const dataDisks = computed(() => store.disks.filter((d) => d.role === 'data' || 
 const smartWarnings = computed(() => store.disks.filter((d) => d.smart && !d.smart.passed).length)
 const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missing').length)
 
-const apps = [
-  { label: 'Datenträger', hint: 'Platten verwalten', icon: 'pi pi-database', to: '/speicher/datentraeger', color: ['#0ea5e9', '#22d3ee'] },
-  { label: 'Speicherpools', hint: 'Pools & SnapRAID', icon: 'pi pi-box', to: '/speicher/pools', color: ['#10b981', '#34d399'] },
-  { label: 'Freigaben', hint: 'Ordner im Netzwerk', icon: 'pi pi-folder-open', to: '/freigaben', color: ['#f59e0b', '#fbbf24'] },
-  { label: 'Benutzer', hint: 'Konten & Rechte', icon: 'pi pi-users', to: '/benutzer', color: ['#ec4899', '#f472b6'] },
-  { label: 'Gruppen', hint: 'Zugriff bündeln', icon: 'pi pi-sitemap', to: '/benutzer/gruppen', color: ['#a855f7', '#c084fc'] },
-  { label: 'Updates', hint: 'System aktuell halten', icon: 'pi pi-download', to: '/system/updates', color: ['#ef4444', '#fb7185'] },
-]
-const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
 </script>
 
 <template>
@@ -245,6 +238,8 @@ const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
         </li>
       </ul>
 
+      <DockerTile v-else-if="id === 'docker'" />
+
       <template v-else-if="id === 'system'">
         <dl v-if="info">
           <dt>Gerätename</dt>
@@ -261,13 +256,6 @@ const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
     </article>
   </div>
 
-  <h3 class="section">Schnellzugriff</h3>
-  <div class="apps">
-    <RouterLink v-for="a in apps" :key="a.to" :to="a.to" class="app glass">
-      <span class="app-icon" :style="{ background: gradient(a.color) }"><i :class="a.icon" /></span>
-      <span class="app-text"><strong>{{ a.label }}</strong><small>{{ a.hint }}</small></span>
-    </RouterLink>
-  </div>
 </template>
 
 <style scoped>
@@ -419,47 +407,6 @@ dt {
 dd {
   margin: 0;
   overflow-wrap: anywhere;
-}
-.section {
-  margin: 30px 0 12px;
-  font-size: 1rem;
-  color: var(--bn-text-soft);
-  font-weight: 650;
-}
-.apps {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 14px;
-}
-.app {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
-  text-decoration: none;
-  color: var(--p-text-color);
-  transition: transform 0.18s ease, background 0.18s ease;
-}
-.app:hover {
-  transform: translateY(-3px);
-  background: var(--bn-tile-hover);
-}
-.app-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: 1.3rem;
-  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 50%);
-}
-.app-text {
-  display: flex;
-  flex-direction: column;
-}
-.app-text small {
-  color: var(--bn-text-soft);
 }
 @media (max-width: 800px) {
   .widget.storage {

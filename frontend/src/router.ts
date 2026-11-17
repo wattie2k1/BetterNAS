@@ -15,6 +15,7 @@ import PoolsView from '@/views/storage/PoolsView.vue'
 import StacksView from '@/views/docker/StacksView.vue'
 import ResourcesView from '@/views/docker/ResourcesView.vue'
 import ContainersView from '@/views/docker/ContainersView.vue'
+import ProfileView from '@/views/ProfileView.vue'
 import VmsView from '@/views/vms/VmsView.vue'
 
 export const router = createRouter({
@@ -35,6 +36,7 @@ export const router = createRouter({
         { path: 'docker/ressourcen', name: 'resources', component: ResourcesView, meta: { title: 'Docker-Ressourcen' } },
         { path: 'vms', name: 'vms', component: VmsView, meta: { title: 'Virtuelle Maschinen' } },
         { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
+        { path: 'profil', name: 'profile', component: ProfileView, meta: { title: 'Profil' } },
         { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
         { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },
       ],

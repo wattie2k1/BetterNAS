@@ -15,6 +15,8 @@ export interface ShareInput {
   comment: string
   browsable: boolean
   guest: boolean
+  /** Gäste dürfen auch schreiben (nur mit guest). */
+  guestWrite: boolean
   recycle: boolean
   fruit: boolean
   acl: ShareAcl[]

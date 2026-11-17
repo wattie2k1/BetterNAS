@@ -110,16 +110,18 @@ func VMNetworks(ctx context.Context, d Deps) ([]string, error) {
 	return vm.ParseNetworks(res.Stdout)
 }
 
-// VMISOs liefert die ISO-Dateinamen unter /srv/vms/iso.
+// VMISOs liefert die ISO- und qcow2-Dateinamen unter /srv/vms/iso.
 func VMISOs(_ context.Context, d Deps) ([]string, error) {
-	files, err := d.FS.Glob(path.Join(vm.ISODir, "*.iso"))
-	if err != nil {
-		return nil, err
-	}
 	list := []string{}
-	for _, f := range files {
-		if b := path.Base(f); vm.ISORe.MatchString(b) {
-			list = append(list, b)
+	for _, pattern := range []string{"*.iso", "*.qcow2"} {
+		files, err := d.FS.Glob(path.Join(vm.ISODir, pattern))
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range files {
+			if b := path.Base(f); vm.ISORe.MatchString(b) || vm.ImageRe.MatchString(b) {
+				list = append(list, b)
+			}
 		}
 	}
 	sort.Strings(list)
@@ -165,7 +167,12 @@ func VMCreate(ctx context.Context, d Deps, spec vm.Spec, start bool) error {
 	if err := d.FS.MkdirAll(vm.DiskDir, 0o755); err != nil {
 		return err
 	}
-	if _, err := run(ctx, d.Runner, nil, "qemu-img", "create", "-f", "qcow2", disk, strconv.Itoa(spec.DiskGiB)+"G"); err != nil {
+	// Ein fertiges Image wird kopiert (das Original bleibt unverändert); sonst entsteht eine leere Disk.
+	diskArgs := []string{"create", "-f", "qcow2", disk, strconv.Itoa(spec.DiskGiB) + "G"}
+	if spec.IsImage() {
+		diskArgs = []string{"convert", "-O", "qcow2", vm.ISOPath(spec.ISO), disk}
+	}
+	if _, err := run(ctx, d.Runner, nil, "qemu-img", diskArgs...); err != nil {
 		return apierr.New(apierr.Internal, "Die Festplatte konnte nicht angelegt werden").With("detail", err.Error())
 	}
 	if _, err := virshOK(ctx, d, []byte(xml), "Die VM konnte nicht angelegt werden", "define", "/dev/stdin"); err != nil {

@@ -14,7 +14,7 @@ const users: UserView[] = [
 ]
 const groups: GroupView[] = [{ name: 'familie', gid: 10000, members: [] }]
 const existing: ShareView = {
-  name: 'Filme', pool: 'media', subdir: 'Filme', comment: 'Alle Filme', browsable: true, guest: false, recycle: true, fruit: false,
+  name: 'Filme', pool: 'media', subdir: 'Filme', comment: 'Alle Filme', browsable: true, guest: false, guestWrite: false, recycle: true, fruit: false,
   acl: [{ type: 'user', name: 'bob', access: 'ro' }], path: '/srv/pools/media/Filme', poolMounted: true, uncPath: '\\\\nas\\Filme',
 }
 const plugins = () => [createPinia(), PrimeVue]
@@ -42,7 +42,7 @@ describe('ShareDialog', () => {
     await submit(w).trigger('click')
     expect(w.emitted('submit')?.[0]).toEqual([
       {
-        name: 'Fotos', pool: pools[0].name, subdir: 'Fotos', comment: '', browsable: true, guest: false, recycle: true, fruit: true,
+        name: 'Fotos', pool: pools[0].name, subdir: 'Fotos', comment: '', browsable: true, guest: false, guestWrite: false, recycle: true, fruit: true,
         acl: [{ type: 'user', name: 'anna', access: 'rw' }],
       },
     ])

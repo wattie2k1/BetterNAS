@@ -45,9 +45,11 @@ type Share struct {
 	Comment   string `json:"comment"`
 	Browsable bool   `json:"browsable"`
 	Guest     bool   `json:"guest"`
-	Recycle   bool   `json:"recycle"`
-	Fruit     bool   `json:"fruit"`
-	ACL       []ACL  `json:"acl"`
+	// GuestWrite erlaubt Gästen (und allen ohne Listeneintrag) auch Schreiben; nur mit Guest sinnvoll.
+	GuestWrite bool  `json:"guestWrite"`
+	Recycle    bool  `json:"recycle"`
+	Fruit      bool  `json:"fruit"`
+	ACL        []ACL `json:"acl"`
 }
 
 // Path ist der absolute Ordner der Freigabe.

@@ -31,6 +31,7 @@ const subdirTouched = ref(false)
 const comment = ref('')
 const browsable = ref(true)
 const guest = ref(false)
+const guestWrite = ref(false)
 const recycle = ref(true)
 const fruit = ref(true)
 /** Schlüssel "user:anna" bzw. "group:familie" → Zugriff; fehlend = kein Eintrag. */
@@ -47,6 +48,7 @@ function reset() {
   comment.value = s?.comment ?? ''
   browsable.value = s?.browsable ?? true
   guest.value = s?.guest ?? false
+  guestWrite.value = s?.guestWrite ?? false
   recycle.value = s?.recycle ?? true
   fruit.value = s?.fruit ?? true
   access.value = {}
@@ -61,7 +63,7 @@ watch(name, (n) => {
 })
 
 const accessOptions = computed(() => [
-  { value: '', label: guest.value ? 'Nur Lesen (Gast)' : 'Kein Zugriff' },
+  { value: '', label: guest.value ? (guestWrite.value ? 'Wie Gast' : 'Nur Lesen (Gast)') : 'Kein Zugriff' },
   { value: 'ro', label: 'Lesen' },
   { value: 'rw', label: 'Lesen und Schreiben' },
   ...(guest.value ? [{ value: 'none', label: 'Gesperrt' }] : []),
@@ -108,6 +110,7 @@ function submit() {
     comment: comment.value,
     browsable: browsable.value,
     guest: guest.value,
+    guestWrite: guest.value && guestWrite.value,
     recycle: recycle.value,
     fruit: fruit.value,
     acl: acl.value,
@@ -185,7 +188,18 @@ function set(type: string, n: string, v: string | null) {
       </div>
       <div class="opt">
         <ToggleSwitch v-model="guest" input-id="opt-guest" />
-        <label for="opt-guest">Gastzugriff (ohne Anmeldung, nur Lesen)</label>
+        <label for="opt-guest">Gastzugriff (ohne Anmeldung)</label>
+      </div>
+      <div v-if="guest" class="opt">
+        <Select
+          v-model="guestWrite"
+          input-id="opt-guest-write"
+          :options="[{ value: false, label: 'Nur lesend (Read-Only)' }, { value: true, label: 'Lesend und schreibend (Read-Write)' }]"
+          option-label="label"
+          option-value="value"
+          append-to="self"
+          class="sel"
+        />
       </div>
       <div class="opt">
         <ToggleSwitch v-model="recycle" input-id="opt-recycle" />

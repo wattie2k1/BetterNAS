@@ -80,7 +80,7 @@ func b2i(b bool) int {
 
 // load liest alle Freigaben samt Rechten (Reihenfolge der Rechte bleibt erhalten).
 func (m *Manager) load(ctx context.Context) (State, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT name, pool, subdir, comment, browsable, guest, recycle, fruit FROM shares ORDER BY name COLLATE NOCASE`)
+	rows, err := m.db.QueryContext(ctx, `SELECT name, pool, subdir, comment, browsable, guest, guest_write, recycle, fruit FROM shares ORDER BY name COLLATE NOCASE`)
 	if err != nil {
 		return State{}, err
 	}
@@ -88,12 +88,12 @@ func (m *Manager) load(ctx context.Context) (State, error) {
 	index := map[string]int{}
 	for rows.Next() {
 		var s Share
-		var br, gu, re, fr int
-		if err := rows.Scan(&s.Name, &s.Pool, &s.Subdir, &s.Comment, &br, &gu, &re, &fr); err != nil {
+		var br, gu, gw, re, fr int
+		if err := rows.Scan(&s.Name, &s.Pool, &s.Subdir, &s.Comment, &br, &gu, &gw, &re, &fr); err != nil {
 			rows.Close()
 			return State{}, err
 		}
-		s.Browsable, s.Guest, s.Recycle, s.Fruit = br == 1, gu == 1, re == 1, fr == 1
+		s.Browsable, s.Guest, s.GuestWrite, s.Recycle, s.Fruit = br == 1, gu == 1, gw == 1, re == 1, fr == 1
 		s.ACL = []ACL{}
 		index[strings.ToLower(s.Name)] = len(st.Shares)
 		st.Shares = append(st.Shares, s)
@@ -228,13 +228,13 @@ func (m *Manager) applyAndCommit(ctx context.Context, log jobs.Logger, st State,
 
 func writeShare(ctx context.Context, tx *sql.Tx, s Share, now time.Time, create bool) error {
 	if create {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO shares(name, pool, subdir, comment, browsable, guest, recycle, fruit, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-			s.Name, s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.Recycle), b2i(s.Fruit), now.UTC().Format(time.RFC3339)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO shares(name, pool, subdir, comment, browsable, guest, guest_write, recycle, fruit, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			s.Name, s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.GuestWrite), b2i(s.Recycle), b2i(s.Fruit), now.UTC().Format(time.RFC3339)); err != nil {
 			return err
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `UPDATE shares SET pool=?, subdir=?, comment=?, browsable=?, guest=?, recycle=?, fruit=? WHERE name = ?`,
-			s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.Recycle), b2i(s.Fruit), s.Name); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE shares SET pool=?, subdir=?, comment=?, browsable=?, guest=?, guest_write=?, recycle=?, fruit=? WHERE name = ?`,
+			s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.GuestWrite), b2i(s.Recycle), b2i(s.Fruit), s.Name); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM share_acl WHERE share_name = ?`, s.Name); err != nil {

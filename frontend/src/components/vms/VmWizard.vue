@@ -113,7 +113,9 @@ const fwOptions = [
   { label: 'UEFI', value: 'uefi' },
   { label: 'BIOS', value: 'bios' },
 ]
-const isoOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.map((i) => ({ label: i, value: i }))])
+const isoOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.map((i) => ({ label: i.endsWith('.qcow2') ? `${i} (Festplatten-Image)` : i, value: i }))])
+const driverOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.filter((i) => !i.endsWith('.qcow2')).map((i) => ({ label: i, value: i }))])
+const isImage = computed(() => iso.value.endsWith('.qcow2'))
 </script>
 
 <template>
@@ -165,13 +167,14 @@ const isoOptions = computed(() => [{ label: '— keine —', value: '' }, ...iso
 
     <div v-else class="body">
       <div class="field">
-        <label for="vm-iso">Installations-ISO</label>
+        <label for="vm-iso">Installations-ISO oder Festplatten-Image (.qcow2)</label>
         <Select v-model="iso" input-id="vm-iso" :options="isoOptions" option-label="label" option-value="value" data-test="vm-iso" />
-        <small v-if="!isos.length" class="hint">ISO-Dateien unter /srv/vms/iso ablegen – ein Upload folgt.</small>
+        <small v-if="!isos.length" class="hint">ISO- oder qcow2-Dateien unter /srv/vms/iso ablegen – ein Upload folgt.</small>
+        <small v-else-if="isImage" class="hint" data-test="vm-image-hint">Das Image wird als primäre Festplatte kopiert; das Original bleibt unverändert, die Größe aus Schritt 2 gilt dann nicht.</small>
       </div>
       <div v-if="os === 'windows'" class="field">
         <label for="vm-drv">VirtIO-Treiber-ISO (optional)</label>
-        <Select v-model="driverIso" input-id="vm-drv" :options="isoOptions" option-label="label" option-value="value" data-test="vm-driver" />
+        <Select v-model="driverIso" input-id="vm-drv" :options="driverOptions" option-label="label" option-value="value" data-test="vm-driver" />
       </div>
       <div class="field">
         <label for="vm-net">Netzwerk</label>

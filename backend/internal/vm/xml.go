@@ -69,7 +69,7 @@ func BuildXML(s Spec, kvm bool) (string, error) {
 	b.WriteString("  <on_poweroff>destroy</on_poweroff>\n  <on_reboot>restart</on_reboot>\n  <on_crash>destroy</on_crash>\n  <devices>\n")
 	fmt.Fprintf(&b, "    <disk type='file' device='disk'>\n      <driver name='qemu' type='qcow2'/>\n      <source file='%s'/>\n      <target dev='%s' bus='%s'/>\n    </disk>\n",
 		esc(DiskPath(s.Name)), diskDev, diskBus)
-	if s.ISO != "" {
+	if s.ISO != "" && !s.IsImage() {
 		b.WriteString(cdrom("sdb", ISOPath(s.ISO)))
 	}
 	if s.DriverISO != "" {
