@@ -5,6 +5,7 @@ import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
 import { api } from '@/api/client'
 import RingGauge from '@/components/RingGauge.vue'
+import QuickTiles from '@/components/QuickTiles.vue'
 import DockerTile from '@/components/docker/DockerTile.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useStorageStore } from '@/stores/storage'
@@ -256,6 +257,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
     </article>
   </div>
 
+  <QuickTiles />
 </template>
 
 <style scoped>

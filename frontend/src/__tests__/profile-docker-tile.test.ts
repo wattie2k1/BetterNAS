@@ -56,3 +56,32 @@ describe('DockerTile', () => {
     expect(w.find('[data-test="dock-db"]').text()).toContain('stopped')
   })
 })
+
+describe('QuickTiles', () => {
+  it('zeigt je Container und VM eine Kachel', async () => {
+    const { default: QuickTiles } = await import('@/components/QuickTiles.vue')
+    const containers = [{ id: 'a', name: 'web', image: 'nginx', state: 'running', status: 'Up 3 hours', stack: 'site', ports: [], created: '' }]
+    const vms = [{ name: 'win11', uuid: 'u1', state: 'shutoff', vcpus: 2, memoryMiB: 4096, autostart: false, disks: [] }]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const body = url.includes('/docker/status')
+          ? { installed: true, active: true, version: '27' }
+          : url.includes('/vms/status')
+            ? { installed: true, active: true, kvm: true }
+            : url.includes('/containers')
+              ? containers
+              : url.includes('/vms')
+                ? vms
+                : []
+        return new Response(JSON.stringify(body), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const w = mount(QuickTiles, { global: { plugins: [pinia, PrimeVue, ToastService] } })
+    await flushPromises()
+    expect(w.find('[data-test="quick-container-web"]').text()).toContain('running')
+    expect(w.find('[data-test="quick-vm-win11"]').text()).toContain('aus')
+  })
+})
