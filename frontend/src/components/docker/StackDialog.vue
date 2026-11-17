@@ -20,6 +20,8 @@ const props = defineProps<{
   visible: boolean
   /** null = neuer Stack */
   stack: StackFiles | null
+  /** Vorbelegung eines neuen Stacks (z. B. aus einer Vorlage) */
+  draft?: StackFiles | null
   existing: string[]
   busy?: boolean
   check?: StackCheck | null
@@ -38,9 +40,10 @@ watch(
   () => [props.visible, props.stack] as const,
   ([v]) => {
     if (!v) return
-    name.value = props.stack?.name ?? ''
-    compose.value = props.stack?.compose ?? STACK_TEMPLATE
-    env.value = props.stack?.env ?? ''
+    const src = props.stack ?? props.draft ?? null
+    name.value = src?.name ?? ''
+    compose.value = src?.compose ?? STACK_TEMPLATE
+    env.value = src?.env ?? ''
     tab.value = 'compose'
   },
   { immediate: true },
