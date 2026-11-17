@@ -84,8 +84,13 @@ async function act(c: ContainerInfo, action: ContainerAction) {
       <tbody>
         <tr v-for="c in store.containers" :key="c.id" :data-test="`container-${c.name}`">
           <td>
-            <strong>{{ c.name }}</strong>
-            <div v-if="c.stack" class="sub">Stack {{ c.stack }}</div>
+            <div class="who">
+              <span class="avatar-sm" aria-hidden="true">{{ c.name.slice(0, 1).toUpperCase() }}</span>
+              <div>
+                <strong>{{ c.name }}</strong>
+                <div v-if="c.stack" class="sub">Stack {{ c.stack }}</div>
+              </div>
+            </div>
           </td>
           <td>{{ c.image }}</td>
           <td>
@@ -129,23 +134,46 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 </template>
 
 <style scoped>
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.table-wrap {
+  overflow-x: auto;
+}
 .containers {
   width: 100%;
   border-collapse: collapse;
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
 }
-.containers th,
-.containers td {
+th,
+td {
   text-align: left;
-  padding: 0.6rem 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--bn-border-soft);
   vertical-align: top;
 }
-.sub,
+th {
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+  font-weight: 600;
+}
+.sub {
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+  margin-top: 0.15rem;
+}
 .empty {
   color: var(--p-text-muted-color);
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 .actions {
   white-space: nowrap;
-  text-align: right !important;
+  text-align: right;
 }
 </style>
