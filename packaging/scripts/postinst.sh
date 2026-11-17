@@ -9,7 +9,9 @@ if [ "$1" = "configure" ]; then
 	getent group betternas-admin >/dev/null || addgroup --quiet --system betternas-admin
 
 	install -d -o betternas -g betternas -m 0750 /etc/betternas/tls /var/lib/betternas
-	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms /srv/vms/disks /srv/vms/iso
+	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms /srv/vms/disks
+	# ISO-Upload schreibt die API (Benutzer betternas) direkt hierher; libvirt/qemu liest nur.
+	install -d -o betternas -g betternas -m 0775 /srv/vms/iso
 	install -d -m 0755 /etc/betternas/snapraid /var/lib/betternas/snapraid
 	install -d -m 0700 /srv/appdata/stacks
 	install -d -m 0710 /srv/appdata/docker

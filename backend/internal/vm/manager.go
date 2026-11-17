@@ -3,6 +3,11 @@ package vm
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/audit"
@@ -18,14 +23,15 @@ const changedEvent = "vm.changed"
 
 // Manager verwaltet virtuelle Maschinen über den Agent.
 type Manager struct {
-	db    *sql.DB
-	agent Agent
-	hub   *events.Hub
+	db     *sql.DB
+	agent  Agent
+	hub    *events.Hub
+	isoDir string
 }
 
 // NewManager erzeugt den Manager.
 func NewManager(d *sql.DB, a Agent, hub *events.Hub) *Manager {
-	return &Manager{db: d, agent: a, hub: hub}
+	return &Manager{db: d, agent: a, hub: hub, isoDir: ISODir}
 }
 
 func (m *Manager) record(ctx context.Context, actor, action, target string, err error) {
@@ -103,5 +109,160 @@ func (m *Manager) Delete(ctx context.Context, actor, name string, deleteDisks bo
 	}
 	err := m.agent.Call(ctx, "vm.delete", map[string]any{"name": name, "deleteDisks": deleteDisks}, nil)
 	m.record(ctx, actor, "vm.delete", name, err)
+	return err
+}
+
+// SetISODir ändert das Upload-Verzeichnis (nur für Tests).
+func (m *Manager) SetISODir(dir string) { m.isoDir = dir }
+
+func checkName(name string) error {
+	if !DomainRe.MatchString(name) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger VM-Name")
+	}
+	return nil
+}
+
+func checkSnap(name, snap string) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if !SnapshotRe.MatchString(snap) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Snapshot-Name")
+	}
+	return nil
+}
+
+// Interfaces liefert die Host-Schnittstellen für ein LAN-Netz (macvtap).
+func (m *Manager) Interfaces(ctx context.Context) ([]string, error) {
+	list := []string{}
+	err := m.agent.Call(ctx, "vm.interfaces", nil, &list)
+	return list, err
+}
+
+// Snapshots liefert die Snapshots einer VM.
+func (m *Manager) Snapshots(ctx context.Context, name string) ([]Snapshot, error) {
+	if err := checkName(name); err != nil {
+		return nil, err
+	}
+	list := []Snapshot{}
+	err := m.agent.Call(ctx, "vm.snapshots", map[string]string{"name": name}, &list)
+	return list, err
+}
+
+// SnapshotAction legt einen Snapshot an (create), setzt darauf zurück (revert) oder löscht ihn (delete).
+func (m *Manager) SnapshotAction(ctx context.Context, actor, op, name, snap string) error {
+	if op != "create" && op != "revert" && op != "delete" {
+		return apierr.New(apierr.InvalidParams, "Unbekannte Snapshot-Aktion")
+	}
+	if err := checkSnap(name, snap); err != nil {
+		return err
+	}
+	err := m.agent.Call(ctx, "vm.snapshot."+op, map[string]string{"name": name, "snapshot": snap}, nil)
+	m.record(ctx, actor, "vm.snapshot."+op, name+"@"+snap, err)
+	return err
+}
+
+// Clone klont eine ausgeschaltete VM.
+func (m *Manager) Clone(ctx context.Context, actor, name, newName string) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if !NameRe.MatchString(newName) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Name der Kopie")
+	}
+	err := m.agent.Call(ctx, "vm.clone", map[string]string{"name": name, "newName": newName}, nil)
+	m.record(ctx, actor, "vm.clone", name+" -> "+newName, err)
+	return err
+}
+
+// ConsolePort liefert den lokalen VNC-Port einer laufenden VM und vermerkt die Sitzung im Audit-Log.
+func (m *Manager) ConsolePort(ctx context.Context, actor, name string) (int, error) {
+	if err := checkName(name); err != nil {
+		return 0, err
+	}
+	var out struct {
+		Port int `json:"port"`
+	}
+	err := m.agent.Call(ctx, "vm.display", map[string]string{"name": name}, &out)
+	if err == nil && (out.Port < 5900 || out.Port > 5999) {
+		err = apierr.New(apierr.Internal, "Ungültiger VNC-Port")
+	}
+	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: "vm.console", Target: name, Result: resultOf(err)})
+	return out.Port, err
+}
+
+func resultOf(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "ok"
+}
+
+// MaxUploadBytes ist die größte erlaubte ISO-/Image-Datei.
+const MaxUploadBytes int64 = 50 << 30
+
+// UploadISO speichert eine ISO-/qcow2-Datei unter ISODir. Bestehende Dateien werden nie überschrieben;
+// die Datei erscheint erst nach vollständigem Empfang (Temp-Datei + Hardlink).
+func (m *Manager) UploadISO(ctx context.Context, actor, file string, body io.Reader) error {
+	if !ISORe.MatchString(file) && !ImageRe.MatchString(file) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Dateiname (erlaubt: .iso oder .qcow2, ohne Pfad)")
+	}
+	err := m.upload(file, body)
+	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: "vm.iso.upload", Target: file, Result: resultOf(err)})
+	if err == nil {
+		m.hub.Publish(events.Message{Type: changedEvent})
+	}
+	return err
+}
+
+func (m *Manager) upload(file string, body io.Reader) error {
+	final := filepath.Join(m.isoDir, file)
+	if _, err := os.Lstat(final); err == nil {
+		return apierr.New(apierr.Conflict, "Eine Datei mit diesem Namen existiert bereits")
+	}
+	tmp, err := os.CreateTemp(m.isoDir, ".upload-*")
+	if err != nil {
+		return apierr.New(apierr.Internal, "Das Zielverzeichnis ist nicht beschreibbar").With("detail", err.Error())
+	}
+	defer os.Remove(tmp.Name())
+	_, err = io.Copy(tmp, io.LimitReader(body, MaxUploadBytes+1))
+	if err == nil {
+		var st os.FileInfo
+		if st, err = tmp.Stat(); err == nil && st.Size() > MaxUploadBytes {
+			_ = tmp.Close()
+			return apierr.New(apierr.InvalidParams, "Die Datei ist größer als 50 GiB")
+		}
+	}
+	if err != nil {
+		_ = tmp.Close()
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return apierr.New(apierr.InvalidParams, "Die Datei ist zu groß")
+		}
+		return apierr.New(apierr.Internal, "Der Upload wurde abgebrochen")
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return apierr.New(apierr.Internal, "Die Datei konnte nicht gespeichert werden").With("detail", err.Error())
+	}
+	if err := os.Link(tmp.Name(), final); err != nil {
+		if os.IsExist(err) {
+			return apierr.New(apierr.Conflict, "Eine Datei mit diesem Namen existiert bereits")
+		}
+		return apierr.New(apierr.Internal, "Die Datei konnte nicht gespeichert werden").With("detail", err.Error())
+	}
+	return nil
+}
+
+// DeleteISO löscht eine ISO-/Image-Datei (der Agent prüft, ob eine VM sie verwendet).
+func (m *Manager) DeleteISO(ctx context.Context, actor, file string) error {
+	if !ISORe.MatchString(file) && !ImageRe.MatchString(file) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Dateiname")
+	}
+	err := m.agent.Call(ctx, "vm.iso.delete", map[string]string{"file": file}, nil)
+	m.record(ctx, actor, "vm.iso.delete", file, err)
 	return err
 }

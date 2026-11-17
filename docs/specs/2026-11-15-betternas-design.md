@@ -310,7 +310,7 @@ BetterNAS/
 | 4a | Docker installiert/eingerichtet, Stacks (Editor, Validierung, Deploy/Update/Löschen), Container-Liste und -Aktionen (umgesetzt) | Docker-Verwaltung |
 | 4b | Logs-Stream, Shell (xterm.js), Stats, Update-Prüfung per Digest, Images/Netzwerke/Volumes (umgesetzt) | Docker-Verwaltung komplett |
 | 5a | KVM: libvirt eingerichtet, VM-Liste, Betrieb (start/shutdown/destroy/reboot/Autostart/löschen), Anlege-Assistent (umgesetzt) | VMs anlegen und steuern |
-| 5b | KVM: noVNC-Konsole, Snapshots, Klonen, ISO-Upload, Bridge `br0` (Opt-in) | VM-Verwaltung komplett |
+| 5b | KVM: noVNC-Konsole, Snapshots, Klonen, ISO-Upload/-Löschen, LAN-Netz per macvtap (umgesetzt) | VM-Verwaltung komplett |
 | 6 | Ausbau: SMART-Alarme, Benachrichtigungen, App-Vorlagen, Spindown, 2FA, Backup, Restore-Assistent, Passthrough, NFS, Browser-Installer | Feature-Reife |
 
 Abweichung Phase 3: Sync/Scrub laufen nicht als Job-RPC, sondern in einer eigenen Unit des Agents
@@ -363,3 +363,13 @@ Entwickelt und getestet wird ab Phase 0b in VMs, die aus dem eigenen ISO install
 - Lizenz des Projekts (z. B. GPL-3.0 oder MIT/Apache-2.0).
 - Name/Branding endgültig „BetterNAS“?
 - Hosting von ISO-Downloads und APT-Repository (z. B. GitHub Releases + Pages).
+
+Abweichung Phase 5b: Die Konsole läuft ohne Agent-Stream: VNC lauscht nur auf `127.0.0.1`; der Agent liefert nur den Port
+(`virsh domdisplay`), die API verbindet sich lokal und reicht die Bytes als binäre WebSocket-Frames an noVNC weiter
+(`GET /api/v1/vms/{name}/console`, nur eingeloggt, mit Audit-Eintrag, kein VNC-Passwort). Snapshots sind interne
+qcow2-Snapshots (`virsh snapshot-*`, auch bei UEFI/TPM geprüft), Klonen nutzt `virt-clone` (Paket `virtinst`) und nur
+ausgeschaltete VMs mit Disks unter `/srv/vms/disks`. Der ISO-Upload schreibt die API direkt nach `/srv/vms/iso`
+(`betternas:betternas 0775`, Temp-Datei + Hardlink, nie überschreibend, höchstens 50 GiB); das Löschen läuft über den Agent
+und verweigert Dateien, die eine VM einbindet. Statt der Bridge `br0` (Umbau der Host-Netzkonfiguration, ohne sicheren
+Rückfall) gibt es ein LAN-Netz über macvtap (`direct:<schnittstelle>`): die VM bekommt eine eigene LAN-IP, der Host selbst
+erreicht sie dabei nicht direkt (dafür das NAT-Netz). Eine echte Bridge bleibt für Phase 6 offen.

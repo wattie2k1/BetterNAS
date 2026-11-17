@@ -75,7 +75,11 @@ func BuildXML(s Spec, kvm bool) (string, error) {
 	if s.DriverISO != "" {
 		b.WriteString(cdrom("sdc", ISOPath(s.DriverISO)))
 	}
-	fmt.Fprintf(&b, "    <interface type='network'>\n      <source network='%s'/>\n      <model type='%s'/>\n    </interface>\n", esc(s.Network), nicModel)
+	if ifc, ok := DirectInterface(s.Network); ok {
+		fmt.Fprintf(&b, "    <interface type='direct'>\n      <source dev='%s' mode='bridge'/>\n      <model type='%s'/>\n    </interface>\n", esc(ifc), nicModel)
+	} else {
+		fmt.Fprintf(&b, "    <interface type='network'>\n      <source network='%s'/>\n      <model type='%s'/>\n    </interface>\n", esc(s.Network), nicModel)
+	}
 	b.WriteString("    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'>\n      <listen type='address' address='127.0.0.1'/>\n    </graphics>\n")
 	b.WriteString("    <video>\n      <model type='virtio'/>\n    </video>\n    <input type='tablet' bus='usb'/>\n")
 	if s.TPM {

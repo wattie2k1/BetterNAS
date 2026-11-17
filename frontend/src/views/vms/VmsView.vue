@@ -8,9 +8,13 @@ import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
+import ConsoleDialog from '@/components/vms/ConsoleDialog.vue'
+import IsoDialog from '@/components/vms/IsoDialog.vue'
+import SnapshotsDialog from '@/components/vms/SnapshotsDialog.vue'
 import VmWizard from '@/components/vms/VmWizard.vue'
+import InputText from 'primevue/inputtext'
 import { useVmsStore } from '@/stores/vms'
-import type { VmAction, VmInfo } from '@/api/vms'
+import { VM_NAME_RE, type VmAction, type VmInfo } from '@/api/vms'
 
 const store = useVmsStore()
 const toast = useToast()
@@ -18,6 +22,12 @@ const busy = ref<string | null>(null)
 const removing = ref<VmInfo | null>(null)
 const deleteDisks = ref(false)
 const wizard = ref(false)
+const isoDialog = ref(false)
+const consoleFor = ref<string | null>(null)
+const snapshotsFor = ref<string | null>(null)
+const cloning = ref<VmInfo | null>(null)
+const cloneName = ref('')
+const cloneError = ref('')
 const menu = ref<InstanceType<typeof Menu> | null>(null)
 const menuFor = ref<VmInfo | null>(null)
 const down = computed(() => store.status && (!store.status.installed || !store.status.active))
@@ -80,6 +90,28 @@ function askRemove(v: VmInfo) {
   removing.value = v
 }
 
+function askClone(v: VmInfo) {
+  cloneName.value = `${v.name}-kopie`.slice(0, 40)
+  cloneError.value = ''
+  cloning.value = v
+}
+
+async function confirmClone() {
+  const v = cloning.value
+  if (!v) return
+  busy.value = v.name
+  cloneError.value = ''
+  try {
+    await store.clone(v.name, cloneName.value)
+    toast.add({ severity: 'success', summary: 'VM geklont', detail: `${v.name} → ${cloneName.value}`, life: 3000 })
+    cloning.value = null
+  } catch (e) {
+    cloneError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = null
+  }
+}
+
 function items(v: VmInfo) {
   const on = v.state === 'running'
   return [
@@ -87,6 +119,10 @@ function items(v: VmInfo) {
     { label: 'Herunterfahren', icon: 'pi pi-power-off', disabled: !on, command: () => act(v, 'shutdown') },
     { label: 'Neu starten', icon: 'pi pi-refresh', disabled: !on, command: () => act(v, 'reboot') },
     { label: 'Hart ausschalten', icon: 'pi pi-stop', disabled: v.state === 'shutoff', command: () => act(v, 'destroy') },
+    { separator: true },
+    { label: 'Konsole', icon: 'pi pi-desktop', disabled: v.state !== 'running' && v.state !== 'paused', command: () => (consoleFor.value = v.name) },
+    { label: 'Snapshots', icon: 'pi pi-camera', command: () => (snapshotsFor.value = v.name) },
+    { label: 'Klonen', icon: 'pi pi-clone', disabled: v.state !== 'shutoff', command: () => askClone(v) },
     { separator: true },
     { label: 'Löschen', icon: 'pi pi-trash', disabled: v.state !== 'shutoff', command: () => askRemove(v) },
   ]
@@ -101,6 +137,7 @@ function openMenu(e: Event, v: VmInfo) {
 <template>
   <div class="bar">
     <span class="spacer" />
+    <Button data-test="vm-isos" label="ISO-Dateien" icon="pi pi-upload" text :disabled="!!down" @click="isoDialog = true" />
     <Button data-test="vm-new" label="Neue VM" icon="pi pi-plus" :disabled="!!down" @click="wizard = true" />
   </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
@@ -132,6 +169,16 @@ function openMenu(e: Event, v: VmInfo) {
         </label>
         <span class="spacer" />
         <Button
+          v-if="v.state === 'running' || v.state === 'paused'"
+          icon="pi pi-desktop"
+          text
+          rounded
+          aria-label="Konsole"
+          title="Konsole"
+          data-test="vm-console"
+          @click="consoleFor = v.name"
+        />
+        <Button
           v-if="v.state === 'shutoff'"
           icon="pi pi-play"
           text
@@ -160,6 +207,19 @@ function openMenu(e: Event, v: VmInfo) {
   <Menu ref="menu" :model="menuFor ? items(menuFor) : []" popup append-to="self" />
 
   <VmWizard v-model:visible="wizard" />
+  <IsoDialog v-model:visible="isoDialog" />
+  <ConsoleDialog :visible="!!consoleFor" :name="consoleFor" @update:visible="(v) => !v && (consoleFor = null)" />
+  <SnapshotsDialog :visible="!!snapshotsFor" :name="snapshotsFor" @update:visible="(v) => !v && (snapshotsFor = null)" />
+  <Dialog :visible="!!cloning" modal append-to="self" header="VM klonen" :style="{ width: 'min(480px, 95vw)' }" @update:visible="(v) => !v && (cloning = null)">
+    <p>Die ausgeschaltete VM „{{ cloning?.name }}“ wird mit allen Festplatten kopiert.</p>
+    <label for="vm-clone-name">Name der Kopie</label>
+    <InputText id="vm-clone-name" v-model="cloneName" class="full" autocomplete="off" data-test="clone-name" :invalid="!!cloneName && !VM_NAME_RE.test(cloneName)" />
+    <Message v-if="cloneError" severity="error" :closable="false" data-test="clone-error">{{ cloneError }}</Message>
+    <template #footer>
+      <Button label="Abbrechen" text @click="cloning = null" />
+      <Button data-test="clone-submit" label="Klonen" :disabled="!VM_NAME_RE.test(cloneName) || busy === cloning?.name" @click="confirmClone" />
+    </template>
+  </Dialog>
   <Dialog :visible="!!removing" modal append-to="self" header="VM löschen" :style="{ width: 'min(480px, 95vw)' }" @update:visible="(v) => !v && (removing = null)">
     <p>Die virtuelle Maschine „{{ removing?.name }}“ wird gelöscht.</p>
     <label class="check">
@@ -213,6 +273,10 @@ function openMenu(e: Event, v: VmInfo) {
   color: var(--bn-text-soft);
   font-size: 0.85rem;
   margin: 0.4rem 0 0;
+}
+.full {
+  width: 100%;
+  margin-top: 0.4rem;
 }
 .check {
   display: flex;

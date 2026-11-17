@@ -29,7 +29,30 @@ var (
 	DomainRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	// NetworkRe ist ein libvirt-Netzname.
 	NetworkRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$`)
+	// InterfaceRe ist eine Netzwerkschnittstelle des Hosts (Linux: höchstens 15 Zeichen).
+	InterfaceRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,14}$`)
+	// SnapshotRe ist ein Snapshot-Name.
+	SnapshotRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$`)
 )
+
+// DirectPrefix kennzeichnet ein LAN-Netz über macvtap auf einer Host-Schnittstelle („direct:eno1“).
+const DirectPrefix = "direct:"
+
+// DirectInterface liefert die Host-Schnittstelle eines „direct:“-Netzes.
+func DirectInterface(network string) (string, bool) {
+	if len(network) > len(DirectPrefix) && network[:len(DirectPrefix)] == DirectPrefix {
+		return network[len(DirectPrefix):], true
+	}
+	return "", false
+}
+
+// ValidNetwork prüft einen libvirt-Netznamen oder ein „direct:<schnittstelle>“-Netz.
+func ValidNetwork(n string) bool {
+	if ifc, ok := DirectInterface(n); ok {
+		return InterfaceRe.MatchString(ifc)
+	}
+	return NetworkRe.MatchString(n)
+}
 
 // Actions sind die erlaubten Aktionen auf einer VM.
 var Actions = map[string]bool{"start": true, "shutdown": true, "destroy": true, "reboot": true, "autostart": true, "noautostart": true}
@@ -68,7 +91,7 @@ func (s Spec) Validate() error {
 		return invalid("Ungültiges Betriebssystem (linux oder windows)")
 	case s.Firmware != "uefi" && s.Firmware != "bios":
 		return invalid("Ungültige Firmware (uefi oder bios)")
-	case !NetworkRe.MatchString(s.Network):
+	case !ValidNetwork(s.Network):
 		return invalid("Ungültiger Netzwerkname")
 	case s.VCPUs < MinVCPUs || s.VCPUs > MaxVCPUs:
 		return invalid("vCPUs: 1 bis 64")
@@ -102,4 +125,11 @@ type Status struct {
 	Installed bool `json:"installed"`
 	Active    bool `json:"active"`
 	KVM       bool `json:"kvm"`
+}
+
+// Snapshot ist ein Snapshot einer VM.
+type Snapshot struct {
+	Name    string `json:"name"`
+	Created string `json:"created"`
+	State   string `json:"state"`
 }

@@ -5,8 +5,11 @@ package agent
 
 import (
 	"context"
+	"io"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 
@@ -96,5 +99,142 @@ func TestVMLifecycle(t *testing.T) {
 	}
 	if _, err := os.Stat(vm.DiskPath(name)); !os.IsNotExist(err) {
 		t.Fatal("Disk muss gelöscht sein")
+	}
+}
+
+func waitShutoff(t *testing.T, d Deps, name string) {
+	t.Helper()
+	for i := 0; i < 20; i++ {
+		if v, _ := findVM(t, d, name); v.State == "shutoff" {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("%s wird nicht ausgeschaltet", name)
+}
+
+func TestVMOps(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img", "virt-clone"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	const name, clone = "bnas-it-ops", "bnas-it-ops-kopie"
+	cleanup := func() {
+		for _, n := range []string{name, clone} {
+			_ = VMAction(ctx, d, n, "destroy")
+			if v, ok := findVM(t, d, n); ok && v.State != "shutoff" {
+				time.Sleep(time.Second)
+			}
+			_ = VMDelete(ctx, d, n, true)
+		}
+	}
+	t.Cleanup(cleanup)
+	cleanup()
+
+	spec := vm.Spec{Name: name, OS: "linux", Firmware: "bios", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Snapshots
+	if err := VMSnapshotCreate(ctx, d, name, "s1"); err != nil {
+		t.Fatal(err)
+	}
+	if code(VMSnapshotCreate(ctx, d, name, "s1")) != "conflict" {
+		t.Fatal("doppelter Snapshot-Name")
+	}
+	list, err := VMSnapshots(ctx, d, name)
+	if err != nil || len(list) != 1 || list[0].Name != "s1" || list[0].Created == "" {
+		t.Fatalf("%+v %v", list, err)
+	}
+	if err := VMSnapshotRevert(ctx, d, name, "s1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Klonen
+	if err := VMClone(ctx, d, name, clone); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := findVM(t, d, clone); !ok || len(v.Disks) != 1 || v.Disks[0] != vm.DiskPath(clone) {
+		t.Fatalf("Klon erwartet: %+v", v)
+	}
+	if code(VMClone(ctx, d, name, clone)) != "conflict" {
+		t.Fatal("Name vergeben")
+	}
+
+	// Konsole: VNC-Port nur bei laufender VM
+	if code2(VMDisplay(ctx, d, name)) != "conflict" {
+		t.Fatal("ausgeschaltete VM hat keine Konsole")
+	}
+	if err := VMAction(ctx, d, name, "start"); err != nil {
+		t.Fatal(err)
+	}
+	port, err := VMDisplay(ctx, d, name)
+	if err != nil || port < 5900 || port > 5999 {
+		t.Fatalf("%d %v", port, err)
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	banner := make([]byte, 4)
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, err := io.ReadFull(conn, banner); err != nil || string(banner) != "RFB " {
+		t.Fatalf("VNC-Banner: %q %v", banner, err)
+	}
+	conn.Close()
+	if code(VMClone(ctx, d, name, clone+"2")) != "conflict" {
+		t.Fatal("laufende VM darf nicht geklont werden")
+	}
+	_ = VMAction(ctx, d, name, "destroy")
+	waitShutoff(t, d, name)
+
+	// Snapshot löschen, VM samt Metadaten entfernen
+	if err := VMSnapshotDelete(ctx, d, name, "s1"); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = VMSnapshots(ctx, d, name); len(list) != 0 {
+		t.Fatalf("%+v", list)
+	}
+}
+
+// TestVMSnapshotUEFI prüft, ob Snapshots auch bei UEFI-VMs (mit und ohne TPM) funktionieren.
+func TestVMSnapshotUEFI(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if _, err := exec.LookPath("virsh"); err != nil {
+		t.Skip("virsh ist nicht installiert")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	for _, tpm := range []bool{false, true} {
+		const name = "bnas-it-uefi"
+		_ = VMDelete(ctx, d, name, true)
+		spec := vm.Spec{Name: name, OS: "linux", Firmware: "uefi", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1, TPM: tpm}
+		if err := VMCreate(ctx, d, spec, false); err != nil {
+			t.Fatal(err)
+		}
+		err := VMSnapshotCreate(ctx, d, name, "u1")
+		t.Logf("UEFI tpm=%v: Snapshot-Fehler=%v", tpm, err)
+		if err == nil {
+			err = VMSnapshotRevert(ctx, d, name, "u1")
+			t.Logf("UEFI tpm=%v: Revert-Fehler=%v", tpm, err)
+		}
+		if err := VMDelete(ctx, d, name, true); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

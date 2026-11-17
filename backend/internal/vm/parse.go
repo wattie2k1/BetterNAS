@@ -3,6 +3,7 @@ package vm
 import (
 	"bytes"
 	"encoding/xml"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -82,4 +83,32 @@ func ParseNetworks(out []byte) ([]string, error) {
 		}
 	}
 	return list, nil
+}
+
+var snapshotLine = regexp.MustCompile(`^\s*(\S+)\s+(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d{4})\s+(.+?)\s*$`)
+
+// ParseSnapshots liest die Tabelle von `virsh snapshot-list <name>`.
+func ParseSnapshots(out []byte) []Snapshot {
+	list := []Snapshot{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if m := snapshotLine.FindStringSubmatch(line); m != nil {
+			list = append(list, Snapshot{Name: m[1], Created: m[2], State: m[3]})
+		}
+	}
+	return list
+}
+
+var displayRe = regexp.MustCompile(`^vnc://[^:]+:(\d+)$`)
+
+// ParseDisplayPort liefert den TCP-Port aus `virsh domdisplay` („vnc://127.0.0.1:0“ → 5900).
+func ParseDisplayPort(out []byte) (int, bool) {
+	m := displayRe.FindStringSubmatch(strings.TrimSpace(string(out)))
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n < 0 || n > 99 {
+		return 0, false
+	}
+	return 5900 + n, true
 }

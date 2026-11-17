@@ -2,8 +2,11 @@ package vm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,5 +86,57 @@ func TestManagerRejectsInvalidBeforeAgent(t *testing.T) {
 	}
 	if len(a.calls) != 0 {
 		t.Fatalf("Agent darf nicht aufgerufen werden: %v", a.calls)
+	}
+}
+
+func TestUploadISO(t *testing.T) {
+	m, _, count := newMgr(t, &stubAgent{})
+	dir := t.TempDir()
+	m.SetISODir(dir)
+	ctx := context.Background()
+	if err := m.UploadISO(ctx, "anna", "a.iso", strings.NewReader("daten")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.iso")); string(b) != "daten" {
+		t.Fatalf("%q", b)
+	}
+	if err := m.UploadISO(ctx, "anna", "a.iso", strings.NewReader("neu")); apierr.From(err).Code != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.iso")); string(b) != "daten" {
+		t.Fatal("Datei wurde überschrieben")
+	}
+	if err := m.UploadISO(ctx, "anna", "../x.iso", strings.NewReader("x")); apierr.From(err).Code != apierr.InvalidParams {
+		t.Fatalf("%v", err)
+	}
+	if err := m.UploadISO(ctx, "anna", "b.iso", errReader{}); err == nil {
+		t.Fatal("Abbruch erwartet")
+	}
+	if left, _ := os.ReadDir(dir); len(left) != 1 {
+		t.Fatalf("Temp-Dateien bleiben liegen: %v", left)
+	}
+	if count() != 3 { // ok, Konflikt, Abbruch (ungültiger Name wird vorher abgelehnt)
+		t.Fatalf("Audit: %d", count())
+	}
+}
+
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("abgebrochen") }
+
+type portAgent struct{ port int }
+
+func (p portAgent) Call(_ context.Context, _ string, _, result any) error {
+	b, _ := json.Marshal(map[string]int{"port": p.port})
+	return json.Unmarshal(b, result)
+}
+
+func TestConsolePortRange(t *testing.T) {
+	for port, ok := range map[int]bool{5900: true, 5999: true, 22: false, 0: false, 6000: false} {
+		m, _, _ := newMgr(t, portAgent{port})
+		_, err := m.ConsolePort(context.Background(), "anna", "debian")
+		if (err == nil) != ok {
+			t.Errorf("Port %d: %v", port, err)
+		}
 	}
 }
