@@ -40,6 +40,19 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, list)
 	})
+	mux.HandleFunc("PUT /api/v1/disks/{id}/spindown", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Minutes int `json:"minutes"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetSpindown(r.Context(), actor(r), r.PathValue("id"), in.Minutes); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/format/preview", func(w http.ResponseWriter, r *http.Request) {
 		p, err := m.PreviewFormat(r.Context(), r.PathValue("id"))
 		if err != nil {

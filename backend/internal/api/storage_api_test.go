@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
+	"github.com/betternas/betternas/internal/monitor"
+	"github.com/betternas/betternas/internal/notify"
 	"github.com/betternas/betternas/internal/storage"
 )
 
@@ -45,6 +48,7 @@ type storageAPI struct {
 	cookie *http.Cookie
 	csrf   string
 	jobs   *jobs.Manager
+	db     *sql.DB
 }
 
 func newStorageAPI(t *testing.T) *storageAPI {
@@ -58,12 +62,14 @@ func newStorageAPI(t *testing.T) *storageAPI {
 	jm := jobs.NewManager(d, hub)
 	store := auth.NewStore(d, time.Hour)
 	token, csrf, _ := store.Create(context.Background(), "anna")
+	sm := storage.NewManager(d, agentStub{}, jm, hub)
+	ns := notify.NewService(d, hub)
 	h := NewServer(Config{WebDir: t.TempDir(), Dev: true}, Deps{
 		DB: d, Jobs: jm, Hub: hub,
 		Auth:    auth.NewHandlers(d, store, nil, nil, false),
-		Storage: storage.NewManager(d, agentStub{}, jm, hub),
+		Storage: sm, Notify: ns, Monitor: monitor.New(d, sm, ns, hub),
 	})
-	return &storageAPI{h: h, cookie: &http.Cookie{Name: auth.CookieName, Value: token}, csrf: csrf, jobs: jm}
+	return &storageAPI{h: h, cookie: &http.Cookie{Name: auth.CookieName, Value: token}, csrf: csrf, jobs: jm, db: d}
 }
 
 func (s *storageAPI) do(method, path, body string) *httptest.ResponseRecorder {
