@@ -62,6 +62,39 @@ describe('Dashboard: CPU-Kachel', () => {
   })
 })
 
+describe('Dashboard: Meldungen-Kachel', () => {
+  const alert = (key: string, level: string) => ({ key, level, title: `Titel ${key}`, body: 'b', since: '2026-11-17T10:00:00Z' })
+  function stubAlerts(list: unknown[]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const u = String(url)
+        const body = u.includes('/system/info') ? info(1, 1) : u.includes('/alerts') ? list : u.includes('/docker/status') ? { installed: true, active: true, version: '27' } : []
+        return new Response(JSON.stringify(body), { status: 200 })
+      }),
+    )
+  }
+
+  it('zeigt die Anzahl aktiver Meldungen, rot bei kritischen', async () => {
+    stubAlerts([alert('smart:d1', 'crit'), alert('temp:d2', 'warn')])
+    const w = mountDash()
+    await flushPromises()
+    const tile = w.find('[data-test="tile-alerts"]')
+    expect(tile.text()).toContain('2 Meldungen')
+    expect(tile.text()).toContain('Titel smart:d1')
+    expect(tile.classes()).toContain('crit')
+    w.unmount()
+  })
+
+  it('erscheint nicht, wenn nichts anliegt', async () => {
+    stubAlerts([])
+    const w = mountDash()
+    await flushPromises()
+    expect(w.find('[data-test="tile-alerts"]').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
 describe('Dashboard: Kacheln sortieren', () => {
   const dragTo = async (w: ReturnType<typeof mountDash>, from: string, to: string) => {
     const dataTransfer = { setData: vi.fn(), effectAllowed: '' }

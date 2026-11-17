@@ -13,7 +13,14 @@ export interface SmartInfo {
   passed: boolean
   temperatureC: number
   powerOnHours: number
+  standby?: boolean
+  reallocatedSectors?: number
+  pendingSectors?: number
 }
+
+/** Erlaubte Ruhezeiten in Minuten (0 = aus). */
+export const SPINDOWN_CHOICES = [0, 5, 10, 20, 30, 60, 120, 240] as const
+export const spindownLabel = (m: number) => (m === 0 ? 'Aus' : m < 60 ? `${m} Min.` : `${m / 60} Std.`)
 
 export interface DiskView {
   id: string
@@ -33,6 +40,8 @@ export interface DiskView {
   pool?: string
   fsType?: string
   smart?: SmartInfo
+  /** Eingestellte Ruhezeit in Minuten (0 = aus). */
+  spindown?: number
 }
 
 export interface FormatPreview {
@@ -146,6 +155,7 @@ export const storageApi = {
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),
   importDisk: (id: string, role?: 'data' | 'parity') =>
     api.post<JobRef>(`/api/v1/disks/${enc(id)}/import`, role ? { role } : undefined),
+  setSpindown: (id: string, minutes: number) => api.put<void>(`/api/v1/disks/${enc(id)}/spindown`, { minutes }),
   release: (id: string) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/release`),
   createPool: (p: PoolInput) => api.post<JobRef>('/api/v1/pools', p),
   updatePool: (name: string, p: PoolInput) => api.patch<JobRef>(`/api/v1/pools/${enc(name)}`, p),

@@ -8,6 +8,7 @@ import FormatDialog from '@/components/storage/FormatDialog.vue'
 import { useStorageStore } from '@/stores/storage'
 import type { DiskView, FormatPreview, FormatRequest } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
+import { SPINDOWN_CHOICES, spindownLabel } from '@/api/storage'
 
 const store = useStorageStore()
 const toast = useToast()
@@ -55,6 +56,23 @@ async function doFormat(req: FormatRequest) {
   showFormat.value = false
 }
 
+const spinError = ref<Record<string, string>>({})
+
+async function setSpindown(d: DiskView, ev: Event) {
+  const el = ev.target as HTMLSelectElement
+  const minutes = Number(el.value)
+  delete spinError.value[d.id]
+  try {
+    await store.setSpindown(d.id, minutes)
+  } catch (e) {
+    spinError.value[d.id] = e instanceof Error ? e.message : String(e)
+    el.value = String(d.spindown ?? 0) // Auswahl auf den tatsächlichen Wert zurücksetzen
+  }
+}
+
+const hasBadSectors = (d: DiskView) => (d.smart?.pendingSectors ?? 0) > 0 || (d.smart?.reallocatedSectors ?? 0) > 0
+const canSpin = (d: DiskView) => (d.role === 'data' || d.role === 'parity') && d.state === 'online'
+
 const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btrfs'].includes(p.fsType))
 </script>
 
@@ -69,6 +87,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
           <th>Rolle</th>
           <th>Zustand</th>
           <th>SMART</th>
+          <th>Ruhezustand</th>
           <th />
         </tr>
       </thead>
@@ -95,9 +114,22 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
           <td>
             <template v-if="d.smart">
               <Tag :value="d.smart.passed ? 'OK' : 'Warnung'" :severity="d.smart.passed ? 'success' : 'danger'" />
+              <Tag v-if="d.smart.standby" value="schläft" severity="secondary" class="standby" />
               <div v-if="d.smart.temperatureC" class="sub">{{ d.smart.temperatureC }} °C</div>
+              <div v-if="hasBadSectors(d)" class="sub warn" :data-test="`sectors-${d.id}`">
+                <i class="pi pi-exclamation-triangle" /> Defekte Sektoren ({{ d.smart.reallocatedSectors ?? 0 }} neu zugewiesen, {{ d.smart.pendingSectors ?? 0 }} instabil)
+              </div>
             </template>
             <span v-else class="sub">unbekannt</span>
+          </td>
+          <td>
+            <template v-if="canSpin(d)">
+              <select :data-test="`spindown-${d.id}`" :value="String(d.spindown ?? 0)" :aria-label="`Ruhezustand für ${d.model || d.id}`" class="spin" @change="setSpindown(d, $event)">
+                <option v-for="m in SPINDOWN_CHOICES" :key="m" :value="String(m)">{{ spindownLabel(m) }}</option>
+              </select>
+              <div v-if="spinError[d.id]" class="sub warn" :data-test="`spindown-error-${d.id}`">{{ spinError[d.id] }}</div>
+            </template>
+            <span v-else class="sub">—</span>
           </td>
           <td class="actions">
             <template v-if="d.role === 'unassigned' && d.manageable && d.state === 'online'">
@@ -161,6 +193,20 @@ th {
   font-size: 0.8rem;
   color: var(--p-text-muted-color);
   margin-top: 0.15rem;
+}
+.spin {
+  padding: 0.3rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--bn-border);
+  background: var(--bn-glass);
+  color: inherit;
+  font: inherit;
+}
+.standby {
+  margin-left: 0.3rem;
+}
+.warn {
+  color: var(--p-orange-400);
 }
 .actions {
   display: flex;

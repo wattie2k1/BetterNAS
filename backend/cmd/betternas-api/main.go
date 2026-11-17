@@ -18,6 +18,8 @@ import (
 	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
+	"github.com/betternas/betternas/internal/monitor"
+	"github.com/betternas/betternas/internal/notify"
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
@@ -72,7 +74,7 @@ func main() {
 		for _, step := range []struct {
 			name string
 			fn   func(context.Context) error
-		}{{"mount-units", sm.Reconcile}, {"freigaben", shm.Reconcile}} {
+		}{{"mount-units", sm.Reconcile}, {"freigaben", shm.Reconcile}, {"ruhezustand", sm.ReconcileSpindown}} {
 			name, fn := step.name, step.fn
 			ok := false
 			for i := 0; i < 10 && !ok; i++ {
@@ -86,7 +88,32 @@ func main() {
 			}
 		}
 	}()
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub)})
+	// hdparm behält die Ruhezeit nicht über Neustarts/Hotplug: bei Plattenänderungen (entprellt 5 s) erneut anwenden.
+	go func() {
+		ch, cancel := hub.Subscribe()
+		defer cancel()
+		var timer *time.Timer
+		fire := make(chan struct{}, 1)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev := <-ch:
+				if ev.Type == "disks.changed" && timer == nil {
+					timer = time.AfterFunc(5*time.Second, func() { fire <- struct{}{} })
+				}
+			case <-fire:
+				timer = nil
+				if err := sm.ReconcileSpindown(ctx); err != nil {
+					log.Warn("ruhezustand", "err", err)
+				}
+			}
+		}
+	}()
+	ns := notify.NewService(d, hub)
+	mon := monitor.New(d, sm, ns, hub)
+	go mon.Run(ctx)
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Notify: ns, Monitor: mon})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

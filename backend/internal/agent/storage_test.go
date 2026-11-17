@@ -262,12 +262,13 @@ const smartJSON = `{"smart_status":{"passed":true},"temperature":{"current":34},
 
 func TestSmartParsesJSON(t *testing.T) {
 	d, f, _ := storageEnv(t)
-	f.Responses["smartctl --json -H -A /dev/sda"] = sysexec.Result{ExitCode: 4, Stdout: []byte(smartJSON)}
+	f.Responses["smartctl --json -H -A -n standby /dev/sda"] = sysexec.Result{ExitCode: 4, Stdout: []byte(smartJSON)}
 	s, err := Smart(context.Background(), d, "/dev/sda")
 	if err != nil || !s.Passed || s.TemperatureC != 34 || s.PowerOnHours != 12034 {
 		t.Fatalf("%+v %v", s, err)
 	}
-	f.Responses["smartctl --json -H -A /dev/sda"] = sysexec.Result{ExitCode: 2}
+	f.Responses["smartctl --json -H -A -n standby /dev/sda"] = sysexec.Result{ExitCode: 2}
+	f.Responses["smartctl --json -H -A -n standby -d sat /dev/sda"] = sysexec.Result{ExitCode: 2}
 	if _, err := Smart(context.Background(), d, "/dev/sda"); err == nil {
 		t.Fatal("exit bit 1 must fail")
 	}

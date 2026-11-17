@@ -1,0 +1,15 @@
+CREATE TABLE alerts(
+  key TEXT PRIMARY KEY,
+  level TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  since TEXT NOT NULL
+);
+CREATE TABLE notifications(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  level TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  results_json TEXT NOT NULL
+);
