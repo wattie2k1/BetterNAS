@@ -126,3 +126,21 @@ func TestPoolConfigNames(t *testing.T) {
 		t.Error("doppelter Alias akzeptiert")
 	}
 }
+
+func TestParseFix(t *testing.T) {
+	cases := []struct {
+		out                    string
+		recovered, unrecovered int
+	}{
+		{"Everything OK\n12 recovered errors\n0 unrecoverable errors\n", 12, 0},
+		{"unrecoverable /srv/a\nunrecoverable /srv/b\n3 recovered errors\n2 unrecoverable errors\n", 3, 2},
+		{"unrecoverable /srv/a\nunrecoverable /srv/b\nunrecoverable /srv/c\n", 0, 3}, // ohne Zusammenfassung: Zeilen zählen
+		{"", 0, 0},
+	}
+	for _, c := range cases {
+		r, u := ParseFix([]byte(c.out))
+		if r != c.recovered || u != c.unrecovered {
+			t.Errorf("%q: %d/%d statt %d/%d", c.out, r, u, c.recovered, c.unrecovered)
+		}
+	}
+}
