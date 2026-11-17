@@ -373,3 +373,14 @@ ausgeschaltete VMs mit Disks unter `/srv/vms/disks`. Der ISO-Upload schreibt die
 und verweigert Dateien, die eine VM einbindet. Statt der Bridge `br0` (Umbau der Host-Netzkonfiguration, ohne sicheren
 Rückfall) gibt es ein LAN-Netz über macvtap (`direct:<schnittstelle>`): die VM bekommt eine eigene LAN-IP, der Host selbst
 erreicht sie dabei nicht direkt (dafür das NAT-Netz). Eine echte Bridge bleibt für Phase 6 offen.
+
+Abweichung Phase 6a: Die Überwachung läuft im API-Prozess (`internal/monitor`, alle 5 min, erster Lauf 30 s nach dem Start):
+Befunde (SMART-Fehler, defekte/instabile Sektoren, Temperatur ≥ Schwelle (Standard 55 °C), fehlende Platte, nicht
+eingehängter Pool, fehlgeschlagener SnapRAID-Sync/-Scrub) werden in der Tabelle `alerts` gemerkt; neu → eine Meldung,
+behoben → eine „Behoben“-Meldung, keine Wiederholung. Kanäle sind Mail (SMTP, STARTTLS/TLS/keine) und ntfy
+(`internal/notify`, Einstellungen in `settings` unter `notify.config`, Passwort/Token verlassen die API nie); der Verlauf
+(`notifications`, letzte 200) zeigt das Ergebnis je Kanal. SMART nutzt `smartctl -n standby` (weckt keine schlafenden
+Platten, letzte Werte bleiben, Anzeige „schläft“) und fällt bei Fehlschlag einmal auf `-d sat` zurück (USB-Gehäuse).
+Spindown pro Daten-/Paritätsplatte (`hdparm -S`, 0/5/10/20/30/60/120/240 min) wird in `settings` (`power.spindown`)
+gespeichert und beim Start sowie bei `disks.changed` erneut angewendet; Platten ohne Unterstützung (z. B. USB) lehnen
+ab, dann wird nichts gespeichert. Die Übersicht zeigt eine Kachel „Meldungen“ nur, wenn Meldungen anliegen.
