@@ -31,6 +31,11 @@ type fakeAgent struct {
 	statuses    []snapraid.Status // Antworten von snapraid.status in Reihenfolge; die letzte wiederholt sich
 	started     []map[string]any
 
+	// Wiederherstellung: autoRuns lässt snapraid.start fix/sync sofort „fertig“ werden (Ergebnis fixResult, Standard ok).
+	autoRuns  bool
+	fixResult string
+	recovery  []string // "begin:<pool>:<disk>" / "cancel:<pool>"
+
 	spindownReqs []map[string]any // Anfragen an disk.spindown
 	spindownFail map[string]bool  // Gerät → disk.spindown schlägt fehl
 
@@ -79,7 +84,32 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		var req map[string]any
 		json.Unmarshal(b, &req)
 		f.started = append(f.started, req)
+		if f.autoRuns {
+			at := time.Now().Add(time.Hour)
+			switch req["action"] {
+			case "fix":
+				res := f.fixResult
+				if res == "" {
+					res = snapraid.ResultOK
+				}
+				f.statuses = []snapraid.Status{{Enabled: true, LastFix: &snapraid.RunState{Action: "fix", Result: res, Message: "fix " + res, At: at}}}
+			case "sync":
+				f.statuses = []snapraid.Status{{Enabled: true, LastSync: &snapraid.RunState{Action: "sync", Result: snapraid.ResultOK, At: at}}}
+			}
+		}
 		out = map[string]string{"unit": "betternas-snapraid-x"}
+	case "snapraid.recovery.begin":
+		b, _ := json.Marshal(params)
+		var req map[string]string
+		json.Unmarshal(b, &req)
+		f.recovery = append(f.recovery, "begin:"+req["pool"]+":"+req["disk"])
+		out = map[string]bool{"ok": true}
+	case "snapraid.recovery.cancel":
+		b, _ := json.Marshal(params)
+		var req map[string]string
+		json.Unmarshal(b, &req)
+		f.recovery = append(f.recovery, "cancel:"+req["pool"])
+		out = map[string]bool{"ok": true}
 	case "snapraid.status":
 		var st snapraid.Status
 		if len(f.statuses) > 0 {

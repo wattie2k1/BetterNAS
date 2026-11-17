@@ -21,6 +21,7 @@ type fakeSource struct {
 	snap     map[string]snapraid.Status
 	disksErr error
 	poolsErr error
+	snapErr  map[string]error
 }
 
 func (f *fakeSource) ListDisks(context.Context) ([]storage.DiskView, error) {
@@ -30,7 +31,7 @@ func (f *fakeSource) ListPools(context.Context) ([]storage.PoolView, error) {
 	return f.pools, f.poolsErr
 }
 func (f *fakeSource) SnapraidStatus(_ context.Context, pool string) (snapraid.Status, error) {
-	return f.snap[pool], nil
+	return f.snap[pool], f.snapErr[pool]
 }
 
 type fakeNotifier struct {
@@ -220,5 +221,74 @@ func TestCheckPublishesEvent(t *testing.T) {
 		}
 	default:
 		t.Fatal("kein Ereignis")
+	}
+}
+
+func recoveryPool(msg string) *fakeSource {
+	return &fakeSource{
+		disks: []storage.DiskView{healthyDisk("d1")},
+		pools: []storage.PoolView{{PoolInput: storage.PoolInput{Name: "media"}, Mounted: true}},
+		snap: map[string]snapraid.Status{"media": {
+			Enabled:  true,
+			Recovery: &snapraid.Recovery{Disk: "old1", State: "open"},
+			LastFix:  &snapraid.RunState{Result: snapraid.ResultErrors, Message: msg},
+		}},
+	}
+}
+
+func TestFindingRecoveryOpen(t *testing.T) {
+	m, _, _ := newMon(t, recoveryPool("2 Dateien sind nicht wiederherstellbar."))
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 1 || fs[0].Key != "snapraid-recovery:media" || fs[0].Level != "crit" {
+		t.Fatalf("%+v", fs)
+	}
+	if !strings.Contains(fs[0].Title, "media") || !strings.Contains(fs[0].Body, "old1") || !strings.Contains(fs[0].Body, "2 Dateien sind nicht wiederherstellbar") {
+		t.Fatalf("%+v", fs[0])
+	}
+	// ohne LastFix-Meldung steht trotzdem ein Text da
+	src := recoveryPool("")
+	src.snap["media"] = snapraid.Status{Enabled: true, Recovery: &snapraid.Recovery{Disk: "old1", State: "open"}}
+	m2, _, _ := newMon(t, src)
+	if fs, _ := m2.Findings(context.Background()); len(fs) != 1 || !strings.Contains(fs[0].Body, "old1") {
+		t.Fatalf("%+v", fs)
+	}
+}
+
+func TestRecoveryClearedRecovers(t *testing.T) {
+	src := recoveryPool("x")
+	m, n, _ := newMon(t, src)
+	ctx := context.Background()
+	_ = m.Check(ctx)
+	_ = m.Check(ctx)
+	if n.count() != 1 {
+		t.Fatalf("%d", n.count())
+	}
+	st := src.snap["media"]
+	st.Recovery = nil
+	src.snap["media"] = st
+	_ = m.Check(ctx)
+	_ = m.Check(ctx)
+	if n.count() != 2 || !strings.HasPrefix(n.sent[1].Title, "Behoben:") {
+		t.Fatalf("%d %+v", n.count(), n.sent)
+	}
+}
+
+func TestRecoveryStatusErrorKeepsAlert(t *testing.T) {
+	src := recoveryPool("x")
+	m, n, _ := newMon(t, src)
+	ctx := context.Background()
+	_ = m.Check(ctx)
+	src.snapErr = map[string]error{"media": errors.New("agent weg")}
+	if err := m.Check(ctx); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if a, _ := m.Active(ctx); len(a) != 1 || a[0].Key != "snapraid-recovery:media" {
+		t.Fatalf("%+v", a)
+	}
+	if n.count() != 1 {
+		t.Fatalf("keine 'Behoben'-Meldung bei Quellfehler erlaubt: %d", n.count())
 	}
 }

@@ -40,7 +40,7 @@ func renderConf(p PoolConfig) string {
 		fmt.Fprintf(&b, "content %s/.snapraid.content\n", ParityPath(p.Parity[0]))
 	}
 	for _, id := range p.Data {
-		fmt.Fprintf(&b, "data %s %s/\n", id, DiskPath(id))
+		fmt.Fprintf(&b, "data %s %s/\n", p.Name(id), DiskPath(id))
 	}
 	b.WriteString("exclude /lost+found/\nexclude *.unrecoverable\nexclude /tmp/\n")
 	return b.String()

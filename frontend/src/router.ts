@@ -9,6 +9,7 @@ import DisksView from '@/views/storage/DisksView.vue'
 import UsersView from '@/views/users/UsersView.vue'
 import UpdatesView from '@/views/system/UpdatesView.vue'
 import NotificationsView from '@/views/system/NotificationsView.vue'
+import BackupView from '@/views/system/BackupView.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
 import GroupsView from '@/views/users/GroupsView.vue'
@@ -38,6 +39,7 @@ export const router = createRouter({
         { path: 'vms', name: 'vms', component: VmsView, meta: { title: 'Virtuelle Maschinen' } },
         { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
         { path: 'system/benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Benachrichtigungen' } },
+        { path: 'system/sicherung', name: 'backup', component: BackupView, meta: { title: 'Sicherung' } },
         { path: 'profil', name: 'profile', component: ProfileView, meta: { title: 'Profil' } },
         { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
         { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },

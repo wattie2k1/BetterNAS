@@ -12,6 +12,7 @@ import { useSharesStore } from '@/stores/shares'
 import { useDockerStore } from '@/stores/docker'
 import { useVmsStore } from '@/stores/vms'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useBackupStore } from '@/stores/backup'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
 
@@ -23,6 +24,7 @@ const sharesStore = useSharesStore()
 const dockerStore = useDockerStore()
 const vmsStore = useVmsStore()
 const notificationsStore = useNotificationsStore()
+const backupStore = useBackupStore()
 const route = useRoute()
 const router = useRouter()
 const showJobs = ref(false)
@@ -42,6 +44,7 @@ const nav = [
   { label: 'Benutzer', icon: 'pi pi-users', to: '/benutzer', color: ['#ec4899', '#f472b6'] },
   { label: 'Gruppen', icon: 'pi pi-sitemap', to: '/benutzer/gruppen', color: ['#a855f7', '#c084fc'] },
   { label: 'Benachrichtigungen', icon: 'pi pi-bell', to: '/system/benachrichtigungen', color: ['#eab308', '#facc15'] },
+  { label: 'Sicherung', icon: 'pi pi-history', to: '/system/sicherung', color: ['#14b8a6', '#2dd4bf'] },
   { label: 'Updates', icon: 'pi pi-download', to: '/system/updates', color: ['#ef4444', '#fb7185'] },
 ]
 const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
@@ -61,6 +64,7 @@ onMounted(() => {
     dockerStore.handleEvent(m)
     vmsStore.handleEvent(m)
     notificationsStore.handleEvent(m)
+    backupStore.handleEvent(m)
   })
 })
 onUnmounted(() => {

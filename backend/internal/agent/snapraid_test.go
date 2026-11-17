@@ -293,12 +293,12 @@ func TestSnapraidStatusWithoutState(t *testing.T) {
 }
 
 func TestParseSnapraidArgs(t *testing.T) {
-	a, p, force, err := parseSnapraidArgs([]string{"sync", "media", "--force"})
-	if err != nil || a != "sync" || p != "media" || !force {
-		t.Fatal(a, p, force, err)
+	a, p, force, disk, err := parseSnapraidArgs([]string{"sync", "media", "--force"})
+	if err != nil || a != "sync" || p != "media" || !force || disk != "" {
+		t.Fatal(a, p, force, disk, err)
 	}
 	for _, bad := range [][]string{{}, {"sync"}, {"rm", "media"}, {"sync", "../x"}, {"sync", "media", "--wipe"}} {
-		if _, _, _, err := parseSnapraidArgs(bad); err == nil {
+		if _, _, _, _, err := parseSnapraidArgs(bad); err == nil {
 			t.Errorf("%v accepted", bad)
 		}
 	}

@@ -87,6 +87,14 @@ export interface SnapraidRun {
   message?: string
   at: string
   removed?: number
+  unrecoverable?: number
+}
+
+/** Offene Wiederherstellung einer ersetzten Platte (Sync/Prüfung sind gesperrt). */
+export interface SnapraidRecovery {
+  disk: string
+  state: 'open'
+  since: string
 }
 
 export interface SnapraidDiff {
@@ -103,6 +111,8 @@ export interface SnapraidStatus {
   running: boolean
   lastSync?: SnapraidRun
   lastScrub?: SnapraidRun
+  lastFix?: SnapraidRun
+  recovery?: SnapraidRecovery
   diff?: SnapraidDiff
   diffAt?: string
   log?: string
@@ -162,6 +172,10 @@ export const storageApi = {
   deletePool: (name: string) => api.del<JobRef>(`/api/v1/pools/${enc(name)}`),
   enableSnapraid: (pool: string, in_: SnapraidInput) => api.put<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid`, in_),
   disableSnapraid: (pool: string) => api.del<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid`),
+  replaceDisk: (pool: string, oldDisk: string, newDisk: string) =>
+    api.post<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid/replace`, { oldDisk, newDisk }),
+  retryRecovery: (pool: string) => api.post<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid/recovery/retry`),
+  cancelRecovery: (pool: string) => api.del<void>(`/api/v1/pools/${enc(pool)}/snapraid/recovery`),
   snapraidStatus: (pool: string) => api.get<SnapraidStatus>(`/api/v1/pools/${enc(pool)}/snapraid/status`),
   runSnapraid: (pool: string, action: 'sync' | 'scrub' | 'diff', force = false) =>
     api.post<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid/${action}`, { force }),

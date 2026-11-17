@@ -3,11 +3,20 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
+import { useStorageStore } from '@/stores/storage'
 import { storageApi, unprotected, type PoolView, type SnapraidRun, type SnapraidStatus } from '@/api/storage'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ pool: PoolView; refreshKey?: number }>()
-const emit = defineEmits<{ configure: []; run: [action: 'sync' | 'scrub' | 'diff', force: boolean]; disable: [] }>()
+const emit = defineEmits<{
+  configure: []
+  run: [action: 'sync' | 'scrub' | 'diff', force: boolean]
+  disable: []
+  replace: []
+  retry: []
+  cancelRecovery: []
+}>()
+const storage = useStorageStore()
 
 const status = ref<SnapraidStatus | null>(null)
 const error = ref('')
@@ -38,6 +47,8 @@ onBeforeUnmount(() => {
 watch(() => [props.refreshKey, !!props.pool.snapraid], load)
 
 const running = computed(() => !!status.value?.running)
+const recovery = computed(() => status.value?.recovery)
+const hasMissing = computed(() => storage.disks.some((d) => props.pool.branches.includes(d.id) && d.state === 'missing'))
 const blocked = computed(() => status.value?.lastSync?.result === 'blocked')
 const massDelete = computed(() => blocked.value && (status.value?.lastSync?.removed ?? 0) > 0)
 
@@ -59,6 +70,15 @@ const scrubTag = computed(() => tag(status.value?.lastScrub))
         <Tag v-if="running" value="Läuft" severity="info" />
       </div>
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+      <Message v-if="recovery" severity="error" :closable="false" data-test="snapraid-recovery">
+        Wiederherstellung von Platte {{ recovery.disk }} ist offen (seit {{ formatDateTime(recovery.since) }}). Synchronisierung und Prüfung
+        pausieren, bis sie abgeschlossen oder abgebrochen ist.
+        <template v-if="status?.lastFix && status.lastFix.result !== 'ok'"> Letztes Ergebnis: {{ status.lastFix.message || status.lastFix.result }}</template>
+        <div class="actions">
+          <Button data-test="recovery-retry" label="Wiederholen" size="small" :disabled="running" @click="emit('retry')" />
+          <Button data-test="recovery-cancel" label="Abbrechen" size="small" text severity="danger" :disabled="running" @click="emit('cancelRecovery')" />
+        </div>
+      </Message>
       <Message v-if="massDelete" severity="warn" :closable="false" data-test="snapraid-blocked">
         Sync gestoppt: {{ status!.lastSync!.removed }} Dateien gelöscht. Prüfe, ob das gewollt ist (z. B. eine leere oder neu
         formatierte Platte), bevor du fortfährst.
@@ -92,9 +112,19 @@ const scrubTag = computed(() => tag(status.value?.lastScrub))
         {{ pool.snapraid.scrubSchedule }}
       </p>
       <div class="actions">
-        <Button data-test="snapraid-sync" label="Jetzt synchronisieren" size="small" outlined :disabled="running" @click="emit('run', 'sync', false)" />
-        <Button data-test="snapraid-scrub" label="Jetzt prüfen" size="small" outlined :disabled="running" @click="emit('run', 'scrub', false)" />
+        <Button data-test="snapraid-sync" label="Jetzt synchronisieren" size="small" outlined :disabled="running || !!recovery" @click="emit('run', 'sync', false)" />
+        <Button data-test="snapraid-scrub" label="Jetzt prüfen" size="small" outlined :disabled="running || !!recovery" @click="emit('run', 'scrub', false)" />
         <Button data-test="snapraid-diff" label="Änderungen prüfen" size="small" text :disabled="running" @click="emit('run', 'diff', false)" />
+        <Button
+          data-test="snapraid-replace"
+          label="Platte ersetzen …"
+          size="small"
+          :data-missing="String(hasMissing)"
+          :outlined="!hasMissing"
+          :severity="hasMissing ? 'warn' : 'secondary'"
+          :disabled="running || !!recovery"
+          @click="emit('replace')"
+        />
         <Button data-test="snapraid-edit" label="Einstellungen" size="small" text @click="emit('configure')" />
         <Button data-test="snapraid-disable" label="Abschalten" size="small" text severity="danger" :disabled="running" @click="emit('disable')" />
       </div>

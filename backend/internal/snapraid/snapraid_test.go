@@ -1,6 +1,7 @@
 package snapraid
 
 import (
+	"github.com/betternas/betternas/internal/apierr"
 	"os"
 	"strings"
 	"testing"
@@ -92,5 +93,54 @@ func TestParseSettingsRoundtrip(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(files[SettingsPath("media")]), ManagedHeader+"\n") {
 		t.Fatal("no header")
+	}
+}
+
+func TestPoolConfigNames(t *testing.T) {
+	base := func(names map[string]string) PoolConfig {
+		return PoolConfig{Pool: "media", Data: []string{"d1", "new2"}, Parity: []string{"p1"}, Names: names}.WithDefaults()
+	}
+	if got := base(map[string]string{"new2": "old2"}).Name("new2"); got != "old2" {
+		t.Errorf("Name: %q", got)
+	}
+	if got := base(nil).Name("d1"); got != "d1" {
+		t.Errorf("Name ohne Alias: %q", got)
+	}
+	if err := base(map[string]string{"new2": "old2"}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]map[string]string{
+		"Alias = ID einer anderen Platte": {"new2": "d1"},
+		"Alias ungültig":                  {"new2": "../x"},
+		"Alias leer":                      {"new2": ""},
+		"Schlüssel ist keine Datenplatte": {"p1": "old"},
+		"Schlüssel unbekannt":             {"zzz": "old"},
+	}
+	for name, n := range bad {
+		if err := base(n).Validate(); err == nil || apierr.From(err).Code != apierr.InvalidParams {
+			t.Errorf("%s: erwartet invalid_params, bekam %v", name, err)
+		}
+	}
+	two := PoolConfig{Pool: "media", Data: []string{"a", "b"}, Parity: []string{"p1"}, Names: map[string]string{"a": "x", "b": "x"}}.WithDefaults()
+	if err := two.Validate(); err == nil {
+		t.Error("doppelter Alias akzeptiert")
+	}
+}
+
+func TestParseFix(t *testing.T) {
+	cases := []struct {
+		out                    string
+		recovered, unrecovered int
+	}{
+		{"Everything OK\n12 recovered errors\n0 unrecoverable errors\n", 12, 0},
+		{"unrecoverable /srv/a\nunrecoverable /srv/b\n3 recovered errors\n2 unrecoverable errors\n", 3, 2},
+		{"unrecoverable /srv/a\nunrecoverable /srv/b\nunrecoverable /srv/c\n", 0, 3}, // ohne Zusammenfassung: Zeilen zählen
+		{"", 0, 0},
+	}
+	for _, c := range cases {
+		r, u := ParseFix([]byte(c.out))
+		if r != c.recovered || u != c.unrecovered {
+			t.Errorf("%q: %d/%d statt %d/%d", c.out, r, u, c.recovered, c.unrecovered)
+		}
 	}
 }

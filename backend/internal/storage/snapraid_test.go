@@ -268,3 +268,23 @@ func TestReconcileAppliesSnapraid(t *testing.T) {
 		t.Fatal("Reconcile hat snapraid.apply nicht aufgerufen")
 	}
 }
+
+func TestLoadSnapraidReadsAlias(t *testing.T) {
+	e := snapEnv(t)
+	e.enable(t, "media", "d2")
+	if _, err := e.m.db.Exec(`INSERT INTO snapraid_alias(pool_name, disk_id, name) VALUES ('media','d1','old1')`); err != nil {
+		t.Fatal(err)
+	}
+	all, err := e.m.loadSnapraid(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := all["media"].Names["d1"]; got != "old1" {
+		t.Fatalf("Names: %v", all["media"].Names)
+	}
+	// Der Agent bekommt die Namen mit (Konfiguration wird neu erzeugt)
+	e.enable(t, "media", "d2")
+	if got := e.lastSnap().Pools[0].Names["d1"]; got != "old1" {
+		t.Fatalf("Agent-Zustand ohne Alias: %v", e.lastSnap().Pools[0].Names)
+	}
+}

@@ -177,15 +177,41 @@ func Register(s *rpc.Server, d Deps) {
 			Pool   string `json:"pool"`
 			Action string `json:"action"`
 			Force  bool   `json:"force"`
+			Disk   string `json:"disk"`
 		}
 		if err := decode(p, &req); err != nil {
 			return nil, err
 		}
-		unit, err := StartSnapraid(ctx, d, req.Pool, req.Action, req.Force)
+		unit, err := StartSnapraidDisk(ctx, d, req.Pool, req.Action, req.Force, req.Disk)
 		if err != nil {
 			return nil, err
 		}
 		return map[string]string{"unit": unit}, nil
+	})
+	s.Handle("snapraid.recovery.begin", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Pool string `json:"pool"`
+			Disk string `json:"disk"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		if err := RecoveryBegin(ctx, d, req.Pool, req.Disk); err != nil {
+			return nil, err
+		}
+		return map[string]bool{"ok": true}, nil
+	})
+	s.Handle("snapraid.recovery.cancel", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Pool string `json:"pool"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		if err := RecoveryCancel(ctx, d, req.Pool); err != nil {
+			return nil, err
+		}
+		return map[string]bool{"ok": true}, nil
 	})
 	s.Handle("snapraid.status", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var req struct {
@@ -203,6 +229,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerVM(s, d)
 	registerVMOps(s, d)
 	registerSpindown(s, d)
+	registerSystem(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State
 		if err := decode(p, &st); err != nil {

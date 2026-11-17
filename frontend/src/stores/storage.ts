@@ -58,6 +58,12 @@ export const useStorageStore = defineStore('storage', () => {
     deletePool: (name: string) => runJob(() => storageApi.deletePool(name)),
     enableSnapraid: (pool: string, input: SnapraidInput) => runJob(() => storageApi.enableSnapraid(pool, input)),
     disableSnapraid: (pool: string) => runJob(() => storageApi.disableSnapraid(pool)),
+    replaceDisk: (pool: string, oldDisk: string, newDisk: string) => runJob(() => storageApi.replaceDisk(pool, oldDisk, newDisk)),
+    retryRecovery: (pool: string) => runJob(() => storageApi.retryRecovery(pool)),
+    cancelRecovery: async (pool: string) => {
+      await storageApi.cancelRecovery(pool)
+      await refresh()
+    },
     runSnapraid: (pool: string, action: 'sync' | 'scrub' | 'diff', force = false) =>
       runJob(() => storageApi.runSnapraid(pool, action, force)),
   }

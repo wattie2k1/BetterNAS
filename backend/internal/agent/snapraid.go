@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +23,10 @@ import (
 // lockDir ist das Verzeichnis der Lauf-Sperren (in Tests überschrieben).
 var lockDir = snapraid.LockDir
 
-var snapraidActions = map[string]bool{"sync": true, "scrub": true, "diff": true}
+var snapraidActions = map[string]bool{"sync": true, "scrub": true, "diff": true, "fix": true}
+
+// snapDiskRe beschreibt gültige SnapRAID-Plattennamen (wie snapraid.diskIDRe).
+var snapDiskRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
 
 const maxLogBytes = 64 << 10
 
@@ -31,7 +35,7 @@ func checkPoolAction(pool, action string) error {
 		return apierr.New(apierr.InvalidParams, "Ungültiger Poolname")
 	}
 	if !snapraidActions[action] {
-		return apierr.New(apierr.InvalidParams, "Unbekannte SnapRAID-Aktion (erlaubt: sync, scrub, diff)")
+		return apierr.New(apierr.InvalidParams, "Unbekannte SnapRAID-Aktion (erlaubt: sync, scrub, diff, fix)")
 	}
 	return nil
 }
@@ -189,7 +193,15 @@ func diskPaths(ids []string, f func(string) string) []string {
 
 // StartSnapraid startet einen Lauf in einer eigenen transienten Unit und liefert deren Namen.
 func StartSnapraid(ctx context.Context, d Deps, pool, action string, force bool) (string, error) {
+	return StartSnapraidDisk(ctx, d, pool, action, force, "")
+}
+
+// StartSnapraidDisk wie StartSnapraid; für fix muss disk (SnapRAID-Name) angegeben werden.
+func StartSnapraidDisk(ctx context.Context, d Deps, pool, action string, force bool, disk string) (string, error) {
 	if err := checkPoolAction(pool, action); err != nil {
+		return "", err
+	}
+	if err := checkDiskArg(action, disk); err != nil {
 		return "", err
 	}
 	if !d.FS.Exists(snapraid.ConfPath(pool)) {
@@ -205,6 +217,9 @@ func StartSnapraid(ctx context.Context, d Deps, pool, action string, force bool)
 	if force {
 		args = append(args, "--force")
 	}
+	if disk != "" {
+		args = append(args, "--disk", disk)
+	}
 	if _, err := run(ctx, d.Runner, nil, "systemd-run", args...); err != nil {
 		return "", err
 	}
@@ -214,6 +229,7 @@ func StartSnapraid(ctx context.Context, d Deps, pool, action string, force bool)
 type spStateFile struct {
 	LastSync  *snapraid.RunState `json:"lastSync,omitempty"`
 	LastScrub *snapraid.RunState `json:"lastScrub,omitempty"`
+	LastFix   *snapraid.RunState `json:"lastFix,omitempty"`
 	Diff      *snapraid.Diff     `json:"diff,omitempty"`
 	DiffAt    *time.Time         `json:"diffAt,omitempty"`
 }
@@ -243,7 +259,7 @@ func SnapraidStatus(_ context.Context, d Deps, pool string) (snapraid.Status, er
 		return snapraid.Status{}, apierr.New(apierr.InvalidParams, "Ungültiger Poolname")
 	}
 	s := readSPState(d, pool)
-	st := snapraid.Status{Enabled: d.FS.Exists(snapraid.ConfPath(pool)), LastSync: s.LastSync, LastScrub: s.LastScrub, Diff: s.Diff, DiffAt: s.DiffAt}
+	st := snapraid.Status{Enabled: d.FS.Exists(snapraid.ConfPath(pool)), LastSync: s.LastSync, LastScrub: s.LastScrub, LastFix: s.LastFix, Recovery: readRecovery(d, pool), Diff: s.Diff, DiffAt: s.DiffAt}
 	if l, err := lockPool(pool); err != nil {
 		st.Running = apierr.From(err).Code == apierr.Conflict
 	} else {
@@ -271,14 +287,104 @@ func confMountpoints(conf []byte) []string {
 	return out
 }
 
-// RunSnapraid führt sync, scrub oder diff aus, hält das Ergebnis fest und bricht bei Gefahr ab.
-func RunSnapraid(ctx context.Context, d Deps, pool, action string, force bool) error {
-	if err := checkPoolAction(pool, action); err != nil {
+// checkDiskArg prüft den Plattenparameter: fix braucht einen gültigen Namen, alle anderen Aktionen keinen.
+func checkDiskArg(action, disk string) error {
+	switch {
+	case action == "fix" && disk == "":
+		return apierr.New(apierr.InvalidParams, "Für die Wiederherstellung fehlt die Platte.")
+	case action != "fix" && disk != "":
+		return apierr.New(apierr.InvalidParams, "Eine Platte ist nur bei der Wiederherstellung erlaubt.")
+	case disk != "" && !snapDiskRe.MatchString(disk):
+		return apierr.New(apierr.InvalidParams, "Ungültiger Plattenname")
+	}
+	return nil
+}
+
+// confDataNames liefert die SnapRAID-Namen der Datenplatten aus der erzeugten snapraid.conf.
+func confDataNames(conf []byte) map[string]bool {
+	out := map[string]bool{}
+	for _, line := range strings.Split(string(conf), "\n") {
+		if f := strings.Fields(line); len(f) == 3 && f[0] == "data" {
+			out[f[1]] = true
+		}
+	}
+	return out
+}
+
+func readRecovery(d Deps, pool string) *snapraid.Recovery {
+	b, err := d.FS.ReadFile(snapraid.FixingPath(pool))
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	r := &snapraid.Recovery{Disk: strings.TrimSpace(lines[0]), State: "open"}
+	if len(lines) > 1 {
+		r.Since, _ = time.Parse(time.RFC3339, strings.TrimSpace(lines[1]))
+	}
+	return r
+}
+
+func writeRecoveryMarker(d Deps, pool, disk string) error {
+	if err := d.FS.MkdirAll(snapraid.StateDir, 0o755); err != nil {
+		return err
+	}
+	if r := readRecovery(d, pool); r != nil {
+		if r.Disk != disk {
+			return apierr.New(apierr.Conflict, "Für Pool "+pool+" ist bereits eine Wiederherstellung für Platte "+r.Disk+" offen.")
+		}
+		return nil // gleiche Platte: Marker (und Startzeit) bleiben
+	}
+	return d.FS.WriteFile(snapraid.FixingPath(pool), []byte(disk+"\n"+time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+// RecoveryBegin merkt eine Wiederherstellung vor: ab jetzt verweigern Sync und Scrub, bis sie abgeschlossen oder abgebrochen ist.
+func RecoveryBegin(_ context.Context, d Deps, pool, disk string) error {
+	if !snapraid.PoolNameRe.MatchString(pool) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Poolname")
+	}
+	if err := checkDiskArg("fix", disk); err != nil {
 		return err
 	}
 	conf, err := d.FS.ReadFile(snapraid.ConfPath(pool))
 	if err != nil {
 		return apierr.New(apierr.NotFound, "SnapRAID ist für diesen Pool nicht eingerichtet.")
+	}
+	if !confDataNames(conf)[disk] {
+		return apierr.New(apierr.InvalidParams, "Die Platte "+disk+" gehört nicht zu diesem Pool.")
+	}
+	return writeRecoveryMarker(d, pool, disk)
+}
+
+// RecoveryCancel bricht eine offene Wiederherstellung ab (Marker entfernen); Sync und Scrub laufen danach wieder.
+func RecoveryCancel(_ context.Context, d Deps, pool string) error {
+	if !snapraid.PoolNameRe.MatchString(pool) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Poolname")
+	}
+	if !d.FS.Exists(snapraid.FixingPath(pool)) {
+		return apierr.New(apierr.NotFound, "Es ist keine Wiederherstellung offen.")
+	}
+	return d.FS.Remove(snapraid.FixingPath(pool))
+}
+
+// RunSnapraid führt sync, scrub oder diff aus, hält das Ergebnis fest und bricht bei Gefahr ab.
+func RunSnapraid(ctx context.Context, d Deps, pool, action string, force bool) error {
+	return RunSnapraidDisk(ctx, d, pool, action, force, "")
+}
+
+// RunSnapraidDisk wie RunSnapraid; zusätzlich fix für die Platte mit dem SnapRAID-Namen disk.
+func RunSnapraidDisk(ctx context.Context, d Deps, pool, action string, force bool, disk string) error {
+	if err := checkPoolAction(pool, action); err != nil {
+		return err
+	}
+	if err := checkDiskArg(action, disk); err != nil {
+		return err
+	}
+	conf, err := d.FS.ReadFile(snapraid.ConfPath(pool))
+	if err != nil {
+		return apierr.New(apierr.NotFound, "SnapRAID ist für diesen Pool nicht eingerichtet.")
+	}
+	if action == "fix" && !confDataNames(conf)[disk] {
+		return apierr.New(apierr.InvalidParams, "Die Platte "+disk+" gehört nicht zu diesem Pool.")
 	}
 	lock, err := lockPool(pool)
 	if err != nil {
@@ -302,6 +408,8 @@ func RunSnapraid(ctx context.Context, d Deps, pool, action string, force bool) e
 			state.LastSync = &rs
 		case "scrub":
 			state.LastScrub = &rs
+		case "fix":
+			state.LastFix = &rs
 		}
 		_ = writeSPState(d, pool, state)
 		out := logBuf.Bytes()
@@ -314,6 +422,13 @@ func RunSnapraid(ctx context.Context, d Deps, pool, action string, force bool) e
 	block := func(msg string, removed int) error {
 		fmt.Fprintln(&logBuf, msg)
 		return finish(snapraid.RunState{Result: snapraid.ResultBlocked, Message: msg, Removed: removed}, apierr.New(apierr.Conflict, msg))
+	}
+
+	// Solange eine Wiederherstellung offen ist, darf nichts die Parität verändern.
+	if action == "sync" || action == "scrub" {
+		if r := readRecovery(d, pool); r != nil {
+			return block("Die Wiederherstellung von Platte "+r.Disk+" ist offen – erst abschließen oder abbrechen.", 0)
+		}
 	}
 
 	// Nie mit fehlender Platte laufen.
@@ -341,6 +456,26 @@ func RunSnapraid(ctx context.Context, d Deps, pool, action string, force bool) e
 			msg += ": " + s
 		}
 		return finish(snapraid.RunState{Result: snapraid.ResultFailed, Message: msg}, apierr.New(apierr.Internal, msg))
+	}
+
+	if action == "fix" {
+		if err := writeRecoveryMarker(d, pool, disk); err != nil {
+			return finish(snapraid.RunState{Result: snapraid.ResultFailed, Message: err.Error()}, err)
+		}
+		res, err := sp("-d", disk, "fix")
+		if err != nil {
+			return fail(res, err, "Die Wiederherstellung")
+		}
+		recovered, unrecoverable := snapraid.ParseFix(append(append([]byte{}, res.Stdout...), res.Stderr...))
+		switch {
+		case unrecoverable > 0:
+			msg := strconv.Itoa(unrecoverable) + " Dateien sind nicht wiederherstellbar."
+			return finish(snapraid.RunState{Result: snapraid.ResultErrors, Message: msg, Unrecoverable: unrecoverable}, apierr.New(apierr.Internal, msg))
+		case res.ExitCode != 0:
+			return fail(res, nil, "Die Wiederherstellung")
+		}
+		_ = d.FS.Remove(snapraid.FixingPath(pool))
+		return finish(snapraid.RunState{Result: snapraid.ResultOK, Message: strconv.Itoa(recovered) + " Dateien wiederhergestellt."}, nil)
 	}
 
 	if action == "sync" || action == "diff" {
@@ -377,32 +512,44 @@ func RunSnapraid(ctx context.Context, d Deps, pool, action string, force bool) e
 	return finish(snapraid.RunState{Result: snapraid.ResultOK}, nil)
 }
 
-func parseSnapraidArgs(args []string) (action, pool string, force bool, err error) {
-	if len(args) < 2 || len(args) > 3 {
-		return "", "", false, fmt.Errorf("Aufruf: betternas-agent snapraid-run <sync|scrub|diff> <pool> [--force]")
+func parseSnapraidArgs(args []string) (action, pool string, force bool, disk string, err error) {
+	usage := fmt.Errorf("Aufruf: betternas-agent snapraid-run <sync|scrub|diff|fix> <pool> [--force] [--disk <name>]")
+	if len(args) < 2 {
+		return "", "", false, "", usage
 	}
 	action, pool = args[0], args[1]
-	if len(args) == 3 {
-		if args[2] != "--force" {
-			return "", "", false, fmt.Errorf("unbekannte Option: %s", args[2])
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--force":
+			force = true
+		case "--disk":
+			if i+1 >= len(args) {
+				return "", "", false, "", usage
+			}
+			i++
+			disk = args[i]
+		default:
+			return "", "", false, "", fmt.Errorf("unbekannte Option: %s", args[i])
 		}
-		force = true
 	}
 	if err := checkPoolAction(pool, action); err != nil {
-		return "", "", false, err
+		return "", "", false, "", err
 	}
-	return action, pool, force, nil
+	if err := checkDiskArg(action, disk); err != nil {
+		return "", "", false, "", err
+	}
+	return action, pool, force, disk, nil
 }
 
 // SnapraidCLI ist der Kommandozeilenmodus `betternas-agent snapraid-run …` (von Timern und der GUI gestartet).
 // Rückgabe ist der Exit-Code.
 func SnapraidCLI(ctx context.Context, d Deps, args []string, stderr *os.File) int {
-	action, pool, force, err := parseSnapraidArgs(args)
+	action, pool, force, disk, err := parseSnapraidArgs(args)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	if err := RunSnapraid(ctx, d, pool, action, force); err != nil {
+	if err := RunSnapraidDisk(ctx, d, pool, action, force, disk); err != nil {
 		fmt.Fprintln(stderr, apierr.From(err).Message)
 		return 1
 	}

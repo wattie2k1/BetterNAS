@@ -384,3 +384,17 @@ Platten, letzte Werte bleiben, Anzeige „schläft“) und fällt bei Fehlschlag
 Spindown pro Daten-/Paritätsplatte (`hdparm -S`, 0/5/10/20/30/60/120/240 min) wird in `settings` (`power.spindown`)
 gespeichert und beim Start sowie bei `disks.changed` erneut angewendet; Platten ohne Unterstützung (z. B. USB) lehnen
 ab, dann wird nichts gespeichert. Die Übersicht zeigt eine Kachel „Meldungen“ nur, wenn Meldungen anliegen.
+
+Abweichung Phase 6b: Das Konfigurations-Backup sichert nur die SQLite-DB (konsistente Kopie per `VACUUM INTO`, `sessions` und
+`jobs` geleert) plus `manifest.json` als `betternas-backup-YYYYMMDD-HHMMSS.tar.gz` in `/var/lib/betternas/backups` (nächtlich
+02:30, 7 bleiben, Download, Meldung bei Fehlschlag). `/etc/betternas`, Mount-Units, Samba und SnapRAID-Timer werden beim Start aus
+der DB erzeugt und sind deshalb nicht Teil des Archivs; nicht enthalten sind außerdem Benutzerkonten/Samba-Passwörter (Systemkonten),
+der TLS-Schlüssel und Docker-Daten. Das Archiv enthält Mail-/ntfy-Zugangsdaten und ist vertraulich zu behandeln. Eine
+Wiederherstellung ersetzt die DB nie im Betrieb: Archiv prüfen (nur `manifest.json` + `betternas.db`, Format 1, Schema ≤ eigenes,
+`integrity_check`) → Bestätigung durch Tippen von `WIEDERHERSTELLEN` → `pending.db` → Neustart der API über den Agent
+(`system.restart-api`) → `ApplyPending` tauscht die DB vor `db.Open` (alte bleibt als `.pre-restore-*`) → `Reconcile`.
+Plattenersatz (nur Datenplatten): neue Tabelle `snapraid_alias` führt die neue Platte unter dem SnapRAID-Namen der alten
+(`PoolConfig.Names`, `data <name> <pfad>`). Ablauf als Job: Marker `<pool>.fixing` setzen (Sync/Scrub → `blocked`) → Speicher- und
+SnapRAID-Konfiguration anwenden (Rückbau bei Fehler) → DB tauschen → `snapraid -d <name> fix` → Marker weg → Sync. Bei
+unwiederherstellbaren Dateien oder Fehlern bleibt der Marker (Alarm „Wiederherstellung offen“), die Wiederherstellung ist
+wiederholbar oder abbrechbar. Nicht in 6b: Austausch von Paritätsplatten und Formatieren der Ersatzplatte im Assistenten.

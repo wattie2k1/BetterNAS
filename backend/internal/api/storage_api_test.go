@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/betternas/betternas/internal/auth"
+	"github.com/betternas/betternas/internal/backup"
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
@@ -49,6 +50,15 @@ type storageAPI struct {
 	csrf   string
 	jobs   *jobs.Manager
 	db     *sql.DB
+	bk     *recAgent
+}
+
+// recAgent merkt sich die Agent-Aufrufe des Backup-Managers.
+type recAgent struct{ calls []string }
+
+func (r *recAgent) Call(_ context.Context, method string, _, _ any) error {
+	r.calls = append(r.calls, method)
+	return nil
 }
 
 func newStorageAPI(t *testing.T) *storageAPI {
@@ -64,12 +74,14 @@ func newStorageAPI(t *testing.T) *storageAPI {
 	token, csrf, _ := store.Create(context.Background(), "anna")
 	sm := storage.NewManager(d, agentStub{}, jm, hub)
 	ns := notify.NewService(d, hub)
+	bk := &recAgent{}
 	h := NewServer(Config{WebDir: t.TempDir(), Dev: true}, Deps{
 		DB: d, Jobs: jm, Hub: hub,
 		Auth:    auth.NewHandlers(d, store, nil, nil, false),
 		Storage: sm, Notify: ns, Monitor: monitor.New(d, sm, ns, hub),
+		Backup: backup.NewManager(d, bk, filepath.Join(t.TempDir(), "backups"), "test", hub),
 	})
-	return &storageAPI{h: h, cookie: &http.Cookie{Name: auth.CookieName, Value: token}, csrf: csrf, jobs: jm, db: d}
+	return &storageAPI{h: h, cookie: &http.Cookie{Name: auth.CookieName, Value: token}, csrf: csrf, jobs: jm, db: d, bk: bk}
 }
 
 func (s *storageAPI) do(method, path, body string) *httptest.ResponseRecorder {

@@ -6,6 +6,7 @@ package snapraid
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,9 @@ func ContentPath(pool string) string  { return StateDir + "/" + pool + ".content
 func StatePath(pool string) string    { return StateDir + "/" + pool + ".state.json" }
 func LogPath(pool string) string      { return StateDir + "/" + pool + ".log" }
 func LockPath(pool string) string     { return LockDir + "/snapraid-" + pool + ".lock" }
+
+// FixingPath ist der Marker „Wiederherstellung offen“ (Zeile 1: SnapRAID-Name der Platte, Zeile 2: Startzeit).
+func FixingPath(pool string) string { return StateDir + "/" + pool + ".fixing" }
 
 // TimerPath liefert die Timer-Unit einer Aktion (sync | scrub).
 func TimerPath(action, pool string) string {
@@ -111,7 +115,17 @@ type PoolConfig struct {
 	Pool   string   `json:"pool"`
 	Data   []string `json:"data"`
 	Parity []string `json:"parity"`
+	// Names ordnet Platten-IDs einen abweichenden SnapRAID-Namen zu (ersetzte Platten behalten den Namen der alten).
+	Names map[string]string `json:"names,omitempty"`
 	Settings
+}
+
+// Name liefert den SnapRAID-Namen einer Datenplatte (ohne Alias: die ID).
+func (p PoolConfig) Name(id string) string {
+	if n, ok := p.Names[id]; ok {
+		return n
+	}
+	return id
 }
 
 // WithDefaults füllt leere Einstellungen mit Standardwerten.
@@ -140,6 +154,26 @@ func (p PoolConfig) Validate() error {
 			return invalid("Datenträger doppelt verwendet: " + id)
 		}
 		seen[id] = true
+	}
+	isData := map[string]bool{}
+	for _, id := range p.Data {
+		isData[id] = true
+	}
+	for id, name := range p.Names {
+		if !isData[id] {
+			return invalid("Alias für eine Platte, die keine Datenplatte des Pools ist: " + id)
+		}
+		if !diskIDRe.MatchString(name) {
+			return invalid("Ungültiger SnapRAID-Name: " + name)
+		}
+	}
+	names := map[string]bool{}
+	for _, id := range p.Data {
+		n := p.Name(id)
+		if names[n] {
+			return invalid("SnapRAID-Name doppelt: " + n)
+		}
+		names[n] = true
 	}
 	return p.Settings.Validate()
 }
@@ -186,6 +220,15 @@ type RunState struct {
 	Message string    `json:"message,omitempty"`
 	At      time.Time `json:"at"`
 	Removed int       `json:"removed,omitempty"` // bei blocked: Anzahl gelöschter Dateien
+	// Unrecoverable ist bei fix die Zahl der nicht wiederherstellbaren Dateien.
+	Unrecoverable int `json:"unrecoverable,omitempty"`
+}
+
+// Recovery beschreibt eine offene Wiederherstellung (Marker vorhanden).
+type Recovery struct {
+	Disk  string    `json:"disk"`
+	State string    `json:"state"` // open
+	Since time.Time `json:"since"`
 }
 
 // Status ist der Zustand von SnapRAID für einen Pool.
@@ -194,6 +237,8 @@ type Status struct {
 	Running   bool       `json:"running"`
 	LastSync  *RunState  `json:"lastSync,omitempty"`
 	LastScrub *RunState  `json:"lastScrub,omitempty"`
+	LastFix   *RunState  `json:"lastFix,omitempty"`
+	Recovery  *Recovery  `json:"recovery,omitempty"`
 	Diff      *Diff      `json:"diff,omitempty"`
 	DiffAt    *time.Time `json:"diffAt,omitempty"`
 	Log       string     `json:"log,omitempty"`
@@ -268,4 +313,23 @@ func ParseSettings(b []byte) (Settings, error) {
 		}
 	}
 	return s, nil
+}
+
+var (
+	recoveredRe   = regexp.MustCompile(`(?m)^\s*(\d+) recovered errors?\s*$`)
+	unrecoveredRe = regexp.MustCompile(`(?m)^\s*(\d+) unrecoverable errors?\s*$`)
+	unrecovLineRe = regexp.MustCompile(`(?m)^unrecoverable\b`)
+)
+
+// ParseFix liest aus der Ausgabe von `snapraid fix` die Zahl wiederhergestellter und nicht wiederherstellbarer Dateien.
+func ParseFix(out []byte) (recovered, unrecoverable int) {
+	if m := recoveredRe.FindSubmatch(out); m != nil {
+		recovered, _ = strconv.Atoi(string(m[1]))
+	}
+	if m := unrecoveredRe.FindSubmatch(out); m != nil {
+		unrecoverable, _ = strconv.Atoi(string(m[1]))
+	} else {
+		unrecoverable = len(unrecovLineRe.FindAll(out, -1))
+	}
+	return recovered, unrecoverable
 }

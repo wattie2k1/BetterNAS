@@ -8,6 +8,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
+	"github.com/betternas/betternas/internal/backup"
 	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
@@ -48,6 +49,8 @@ type Deps struct {
 	VMs *vm.Manager
 	// Notify ist optional (nil = keine Benachrichtigungs-Routen).
 	Notify *notify.Service
+	// Backup ist optional (nil = keine Backup-Routen).
+	Backup *backup.Manager
 	// Monitor ist optional (nil = keine aktiven Meldungen).
 	Monitor *monitor.Monitor
 }
@@ -86,6 +89,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Updates != nil {
 		s.registerUpdates(api)
+	}
+	if deps.Backup != nil {
+		s.registerBackup(api)
 	}
 	if deps.Notify != nil {
 		s.registerNotifications(api)

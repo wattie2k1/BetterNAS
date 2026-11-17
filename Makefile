@@ -72,4 +72,4 @@ remote:
 integration:
 	cd backend && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c -tags integration -o ../bin/integration.test ./internal/agent
 	scp bin/integration.test $(REMOTE):/tmp/
-	ssh $(REMOTE) 'sudo /tmp/integration.test -test.run "TestStorageLifecycle|TestAccountsLifecycle|TestSharesLifecycle|TestSnapraidLifecycle|TestDockerLifecycle|TestDockerOps|TestVMLifecycle|TestVMOps|TestSmartAndSpindown" -test.v; rc=$$?; rm -f /tmp/integration.test; exit $$rc'
+	ssh $(REMOTE) 'sudo /tmp/integration.test -test.run "TestStorageLifecycle|TestAccountsLifecycle|TestSharesLifecycle|TestSnapraidLifecycle|TestDockerLifecycle|TestDockerOps|TestVMLifecycle|TestVMOps|TestSmartAndSpindown|TestSnapraidReplaceFix" -test.v; rc=$$?; rm -f /tmp/integration.test; exit $$rc'
