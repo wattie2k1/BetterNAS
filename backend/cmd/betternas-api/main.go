@@ -71,6 +71,7 @@ func main() {
 	go api.ForwardAgentEvents(ctx, agent, hub)
 	totpStore := auth.NewTOTPStore(d)
 	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev).WithTOTP(totpStore)
+	go handlers.Maintain(ctx, time.Hour)
 	// Freigaben-Manager und Storage/Benutzer verweisen aufeinander; die Funktionen lesen shm erst bei Aufruf.
 	var shm *shares.Manager
 	sm := storage.NewManager(d, agent, jm, hub, func(ctx context.Context, pool string) ([]string, error) {

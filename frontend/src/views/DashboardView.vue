@@ -38,6 +38,7 @@ const error = ref('')
 const cpuPercent = ref<number | null>(null)
 let lastTicks: { total: number; idle: number } | null = null
 let timer: ReturnType<typeof setInterval> | undefined
+let snapTimer: ReturnType<typeof setInterval> | undefined
 let firstCpu: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
@@ -78,9 +79,11 @@ onMounted(() => {
   loadSnapraid()
   firstCpu = setTimeout(load, 1500) // zweite Messung, damit die CPU-Kachel schnell einen Wert zeigt
   timer = setInterval(load, 5000)
+  snapTimer = setInterval(loadSnapraid, 60000) // Sync-/Scrub-Stand ändert sich im Hintergrund
 })
 onUnmounted(() => {
   clearInterval(timer)
+  clearInterval(snapTimer)
   clearTimeout(firstCpu)
 })
 

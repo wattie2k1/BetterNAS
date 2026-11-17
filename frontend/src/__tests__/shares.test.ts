@@ -197,3 +197,19 @@ describe('Freigabenliste: NFS', () => {
     expect(w.find('[data-test="share-Ohne"] [data-test="nfs-mount"]').exists()).toBe(false)
   })
 })
+
+describe('SharesView', () => {
+  it('erklärt, warum eine Freigabe ohne eingehängten Pool nicht erreichbar ist', async () => {
+    const { default: SharesView } = await import('@/views/shares/SharesView.vue')
+    const ToastService = (await import('primevue/toastservice')).default
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(new Response(JSON.stringify(url.endsWith('/shares') ? [{ ...existing, poolMounted: false }] : []), { status: 200 })),
+      ),
+    )
+    const w = mount(SharesView, { global: { plugins: [createPinia(), PrimeVue, ToastService] } })
+    await flushPromises()
+    expect(w.find('[data-test="pool-missing"]').text()).toContain('„media“ ist nicht eingehängt')
+  })
+})

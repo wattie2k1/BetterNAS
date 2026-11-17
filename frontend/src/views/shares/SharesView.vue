@@ -79,10 +79,14 @@ const smbUrl = (s: ShareView) => `smb://${s.uncPath.split('\\')[2]}.local/${s.na
       <template #title>
         <div class="title">
           <span><i class="pi pi-folder-open" /> {{ s.name }}</span>
-          <Tag v-if="!s.poolMounted" value="Pool fehlt" severity="danger" />
+          <Tag v-if="!s.poolMounted" value="Pool fehlt" severity="danger" :title="`Der Speicherpool „${s.pool}“ ist nicht eingehängt.`" />
         </div>
       </template>
       <template #content>
+        <Message v-if="!s.poolMounted" severity="warn" :closable="false" data-test="pool-missing">
+          Der Speicherpool „{{ s.pool }}“ ist nicht eingehängt, daher ist diese Freigabe im Netzwerk nicht erreichbar.
+          Prüfe unter Datenträger und Speicherpools, ob die Platten angeschlossen sind.
+        </Message>
         <p v-if="s.comment" class="sub">{{ s.comment }}</p>
         <p class="sub">{{ s.path }}</p>
         <div class="tags">

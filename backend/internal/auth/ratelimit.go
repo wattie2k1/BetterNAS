@@ -49,3 +49,12 @@ func (r *RateLimiter) Fail(ip string) {
 	r.prune(ip)
 	r.failures[ip] = append(r.failures[ip], r.now())
 }
+
+// Sweep entfernt alle IPs ohne Fehlversuch im Zeitfenster (sonst nur beim nächsten Zugriff der IP).
+func (r *RateLimiter) Sweep() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for ip := range r.failures {
+		r.prune(ip)
+	}
+}

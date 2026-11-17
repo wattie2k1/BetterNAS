@@ -1,3 +1,10 @@
+import { enableAutoUnmount } from '@vue/test-utils'
+import { afterEach } from 'vitest'
+
+// Gemountete Komponenten nach jedem Test aushängen, damit deren Timer (z. B. PrimeVue-TabList) nicht
+// nach dem Abbau der Testumgebung feuern („HTMLElement is not defined“).
+enableAutoUnmount(afterEach)
+
 // jsdom kennt kein ResizeObserver; PrimeVue-Tabs beobachten damit ihre Größe.
 if (!('ResizeObserver' in globalThis)) {
   ;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {

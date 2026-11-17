@@ -89,3 +89,12 @@ func (s *Store) Delete(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hashToken(token))
 	return err
 }
+
+// Purge löscht abgelaufene Sitzungen (sonst nur beim jeweiligen Zugriff) und liefert die Anzahl.
+func (s *Store) Purge(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= ?`, s.now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

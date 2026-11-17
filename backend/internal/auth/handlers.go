@@ -212,3 +212,22 @@ func (h *Handlers) RequireSession(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(WithSession(r.Context(), s)))
 	})
 }
+
+func (h *Handlers) sweep(ctx context.Context) {
+	_, _ = h.store.Purge(ctx)
+	h.limiter.Sweep()
+}
+
+// Maintain räumt abgelaufene Sitzungen und alte Fehlversuche regelmäßig auf, bis ctx endet.
+func (h *Handlers) Maintain(ctx context.Context, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.sweep(ctx)
+		}
+	}
+}
