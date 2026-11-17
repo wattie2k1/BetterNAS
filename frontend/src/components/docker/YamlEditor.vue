@@ -11,12 +11,14 @@ const theme = () => (mq?.matches ? 'vs-dark' : 'vs')
 const onScheme = () => ed && (ed.updateOptions({ theme: theme() }))
 
 onMounted(async () => {
-  const { monaco } = await import('@/utils/monaco')
+  const { monaco, COMPOSE_URI } = await import('@/utils/monaco')
   if (!host.value) return
   mq = window.matchMedia?.('(prefers-color-scheme: dark)')
+  const uri = monaco.Uri.parse(COMPOSE_URI)
+  const tm = monaco.editor.getModel(uri) ?? monaco.editor.createModel(model.value, 'yaml', uri)
+  tm.setValue(model.value)
   ed = monaco.editor.create(host.value, {
-    value: model.value,
-    language: 'yaml',
+    model: tm,
     theme: theme(),
     automaticLayout: true,
     minimap: { enabled: false },
