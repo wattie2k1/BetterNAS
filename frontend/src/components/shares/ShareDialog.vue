@@ -6,7 +6,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
-import { isReservedShareName, SHARE_NAME_RE, subdirError, type Access, type ShareAcl, type ShareInput, type ShareView } from '@/api/shares'
+import { isReservedShareName, SHARE_NAME_RE, subdirError, validNfsClient, type Access, type ShareAcl, type ShareInput, type ShareView } from '@/api/shares'
 import type { PoolView } from '@/api/storage'
 import type { GroupView, UserView } from '@/api/users'
 
@@ -34,6 +34,10 @@ const guest = ref(false)
 const guestWrite = ref(false)
 const recycle = ref(true)
 const fruit = ref(true)
+const nfsEnabled = ref(false)
+const nfsClients = ref('')
+const nfsReadOnly = ref(false)
+const nfsSquash = ref<'root' | 'all'>('root')
 /** Schlüssel "user:anna" bzw. "group:familie" → Zugriff; fehlend = kein Eintrag. */
 const access = ref<Record<string, Access>>({})
 
@@ -51,6 +55,10 @@ function reset() {
   guestWrite.value = s?.guestWrite ?? false
   recycle.value = s?.recycle ?? true
   fruit.value = s?.fruit ?? true
+  nfsEnabled.value = s?.nfs?.enabled ?? false
+  nfsClients.value = (s?.nfs?.clients ?? []).join('\n')
+  nfsReadOnly.value = s?.nfs?.readOnly ?? false
+  nfsSquash.value = s?.nfs?.squash ?? 'root'
   access.value = {}
   for (const a of s?.acl ?? []) access.value[key(a.type, a.name)] = a.access
   if (!s && props.defaultWriter) access.value[key('user', props.defaultWriter)] = 'rw'
@@ -79,6 +87,16 @@ const nameError = computed(() => {
 const folderError = computed(() => (subdir.value === '' ? '' : subdirError(subdir.value)))
 const commentError = computed(() => (/[\\%]/.test(comment.value) || [...comment.value].length > 128 ? 'Höchstens 128 Zeichen, ohne \\ und %.' : ''))
 
+/** Ein Client je Zeile; Leerzeilen und Leerraum außen werden entfernt. */
+const clientList = computed(() => nfsClients.value.split('\n').map((c) => c.trim()).filter(Boolean))
+const nfsError = computed(() => {
+  if (!nfsEnabled.value) return ''
+  if (!clientList.value.length) return 'Mindestens ein Client ist nötig (IP-Adresse, Netz wie 192.168.1.0/24 oder Rechnername).'
+  if (clientList.value.length > 32) return 'Höchstens 32 Clients.'
+  const bad = clientList.value.find((c) => !validNfsClient(c))
+  return bad ? `Ungültiger Client: ${bad} (kein *, keine Optionen).` : ''
+})
+
 const acl = computed<ShareAcl[]>(() => {
   const out: ShareAcl[] = []
   for (const [k, a] of Object.entries(access.value)) {
@@ -98,6 +116,7 @@ const valid = computed(
     subdir.value !== '' &&
     !folderError.value &&
     !commentError.value &&
+    !nfsError.value &&
     (hasRight.value || guest.value),
 )
 
@@ -114,6 +133,7 @@ function submit() {
     recycle: recycle.value,
     fruit: fruit.value,
     acl: acl.value,
+    nfs: { enabled: nfsEnabled.value, clients: nfsEnabled.value ? clientList.value : [], readOnly: nfsReadOnly.value, squash: nfsSquash.value },
   })
 }
 
@@ -209,6 +229,30 @@ function set(type: string, n: string, v: string | null) {
         <ToggleSwitch v-model="fruit" input-id="opt-fruit" />
         <label for="opt-fruit">macOS-Unterstützung</label>
       </div>
+
+      <span class="label">NFS (Linux, macOS, andere NAS)</span>
+      <div class="opt">
+        <ToggleSwitch v-model="nfsEnabled" input-id="opt-nfs" />
+        <label for="opt-nfs">Zusätzlich per NFS freigeben</label>
+      </div>
+      <template v-if="nfsEnabled">
+        <label for="nfs-clients">Erlaubte Clients (einer pro Zeile)</label>
+        <textarea id="nfs-clients" v-model="nfsClients" rows="3" placeholder="192.168.1.0/24&#10;pc.local" class="area" spellcheck="false" />
+        <small v-if="nfsError" class="err" data-test="nfs-error">{{ nfsError }}</small>
+        <Message severity="warn" :closable="false">
+          Bei NFS entscheidet nur die Client-Liste über den Zugriff – die Benutzerrechte dieser Freigabe (Samba-Rechte gelten hier nicht)
+          werden nicht geprüft. Trage nur Rechner ein, denen du vertraust.
+        </Message>
+        <div class="opt">
+          <ToggleSwitch v-model="nfsReadOnly" input-id="nfs-readonly" />
+          <label for="nfs-readonly">Nur lesen</label>
+        </div>
+        <label for="nfs-squash">Benutzerabbildung</label>
+        <select id="nfs-squash" v-model="nfsSquash" class="area">
+          <option value="root">Nur root wird abgebildet (Standard)</option>
+          <option value="all">Alle Zugriffe laufen als anonymer Benutzer</option>
+        </select>
+      </template>
     </div>
     <template #footer>
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
@@ -242,6 +286,14 @@ function set(type: string, n: string, v: string | null) {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+}
+.area {
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--bn-border);
+  background: var(--bn-glass);
+  color: inherit;
+  font: inherit;
 }
 .hint {
   color: var(--p-text-muted-color);

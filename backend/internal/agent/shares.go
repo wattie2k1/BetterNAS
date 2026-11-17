@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -12,7 +13,34 @@ import (
 	"github.com/betternas/betternas/internal/storage"
 )
 
-const smbConf = "/etc/samba/smb.conf"
+const (
+	smbConf     = "/etc/samba/smb.conf"
+	exportsDir  = "/etc/exports.d"
+	exportsFile = exportsDir + "/betternas.exports"
+)
+
+// poolHasNFSOptions prüft, ob der laufende mergerfs-Prozess des Pools mit noforget gestartet wurde.
+// (mergerfs-Optionen sind Daemon-Optionen und stehen nicht in /proc/self/mountinfo, wohl aber in der Kommandozeile.)
+func poolHasNFSOptions(ctx context.Context, d Deps, pool string) (bool, error) {
+	res, err := d.Runner.Run(ctx, nil, "pgrep", "-af", "--", "fsname=bnas-"+pool)
+	if err != nil {
+		return false, err
+	}
+	if res.ExitCode != 0 {
+		return false, nil
+	}
+	name := regexp.MustCompile(`fsname=bnas-` + regexp.QuoteMeta(pool) + `(,|\s|$)`)
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || path.Base(f[1]) != "mergerfs" {
+			continue
+		}
+		if name.MatchString(line) && strings.Contains(line, "noforget") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 func isManaged(b []byte) bool { return bytes.HasPrefix(b, []byte(storage.ManagedHeader+"\n")) }
 
@@ -26,6 +54,41 @@ func ApplyShares(ctx context.Context, d Deps, st shares.State) (ApplyResult, err
 	if b, err := d.FS.ReadFile(smbConf); err != nil || !isManaged(b) {
 		return ApplyResult{}, apierr.New(apierr.Conflict, "Die Samba-Konfiguration wird nicht von BetterNAS verwaltet und wird nicht verändert.")
 	}
+
+	// NFS: Voraussetzungen prüfen, bevor irgendetwas geändert wird.
+	exports := shares.RenderExports(st)
+	hasNFS := false
+	nfsPools := map[string]bool{}
+	for _, s := range st.Shares {
+		if s.NFS.Enabled {
+			hasNFS = true
+			nfsPools[s.Pool] = true
+		}
+	}
+	oldExports, haveExports := d.FS.ReadFile(exportsFile)
+	haveOld := haveExports == nil
+	if haveOld && !isManaged(oldExports) {
+		if hasNFS {
+			return ApplyResult{}, apierr.New(apierr.Conflict, "Die Datei "+exportsFile+" existiert und wird nicht von BetterNAS verwaltet.")
+		}
+		haveOld = false // fremde Datei: nie anfassen
+		oldExports = nil
+	}
+	pools := make([]string, 0, len(nfsPools))
+	for p := range nfsPools {
+		pools = append(pools, p)
+	}
+	sort.Strings(pools)
+	for _, p := range pools {
+		ok, err := poolHasNFSOptions(ctx, d, p)
+		if err != nil {
+			return ApplyResult{}, err
+		}
+		if !ok {
+			return ApplyResult{}, apierr.New(apierr.Conflict, "Der Pool "+p+" muss für NFS neu eingehängt werden (Neustart des NAS), damit die NFS-Optionen wirksam werden.").With("pool", p)
+		}
+	}
+	needExports := (hasNFS || haveOld) && (!haveOld || !bytes.Equal(oldExports, exports))
 
 	// Pools müssen eingehängt sein, sonst landen Freigabeordner auf der Systemplatte.
 	for _, s := range st.Shares {
@@ -69,7 +132,7 @@ func ApplyShares(ctx context.Context, d Deps, st shares.State) (ApplyResult, err
 		}
 	}
 	sort.Strings(changed)
-	if len(changed)+len(stale) == 0 {
+	if len(changed)+len(stale) == 0 && !needExports {
 		return ApplyResult{Changed: []string{}}, nil
 	}
 
@@ -107,6 +170,36 @@ func ApplyShares(ctx context.Context, d Deps, st shares.State) (ApplyResult, err
 		rollback()
 		return ApplyResult{}, apierr.New(apierr.InvalidParams, "Samba lehnt die Konfiguration ab; es wurde nichts geändert.").
 			With("testparm", strings.TrimSpace(string(res.Stderr)))
+	}
+
+	if needExports {
+		restoreExports := func() {
+			if haveOld {
+				_ = d.FS.WriteFile(exportsFile, oldExports, 0o644)
+			} else {
+				_ = d.FS.Remove(exportsFile)
+			}
+		}
+		if err := d.FS.MkdirAll(exportsDir, 0o755); err != nil {
+			rollback()
+			return ApplyResult{}, err
+		}
+		if err := d.FS.WriteFile(exportsFile, exports, 0o644); err != nil {
+			restoreExports()
+			rollback()
+			return ApplyResult{}, err
+		}
+		res, err := d.Runner.Run(ctx, nil, "exportfs", "-ra")
+		if err != nil || res.ExitCode != 0 {
+			restoreExports()
+			rollback()
+			if err != nil {
+				return ApplyResult{}, err
+			}
+			return ApplyResult{}, apierr.New(apierr.InvalidParams, "Der NFS-Export wurde abgelehnt; es wurde nichts geändert.").
+				With("exportfs", strings.TrimSpace(string(res.Stderr)))
+		}
+		changed = append(changed, path.Base(exportsFile))
 	}
 
 	if active, err := d.Runner.Run(ctx, nil, "systemctl", "is-active", "smbd"); err == nil && active.ExitCode == 0 {

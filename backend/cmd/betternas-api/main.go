@@ -68,7 +68,8 @@ func main() {
 	}
 	agent := rpc.NewClient(cfg.AgentSocket)
 	go api.ForwardAgentEvents(ctx, agent, hub)
-	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev)
+	totpStore := auth.NewTOTPStore(d)
+	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev).WithTOTP(totpStore)
 	// Freigaben-Manager und Storage/Benutzer verweisen aufeinander; die Funktionen lesen shm erst bei Aufruf.
 	var shm *shares.Manager
 	sm := storage.NewManager(d, agent, jm, hub, func(ctx context.Context, pool string) ([]string, error) {
@@ -125,7 +126,7 @@ func main() {
 	go mon.Run(ctx)
 	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)
 	go bm.Run(ctx, ns)
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Notify: ns, Monitor: mon, Backup: bm})
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

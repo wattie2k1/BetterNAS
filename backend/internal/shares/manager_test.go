@@ -248,3 +248,35 @@ func TestReconcileAppliesStoredState(t *testing.T) {
 		t.Fatal("Reconcile hat den gespeicherten Zustand nicht angewendet")
 	}
 }
+
+func TestManagerPersistsNFS(t *testing.T) {
+	e := newEnv(t)
+	// ohne NFS: Standardwerte
+	id, err := e.m.Create(e.ctx, "anna", filme())
+	e.mustSucceed(t, id, err)
+	v, err := e.m.Get(e.ctx, "Filme")
+	if err != nil || v.NFS.Enabled || v.NFS.Squash != "root" || v.NFS.Clients == nil || len(v.NFS.Clients) != 0 || v.NFSMount != "" {
+		t.Fatalf("%+v %v", v.NFS, err)
+	}
+	// mit NFS ändern
+	in := filme()
+	in.NFS = NFS{Enabled: true, Clients: []string{"192.168.1.0/24", "pc.local"}, ReadOnly: true, Squash: "all"}
+	id, err = e.m.Update(e.ctx, "anna", "Filme", in)
+	e.mustSucceed(t, id, err)
+	v, _ = e.m.Get(e.ctx, "Filme")
+	if !v.NFS.Enabled || !v.NFS.ReadOnly || v.NFS.Squash != "all" || len(v.NFS.Clients) != 2 || v.NFS.Clients[1] != "pc.local" {
+		t.Fatalf("%+v", v.NFS)
+	}
+	if v.NFSMount != "nas:/srv/pools/media/Filme" || len(v.ACL) != 2 {
+		t.Fatalf("%q %+v", v.NFSMount, v.ACL)
+	}
+	if got := e.agent.lastApplied().Shares[0].NFS; !got.Enabled || got.Squash != "all" {
+		t.Fatalf("Agent bekam: %+v", got)
+	}
+	// ungültig → synchron abgelehnt
+	bad := filme()
+	bad.NFS = NFS{Enabled: true, Clients: []string{"*"}, Squash: "root"}
+	if _, err := e.m.Update(e.ctx, "anna", "Filme", bad); code(err) != apierr.InvalidParams {
+		t.Fatalf("%v", err)
+	}
+}
