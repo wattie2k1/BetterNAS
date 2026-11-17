@@ -73,7 +73,7 @@ describe('VmWizard', () => {
     await next(w).trigger('click')
     await next(w).trigger('click')
     const net = w.findComponent('[data-test="vm-network"]') as unknown as VueWrapper
-    expect((net.props('options') as { value: string }[]).map((o) => o.value)).toEqual(['default', 'direct:eno1'])
+    expect(((net.vm.$props as { options: { value: string }[] }).options).map((o) => o.value)).toEqual(['default', 'direct:eno1'])
     expect(w.find('[data-test="vm-lan-hint"]').exists()).toBe(false)
     net.vm.$emit('update:modelValue', 'direct:eno1')
     await flushPromises()
