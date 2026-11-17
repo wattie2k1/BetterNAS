@@ -10,6 +10,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import ConsoleDialog from '@/components/vms/ConsoleDialog.vue'
 import IsoDialog from '@/components/vms/IsoDialog.vue'
+import BridgeDialog from '@/components/vms/BridgeDialog.vue'
 import SnapshotsDialog from '@/components/vms/SnapshotsDialog.vue'
 import VmWizard from '@/components/vms/VmWizard.vue'
 import InputText from 'primevue/inputtext'
@@ -23,6 +24,7 @@ const removing = ref<VmInfo | null>(null)
 const deleteDisks = ref(false)
 const wizard = ref(false)
 const isoDialog = ref(false)
+const bridgeDialog = ref(false)
 const consoleFor = ref<string | null>(null)
 const snapshotsFor = ref<string | null>(null)
 const cloning = ref<VmInfo | null>(null)
@@ -137,6 +139,7 @@ function openMenu(e: Event, v: VmInfo) {
 <template>
   <div class="bar">
     <span class="spacer" />
+    <Button data-test="vm-bridge" label="Bridge" icon="pi pi-sitemap" text :disabled="!!down" @click="bridgeDialog = true" />
     <Button data-test="vm-isos" label="ISO-Dateien" icon="pi pi-upload" text :disabled="!!down" @click="isoDialog = true" />
     <Button data-test="vm-new" label="Neue VM" icon="pi pi-plus" :disabled="!!down" @click="wizard = true" />
   </div>
@@ -208,6 +211,7 @@ function openMenu(e: Event, v: VmInfo) {
 
   <VmWizard v-model:visible="wizard" />
   <IsoDialog v-model:visible="isoDialog" />
+  <BridgeDialog v-model:visible="bridgeDialog" />
   <ConsoleDialog :visible="!!consoleFor" :name="consoleFor" @update:visible="(v) => !v && (consoleFor = null)" />
   <SnapshotsDialog :visible="!!snapshotsFor" :name="snapshotsFor" @update:visible="(v) => !v && (snapshotsFor = null)" />
   <Dialog :visible="!!cloning" modal append-to="self" header="VM klonen" :style="{ width: 'min(480px, 95vw)' }" @update:visible="(v) => !v && (cloning = null)">

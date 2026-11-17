@@ -412,3 +412,16 @@ zurückgesetzt. Der Zugriff richtet sich nur nach der Client-Liste, nicht nach d
 Daemon-Optionen sind (nicht in `mountinfo`), prüft der Agent vor dem Export per `pgrep -af fsname=bnas-<pool>`, ob der laufende
 mergerfs-Prozess `noforget` trägt, und lehnt sonst mit dem Hinweis auf einen Neustart ab. Nicht in 6c: 2FA-Pflicht, WebAuthn,
 Kerberos, Time-Machine-Ziel.
+
+Abweichung Phase 6d: **App-Vorlagen** laufen rein im Frontend (`utils/appTemplates.ts`: Jellyfin, Nextcloud, Home Assistant,
+Vaultwarden, Syncthing, Uptime Kuma). Eingaben (Ports, Pfade, zufällige Geheimnisse) landen in der `.env`, die
+`compose.yaml` verweist per `${VARIABLE}` darauf; danach öffnet sich der normale Stack-Dialog zum Nachbearbeiten. Ein
+Pfad-Picker (Dateibaum) fehlt; Pfade sind Textfelder mit Vorgaben unter `/srv/appdata/<stack>` und Hinweis auf `/srv/pools`.
+**Compose-Schema im Editor:** `monaco-yaml` mit mitgeliefertem `compose-spec.json` (offline, `enableSchemaRequest: false`),
+eigener YAML-Worker, weiterhin lazy. **Bridge br0 (Opt-in):** Agent `network.bridge.*` legt drei networkd-Dateien
+`05-bnas-br0*.{netdev,network}` an (br0 mit der MAC der Schnittstelle, bisherige `[Network]`-Einstellungen übernommen; die
+Datei `10-betternas.network` bleibt unverändert und wird nur überlagert). Vor der Änderung startet ein transienter
+systemd-Timer (`bnas-br0-rollback`, 120 s) das Rückfall-Skript (Dateien entfernen, br0 löschen, networkd neu laden); erst
+`confirm` aus der GUI (Dialog „Bridge“ auf der VM-Seite) stoppt ihn. Abgelehnt wird: manuell angepasste Netzwerkdatei,
+VM mit macvtap auf dieser Schnittstelle, Zurücknehmen solange eine VM `bridge:br0` nutzt. VM-Netz `bridge:br0`
+(`<interface type='bridge'>`) erscheint nur, wenn br0 existiert. Nicht in 6d: statische IP, VLAN, Bonding, mehrere Bridges.

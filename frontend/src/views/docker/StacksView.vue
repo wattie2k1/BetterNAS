@@ -5,6 +5,7 @@ import Card from 'primevue/card'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
+import TemplateDialog from '@/components/docker/TemplateDialog.vue'
 import StackDialog, { type SubmitMode } from '@/components/docker/StackDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useDockerStore } from '@/stores/docker'
@@ -14,6 +15,8 @@ const store = useDockerStore()
 const toast = useToast()
 const showDialog = ref(false)
 const editing = ref<StackFiles | null>(null)
+const draft = ref<StackFiles | null>(null)
+const showTemplates = ref(false)
 const check = ref<StackCheck | null>(null)
 const deleting = ref<StackInfo | null>(null)
 const busy = ref(false)
@@ -66,6 +69,14 @@ async function run(name: string, action: StackAction) {
 
 function openNew() {
   editing.value = null
+  draft.value = null
+  check.value = null
+  showDialog.value = true
+}
+
+function fromTemplate(files: StackFiles) {
+  editing.value = null
+  draft.value = files
   check.value = null
   showDialog.value = true
 }
@@ -121,6 +132,7 @@ async function remove() {
   <div class="toolbar">
     <span v-if="checkedAt" class="sub" data-test="checked-at">Zuletzt auf Updates geprüft: {{ checkedAt }}</span>
     <Button data-test="check-updates" label="Auf Updates prüfen" icon="pi pi-sync" severity="secondary" :loading="checking" :disabled="!!dockerDown || !store.stacks.length" @click="checkUpdates" />
+    <Button data-test="from-template" label="Aus Vorlage" icon="pi pi-th-large" severity="secondary" :disabled="!!dockerDown" @click="showTemplates = true" />
     <Button label="Neuer Stack" icon="pi pi-plus" :disabled="!!dockerDown" @click="openNew" />
   </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
@@ -154,7 +166,8 @@ async function remove() {
       </template>
     </Card>
   </div>
-  <StackDialog v-model:visible="showDialog" :stack="editing" :existing="names" :busy="busy" :check="check" @submit="submit" />
+  <TemplateDialog v-model:visible="showTemplates" :existing="names" @create="fromTemplate" />
+  <StackDialog v-model:visible="showDialog" :stack="editing" :draft="draft" :existing="names" :busy="busy" :check="check" @submit="submit" />
   <ConfirmDialog
     :visible="!!deleting"
     header="Stack löschen"

@@ -117,7 +117,7 @@ const fwOptions = [
 const isoOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.map((i) => ({ label: i.endsWith('.qcow2') ? `${i} (Festplatten-Image)` : i, value: i }))])
 const driverOptions = computed(() => [{ label: '— keine —', value: '' }, ...isos.value.filter((i) => !i.endsWith('.qcow2')).map((i) => ({ label: i, value: i }))])
 const netOptions = computed(() => [
-  ...networks.value.map((n) => ({ label: n === 'default' ? 'NAT (default) – Zugriff ins Internet, Host erreichbar' : n, value: n })),
+  ...networks.value.map((n) => ({ label: n === 'default' ? 'NAT (default) – Zugriff ins Internet, Host erreichbar' : n === 'bridge:br0' ? 'Bridge br0 – eigene IP im Heimnetz, Host erreichbar' : n, value: n })),
   ...ifaces.value.map((i) => ({ label: `LAN über ${i} – eigene IP im Heimnetz`, value: `direct:${i}` })),
 ])
 const isImage = computed(() => iso.value.endsWith('.qcow2'))

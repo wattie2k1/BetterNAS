@@ -21,6 +21,7 @@ import (
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/monitor"
+	"github.com/betternas/betternas/internal/netcfg"
 	"github.com/betternas/betternas/internal/notify"
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/shares"
@@ -126,7 +127,7 @@ func main() {
 	go mon.Run(ctx)
 	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)
 	go bm.Run(ctx, ns)
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

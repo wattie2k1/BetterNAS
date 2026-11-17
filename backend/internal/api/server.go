@@ -13,6 +13,7 @@ import (
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
 	"github.com/betternas/betternas/internal/monitor"
+	"github.com/betternas/betternas/internal/netcfg"
 	"github.com/betternas/betternas/internal/notify"
 	"github.com/betternas/betternas/internal/rpc"
 	"github.com/betternas/betternas/internal/shares"
@@ -47,6 +48,8 @@ type Deps struct {
 	Docker *docker.Manager
 	// VMs ist optional (nil = keine VM-Routen).
 	VMs *vm.Manager
+	// Network ist optional (nil = keine Netzwerk-Routen).
+	Network *netcfg.Manager
 	// Notify ist optional (nil = keine Benachrichtigungs-Routen).
 	Notify *notify.Service
 	// TOTP ist optional (nil = keine 2FA-Routen).
@@ -103,6 +106,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.VMs != nil {
 		s.registerVMs(api)
+	}
+	if deps.Network != nil {
+		s.registerNetwork(api)
 	}
 	if deps.Docker != nil {
 		s.registerDocker(api)

@@ -107,7 +107,11 @@ func VMNetworks(ctx context.Context, d Deps) ([]string, error) {
 	if err != nil || res.ExitCode != 0 {
 		return []string{}, nil
 	}
-	return vm.ParseNetworks(res.Stdout)
+	nets, err := vm.ParseNetworks(res.Stdout)
+	if err == nil && d.FS.Exists("/sys/class/net/br0/bridge") {
+		nets = append(nets, vm.BridgeNetwork)
+	}
+	return nets, err
 }
 
 // VMISOs liefert die ISO- und qcow2-Dateinamen unter /srv/vms/iso.
