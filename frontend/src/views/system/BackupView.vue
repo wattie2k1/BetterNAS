@@ -103,7 +103,8 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
 
   <p class="sub">
     BetterNAS sichert seine Konfiguration jede Nacht um 02:30 (die letzten 7 bleiben). Die Sicherungen liegen auf der Systemplatte –
-    lade regelmäßig eine herunter und bewahre sie außerhalb des NAS auf.
+    lade regelmäßig eine herunter und bewahre sie außerhalb des NAS auf. Sie enthalten auch Zugangsdaten (z. B. für Mail und ntfy) –
+    behandle sie vertraulich.
   </p>
 
   <p v-if="!store.backups.length && !store.loading" class="sub">Noch keine Sicherung vorhanden.</p>

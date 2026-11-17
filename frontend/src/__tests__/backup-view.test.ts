@@ -60,6 +60,7 @@ describe('Sicherung', () => {
     const rows = w.findAll('[data-test="backup-row"]')
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('0.5.0')
+    expect(w.text()).toContain('Zugangsdaten') // Hinweis: Backup enthält Mail-/ntfy-Zugangsdaten
     expect(rows[0].text()).toContain('2 Pools')
     expect(rows[0].text()).toContain('3 Freigaben')
     expect(rows[0].find('a[download]').attributes('href')).toBe('/api/v1/backups/betternas-backup-20260617-023000.tar.gz')
