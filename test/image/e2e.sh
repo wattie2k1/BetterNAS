@@ -134,6 +134,8 @@ check "Admin in betternas-admin"    'id -nG | grep -qw betternas-admin'
 check "Samba-Benutzer angelegt"     "echo $PASSWORD | sudo -S pdbedit -L | grep -q '^ittest:'"
 check "mergerfs installiert"        'command -v mergerfs'
 check "snapraid installiert"        'command -v snapraid'
+check "NFS-Server installiert"      'command -v exportfs'
+check "Docker installiert"          'command -v docker && command -v virsh && command -v virt-clone'
 check "systemd ohne Fehler"         'test "$(systemctl is-system-running)" = running'
 check "BetterNAS-Dienste aktiv"     'systemctl is-active betternas-agent betternas-api'
 code="$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:$HTTPS_PORT/" || true)"
@@ -184,6 +186,21 @@ step "Freigabe anlegen" wait_job "$JOB"
 api POST /api/v1/setup/complete >/dev/null
 step "Einrichtung abschließen" test "$(cat "$WORK/status")" = 204
 step "Einrichtung gespeichert" test "$(api GET /api/v1/setup | jget 'd["completed"]')" = True
+
+# Phase 4–6: Docker, VMs, Backup, 2FA-Status, Benachrichtigungen (ohne Netzwerkzugriff auf Registries)
+step "Docker läuft"          test "$(api GET /api/v1/docker/status | jget 'd["installed"] and d["active"]')" = True
+api POST /api/v1/stacks '{"name":"e2estack","compose":"services:\n  web:\n    image: nginx:stable\n","env":"A=1\n"}' >/dev/null
+step "Stack anlegen"         test "$(cat "$WORK/status")" = 201
+step "Stack gültig"          test "$(api POST /api/v1/stacks/e2estack/validate | jget 'd["ok"]')" = True
+step "Stack löschen"         sh -c "curl -sk -b '$JAR' -X DELETE -H 'X-CSRF-Token: $CSRF' -o /dev/null -w '%{http_code}' '$API/api/v1/stacks/e2estack' | grep -q 204"
+step "libvirt installiert"   test "$(api GET /api/v1/vms/status | jget 'd["installed"]')" = True
+step "VM-Netz default"       test "$(api GET /api/v1/vms/networks | jget '"default" in d')" = True
+api POST /api/v1/backups >/dev/null
+step "Konfig-Backup anlegen" test "$(cat "$WORK/status")" = 201
+step "Backup in Liste"       test "$(api GET /api/v1/backups | jget 'len(d)')" -ge 1
+step "2FA-Status"            test "$(api GET /api/v1/auth/totp | jget 'd["enabled"]')" = False
+step "Benachrichtigungen"    test "$(api GET /api/v1/notifications/config >/dev/null; cat "$WORK/status")" = 200
+step "Bridge-Status"         test "$(api GET /api/v1/network/bridge | jget 'len(d["candidates"])>=1 and not d["active"]')" = True
 
 if command -v smbclient >/dev/null; then
 	step "SMB: Datei schreiben" sh -c "smbclient //127.0.0.1/E2E -p $SMB_PORT -U 'e2euser%$USERPW' -c 'put /etc/hostname test.txt; ls' 2>&1 | grep -q test.txt"
