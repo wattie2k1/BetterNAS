@@ -34,6 +34,30 @@ export interface VmSpec {
   tpm: boolean
 }
 
+export interface VmConfig {
+  name: string
+  state: VmState
+  vcpus: number
+  memoryMiB: number
+  autostart: boolean
+  firmware: 'uefi' | 'bios'
+  secureBoot: boolean
+  tpm: boolean
+  network: string
+  hasCdrom: boolean
+  media: string
+  disks: string[]
+}
+
+/** Änderbare Werte (die VM muss ausgeschaltet sein). */
+export interface VmConfigUpdate {
+  vcpus: number
+  memoryMiB: number
+  secureBoot: boolean
+  network: string
+  media: string
+}
+
 export interface VmSnapshot {
   name: string
   created: string
@@ -86,5 +110,7 @@ export const vmsApi = {
       }
       xhr.send(file)
     }),
+  config: (name: string) => api.get<VmConfig>(`/api/v1/vms/${enc(name)}/config`),
+  configure: (name: string, u: VmConfigUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/config`, u),
   remove: (name: string, disks: boolean) => api.del<void>(`/api/v1/vms/${enc(name)}${disks ? '?disks=1' : ''}`),
 }

@@ -197,3 +197,27 @@ func TestParseDomIfList(t *testing.T) {
 		t.Fatalf("%v", l)
 	}
 }
+
+func TestBuildXMLSecureBoot(t *testing.T) {
+	// Linux und fertige Images (z. B. Home Assistant OS) sind nicht signiert: Secure Boot muss aus sein.
+	lin := okSpec()
+	x, err := BuildXML(lin, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<feature enabled='no' name='secure-boot'/>", "<feature enabled='no' name='enrolled-keys'/>"} {
+		if !strings.Contains(x, want) {
+			t.Errorf("Linux/UEFI: %q fehlt:\n%s", want, x)
+		}
+	}
+	// Windows nutzt Secure Boot weiterhin (Windows 11 + TPM).
+	win := lin
+	win.OS, win.TPM = "windows", true
+	x, err = BuildXML(win, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(x, "name='secure-boot'") {
+		t.Errorf("Windows soll die Firmware-Vorgabe behalten:\n%s", x)
+	}
+}

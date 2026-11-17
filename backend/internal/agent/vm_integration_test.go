@@ -238,3 +238,62 @@ func TestVMSnapshotUEFI(t *testing.T) {
 		}
 	}
 }
+
+// TestVMConfigureLibvirt ändert Ressourcen und Secure Boot einer UEFI-VM gegen echtes libvirt.
+func TestVMConfigureLibvirt(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	const name = "bnas-it-cfg"
+	t.Cleanup(func() {
+		_ = VMAction(ctx, d, name, "destroy")
+		_ = VMDelete(ctx, d, name, true)
+	})
+	_ = VMAction(ctx, d, name, "destroy")
+	_ = VMDelete(ctx, d, name, true)
+
+	// Windows/UEFI ohne TPM: libvirt wählt Secure Boot mit Microsoft-Schlüsseln.
+	spec := vm.Spec{Name: name, OS: "windows", Firmware: "uefi", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	c, err := VMConfig(ctx, d, name)
+	if err != nil || !c.SecureBoot || c.Firmware != "uefi" || c.State != "shutoff" {
+		t.Fatalf("Ausgangszustand: %+v %v", c, err)
+	}
+	u := vm.ConfigUpdate{VCPUs: 2, MemoryMiB: 512, SecureBoot: false, Network: "default"}
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = VMConfig(ctx, d, name); err != nil || c.SecureBoot || c.VCPUs != 2 || c.MemoryMiB != 512 || c.Firmware != "uefi" {
+		t.Fatalf("nach Änderung: %+v %v", c, err)
+	}
+	// Wieder einschalten, starten, laufende VM ist nicht änderbar.
+	u.SecureBoot = true
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ = VMConfig(ctx, d, name); !c.SecureBoot {
+		t.Fatalf("Secure Boot erwartet: %+v", c)
+	}
+	u.SecureBoot = false
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatal(err)
+	}
+	if err := VMAction(ctx, d, name, "start"); err != nil {
+		t.Fatal(err)
+	}
+	if code(VMConfigure(ctx, d, name, u)) != "conflict" {
+		t.Fatal("laufende VM darf nicht geändert werden")
+	}
+}

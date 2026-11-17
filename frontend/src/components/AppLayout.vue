@@ -86,7 +86,7 @@ async function logout() {
         <span class="tip">Übersicht</span>
       </RouterLink>
       <span class="sep" />
-      <RouterLink v-for="item in nav" :key="item.to" :to="item.to" class="item" :aria-label="item.label" active-class="" exact-active-class="active">
+      <RouterLink v-for="item in nav" :key="item.to" :to="item.to" class="item" :aria-label="item.label" active-class="active" exact-active-class="active">
         <span class="icon" :style="{ background: gradient(item.color) }"><i :class="item.icon" /></span>
         <span class="tip">{{ item.label }}</span>
       </RouterLink>

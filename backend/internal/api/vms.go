@@ -87,6 +87,18 @@ func (s *server) registerVMs(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/vms/{name}/snapshots/{snap}", func(w http.ResponseWriter, r *http.Request) {
 		noContent(w, m.SnapshotAction(r.Context(), actor(r), "delete", r.PathValue("name"), r.PathValue("snap")))
 	})
+	mux.HandleFunc("GET /api/v1/vms/{name}/config", func(w http.ResponseWriter, r *http.Request) {
+		v, err := m.Config(r.Context(), r.PathValue("name"))
+		reply(w, v, err)
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/config", func(w http.ResponseWriter, r *http.Request) {
+		var in vm.ConfigUpdate
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		noContent(w, m.Configure(r.Context(), actor(r), r.PathValue("name"), in))
+	})
 	mux.HandleFunc("POST /api/v1/vms/{name}/clone", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Name string `json:"name"`

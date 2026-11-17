@@ -19,6 +19,7 @@ import ResourcesView from '@/views/docker/ResourcesView.vue'
 import ContainersView from '@/views/docker/ContainersView.vue'
 import ProfileView from '@/views/ProfileView.vue'
 import VmsView from '@/views/vms/VmsView.vue'
+import VmConfigView from '@/views/vms/VmConfigView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -37,6 +38,7 @@ export const router = createRouter({
         { path: 'docker/container', name: 'containers', component: ContainersView, meta: { title: 'Container' } },
         { path: 'docker/ressourcen', name: 'resources', component: ResourcesView, meta: { title: 'Docker-Ressourcen' } },
         { path: 'vms', name: 'vms', component: VmsView, meta: { title: 'Virtuelle Maschinen' } },
+        { path: 'vms/:name', name: 'vm-config', component: VmConfigView, meta: { title: 'VM-Einstellungen' } },
         { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
         { path: 'system/benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Benachrichtigungen' } },
         { path: 'system/sicherung', name: 'backup', component: BackupView, meta: { title: 'Sicherung' } },

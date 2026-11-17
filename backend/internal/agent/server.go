@@ -229,6 +229,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerVM(s, d)
 	registerBridge(s, d)
 	registerVMOps(s, d)
+	registerVMConfig(s, d)
 	registerSpindown(s, d)
 	registerSystem(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
