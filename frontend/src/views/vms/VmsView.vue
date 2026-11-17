@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Dialog from 'primevue/dialog'
@@ -18,6 +19,7 @@ import { useVmsStore } from '@/stores/vms'
 import { VM_NAME_RE, type VmAction, type VmInfo } from '@/api/vms'
 
 const store = useVmsStore()
+const router = useRouter()
 const toast = useToast()
 const busy = ref<string | null>(null)
 const removing = ref<VmInfo | null>(null)
@@ -123,6 +125,7 @@ function items(v: VmInfo) {
     { label: 'Hart ausschalten', icon: 'pi pi-stop', disabled: v.state === 'shutoff', command: () => act(v, 'destroy') },
     { separator: true },
     { label: 'Konsole', icon: 'pi pi-desktop', disabled: v.state !== 'running' && v.state !== 'paused', command: () => (consoleFor.value = v.name) },
+    { label: 'Einstellungen', icon: 'pi pi-cog', command: () => router?.push(`/vms/${v.name}`) },
     { label: 'Snapshots', icon: 'pi pi-camera', command: () => (snapshotsFor.value = v.name) },
     { label: 'Klonen', icon: 'pi pi-clone', disabled: v.state !== 'shutoff', command: () => askClone(v) },
     { separator: true },
@@ -203,6 +206,7 @@ function openMenu(e: Event, v: VmInfo) {
           :disabled="busy === v.name"
           @click="act(v, 'shutdown')"
         />
+        <Button icon="pi pi-cog" text rounded aria-label="Einstellungen" title="Einstellungen" data-test="vm-settings" @click="router?.push(`/vms/${v.name}`)" />
         <Button icon="pi pi-ellipsis-v" text rounded aria-label="Weitere Aktionen" data-test="vm-menu" @click="openMenu($event, v)" />
       </footer>
     </article>

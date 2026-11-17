@@ -266,3 +266,30 @@ func (m *Manager) DeleteISO(ctx context.Context, actor, file string) error {
 	m.record(ctx, actor, "vm.iso.delete", file, err)
 	return err
 }
+
+// Config liefert die Konfiguration einer VM.
+func (m *Manager) Config(ctx context.Context, name string) (Config, error) {
+	if err := checkName(name); err != nil {
+		return Config{}, err
+	}
+	var c Config
+	err := m.agent.Call(ctx, "vm.config", map[string]string{"name": name}, &c)
+	return c, err
+}
+
+// Configure ändert die Konfiguration einer ausgeschalteten VM.
+func (m *Manager) Configure(ctx context.Context, actor, name string, u ConfigUpdate) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if err := u.Validate(); err != nil {
+		return err
+	}
+	params := struct {
+		Name string `json:"name"`
+		ConfigUpdate
+	}{name, u}
+	err := m.agent.Call(ctx, "vm.configure", params, nil)
+	m.record(ctx, actor, "vm.configure", name, err)
+	return err
+}

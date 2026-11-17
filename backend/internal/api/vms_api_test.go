@@ -48,6 +48,8 @@ func (a *vmAgentStub) Call(_ context.Context, method string, params, result any)
 		out = []string{"eno1"}
 	case "vm.display":
 		out = map[string]int{"port": 5901}
+	case "vm.config":
+		out = vm.Config{Name: "debian", State: "shutoff", VCPUs: 2, MemoryMiB: 4096, Firmware: "uefi", Network: "default", Disks: []string{}}
 	}
 	if result != nil && out != nil {
 		b, _ := json.Marshal(out)
@@ -235,6 +237,28 @@ func TestConsoleRouteNeedsAuthAndVM(t *testing.T) {
 	}
 	s.cookie = &http.Cookie{Name: auth.CookieName, Value: "ungueltig"}
 	if w := s.do("GET", "/api/v1/vms/debian/console", ""); w.Code != 401 {
+		t.Fatalf("%d", w.Code)
+	}
+}
+
+func TestConfigRoutes(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vms/debian/config", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"firmware":"uefi"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	body := `{"vcpus":4,"memoryMiB":2048,"secureBoot":false,"network":"direct:eno1","media":"a.iso"}`
+	if w := s.do("POST", "/api/v1/vms/debian/config", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.configure"].(map[string]any); p["name"] != "debian" || p["vcpus"] != float64(4) || p["network"] != "direct:eno1" || p["media"] != "a.iso" {
+		t.Fatalf("%v", stub.calls["vm.configure"])
+	}
+	for _, bad := range []string{`{"vcpus":0,"memoryMiB":2048,"network":"default"}`, `{"vcpus":2,"memoryMiB":2048,"network":"default","media":"../x.iso"}`, `kaputt`} {
+		if w := s.do("POST", "/api/v1/vms/debian/config", bad); w.Code != 400 {
+			t.Fatalf("%q: %d", bad, w.Code)
+		}
+	}
+	if w := s.do("GET", "/api/v1/vms/-bad/config", ""); w.Code != 400 {
 		t.Fatalf("%d", w.Code)
 	}
 }
