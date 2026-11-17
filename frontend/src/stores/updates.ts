@@ -36,6 +36,7 @@ export const useUpdatesStore = defineStore('updates', () => {
 
   async function check() {
     checking.value = true
+    if (overview.value.run.state !== 'running') overview.value = { ...overview.value, run: { state: 'none', log: '' } }
     try {
       const { jobId } = await updatesApi.check()
       await useJobsStore().track(jobId)

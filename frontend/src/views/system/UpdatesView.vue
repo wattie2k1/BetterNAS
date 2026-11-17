@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
+import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useUpdatesStore } from '@/stores/updates'
@@ -32,6 +33,24 @@ async function install() {
     await store.install()
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Installation nicht gestartet', detail: e instanceof Error ? e.message : String(e), life: 10000 })
+  }
+}
+
+const logEl = ref<HTMLElement | null>(null)
+// Während der Installation immer das Ende des Protokolls zeigen.
+watch(
+  () => store.overview.run.log,
+  async () => {
+    await nextTick()
+    if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
+  },
+)
+async function copyLog() {
+  try {
+    await navigator.clipboard.writeText(store.overview.run.log)
+    toast.add({ severity: 'success', summary: 'Protokoll kopiert', life: 2500 })
+  } catch {
+    toast.add({ severity: 'warn', summary: 'Kopieren nicht möglich', life: 4000 })
   }
 }
 
@@ -93,10 +112,18 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
     </table>
   </div>
 
-  <template v-if="store.overview.run.log">
-    <h3>Protokoll</h3>
-    <pre class="log">{{ store.overview.run.log }}</pre>
-  </template>
+  <section v-if="store.overview.run.log" class="log-card" data-test="updates-log">
+    <header class="log-head">
+      <i class="pi pi-code" />
+      <span class="log-title">Protokoll</span>
+      <Tag v-if="store.overview.run.state === 'running'" value="läuft" severity="info" />
+      <Tag v-else-if="store.overview.run.state === 'succeeded'" value="erfolgreich" severity="success" />
+      <Tag v-else-if="store.overview.run.state === 'failed'" value="fehlgeschlagen" severity="danger" />
+      <span class="spacer" />
+      <Button icon="pi pi-copy" text rounded size="small" aria-label="Protokoll kopieren" title="Kopieren" @click="copyLog" />
+    </header>
+    <pre ref="logEl" class="log">{{ store.overview.run.log }}</pre>
+  </section>
 
   <ConfirmDialog
     v-model:visible="confirm"
@@ -149,17 +176,41 @@ th {
   font-size: 0.8rem;
   color: var(--p-text-muted-color);
 }
-.log {
-  background: var(--bn-glass);
-  border: 1px solid var(--bn-border);
+.log-card {
+  margin-top: 1rem;
   border-radius: var(--bn-radius);
+  border: 1px solid var(--bn-border);
   box-shadow: var(--bn-shadow);
+  overflow: hidden;
+  background: var(--bn-glass);
   backdrop-filter: var(--bn-blur);
-  padding: 0.8rem;
+}
+.log-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--bn-border-soft);
+  color: var(--p-text-muted-color);
+}
+.log-title {
+  font-weight: 650;
+  color: var(--p-text-color);
+}
+.spacer {
+  flex: 1;
+}
+.log {
+  margin: 0;
+  padding: 0.9rem 1.1rem;
   max-height: 24rem;
   overflow: auto;
   font-size: 0.8rem;
+  line-height: 1.55;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #d6deeb;
+  background: #0d1117;
 }
 </style>

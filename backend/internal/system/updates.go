@@ -122,6 +122,10 @@ func (u *Updates) Check(ctx context.Context, actor string) (string, error) {
 				if err = u.set(ctx, keyPackages, string(b)); err == nil {
 					err = u.set(ctx, keyCheckedAt, u.now().UTC().Format(time.RFC3339))
 				}
+				if err == nil {
+					// Eine neue Suche beginnt frisch: das Protokoll des letzten Laufs wird verworfen.
+					err = u.set(ctx, keyUnit, "")
+				}
 			}
 		}
 		if err != nil {
