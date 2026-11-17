@@ -31,6 +31,9 @@ type fakeAgent struct {
 	statuses    []snapraid.Status // Antworten von snapraid.status in Reihenfolge; die letzte wiederholt sich
 	started     []map[string]any
 
+	spindownReqs []map[string]any // Anfragen an disk.spindown
+	spindownFail map[string]bool  // Gerät → disk.spindown schlägt fehl
+
 	smartBy map[string]SmartInfo // Antworten von disk.smart je Gerät; fehlt ein Gerät, schlägt der Aufruf fehl
 }
 
@@ -51,6 +54,15 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			return apierr.New(apierr.Internal, "kein SMART")
 		}
 		out = si
+	case "disk.spindown":
+		b, _ := json.Marshal(params)
+		var req map[string]any
+		json.Unmarshal(b, &req)
+		f.spindownReqs = append(f.spindownReqs, req)
+		if f.spindownFail[req["device"].(string)] {
+			return apierr.New(apierr.Conflict, "Diese Platte unterstützt keinen Ruhezustand")
+		}
+		out = map[string]bool{"ok": true}
 	case "disk.format":
 		out = map[string]string{"partition": "/dev/sdb1", "fsUuid": "new-uuid", "fsType": "ext4", "label": "bnas-x"}
 	case "snapraid.apply":

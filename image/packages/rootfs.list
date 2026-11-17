@@ -41,6 +41,7 @@ ovmf
 swtpm
 swtpm-tools
 smartmontools
+hdparm
 gdisk
 parted
 e2fsprogs

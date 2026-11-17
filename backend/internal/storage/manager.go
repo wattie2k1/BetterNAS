@@ -45,6 +45,8 @@ type DiskView struct {
 	Pool   string     `json:"pool,omitempty"`
 	FSType string     `json:"fsType,omitempty"`
 	Smart  *SmartInfo `json:"smart,omitempty"`
+	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
+	Spindown int `json:"spindown"`
 }
 
 // FormatPreview zeigt, was beim Formatieren gelöscht wird.
@@ -291,10 +293,11 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 	if err != nil {
 		return nil, err
 	}
+	spin, _ := m.Spindown(ctx)
 	out := []DiskView{}
 	seen := map[string]bool{}
 	for _, d := range live {
-		v := DiskView{Disk: d, State: "online", Role: "unassigned"}
+		v := DiskView{Disk: d, State: "online", Role: "unassigned", Spindown: spin[d.ID]}
 		switch {
 		case d.System:
 			v.Role = "system"
