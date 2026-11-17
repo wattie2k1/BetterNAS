@@ -19,6 +19,8 @@ done
 for f in usr/bin/virsh usr/bin/qemu-img usr/bin/qemu-system-x86_64; do
 	[ -e "$W/$f" ] || err "$f fehlt"
 done
+[ -e "$W/usr/bin/docker" ] || err "docker-cli fehlt"
+[ -L "$W/etc/libvirt/qemu/networks/autostart/default.xml" ] || err "libvirt-Netz default startet nicht automatisch"
 ls "$W"/usr/share/OVMF/OVMF_CODE*.fd >/dev/null 2>&1 || err "OVMF (UEFI-Firmware für VMs) fehlt"
 [ -L "$W/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" ] || err "systemd-networkd nicht aktiviert"
 grep -q '^root:[!*]' "$W/etc/shadow" || err "root ist nicht gesperrt"

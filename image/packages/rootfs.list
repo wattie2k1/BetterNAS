@@ -32,8 +32,10 @@ wsdd2
 mergerfs
 snapraid
 docker.io
+docker-cli
 docker-compose
 libvirt-daemon-system
+libvirt-daemon-config-network
 libvirt-clients
 virtinst
 qemu-system-x86
