@@ -2,40 +2,43 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
-import SelectButton from 'primevue/selectbutton'
+import Tab from 'primevue/tab'
+import TabList from 'primevue/tablist'
+import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
+import Tabs from 'primevue/tabs'
 import UsersView from './UsersView.vue'
 import GroupsView from './GroupsView.vue'
+import { useUsersStore } from '@/stores/users'
 
 type Tab = 'benutzer' | 'gruppen'
 
 const route = useRoute()
 const router = useRouter()
-const options = [
-  { label: 'Benutzer', value: 'benutzer' },
-  { label: 'Gruppen', value: 'gruppen' },
-]
+const store = useUsersStore()
 const tab = computed<Tab>({
   get: () => (route.query.tab === 'gruppen' ? 'gruppen' : 'benutzer'),
   set: (v) => {
     if (v) router.replace({ query: v === 'benutzer' ? {} : { tab: v } })
   },
 })
-const current = ref<{ openNew: () => void } | null>(null)
+const usersRef = ref<{ openNew: () => void } | null>(null)
+const groupsRef = ref<{ openNew: () => void } | null>(null)
 </script>
 
 <template>
   <div class="toolbar">
-    <SelectButton v-model="tab" :options="options" option-label="label" option-value="value" :allow-empty="false" aria-label="Ansicht" data-test="users-tabs" />
-    <span class="spacer" />
-    <Button v-if="tab === 'benutzer'" label="Neuer Benutzer" icon="pi pi-user-plus" data-test="new-user" @click="current?.openNew()" />
-    <Button v-else label="Neue Gruppe" icon="pi pi-plus" data-test="new-group" @click="current?.openNew()" />
+    <Button v-if="tab === 'benutzer'" label="Neuer Benutzer" icon="pi pi-user-plus" data-test="new-user" @click="usersRef?.openNew()" />
+    <Button v-else label="Neue Gruppe" icon="pi pi-plus" data-test="new-group" @click="groupsRef?.openNew()" />
   </div>
-  <UsersView v-if="tab === 'benutzer'" ref="current" />
-  <GroupsView v-else ref="current" />
+  <Tabs v-model:value="tab" lazy data-test="users-tabs">
+    <TabList>
+      <Tab value="benutzer">Benutzer ({{ store.users.length }})</Tab>
+      <Tab value="gruppen">Gruppen ({{ store.groups.length }})</Tab>
+    </TabList>
+    <TabPanels>
+      <TabPanel value="benutzer"><UsersView ref="usersRef" /></TabPanel>
+      <TabPanel value="gruppen"><GroupsView ref="groupsRef" /></TabPanel>
+    </TabPanels>
+  </Tabs>
 </template>
-
-<style scoped>
-.spacer {
-  flex: 1;
-}
-</style>

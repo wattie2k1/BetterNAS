@@ -129,8 +129,9 @@ async function logout() {
 .dock {
   position: fixed;
   left: 18px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 22px;
+  max-height: calc(100vh - 44px);
+  overflow-y: auto;
   z-index: 20;
   width: 74px;
   padding: 14px 0;

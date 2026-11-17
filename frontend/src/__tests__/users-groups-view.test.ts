@@ -27,8 +27,8 @@ describe('UsersGroupsView', () => {
 
   it('wechselt per Umschalter zu den Gruppen und merkt sich das in der Adresse', async () => {
     const { w, router } = await setup()
-    const buttons = w.findAll('[data-test="users-tabs"] [role="radio"], [data-test="users-tabs"] button, [data-test="users-tabs"] .p-togglebutton')
-    await buttons[1].trigger('click')
+    const tabs = w.findAll('[data-test="users-tabs"] [role="tab"]')
+    await tabs[1].trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.tab).toBe('gruppen')
     expect(w.find('[data-test="new-group"]').exists()).toBe(true)
