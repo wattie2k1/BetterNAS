@@ -3,6 +3,7 @@ package shares
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"slices"
 	"strings"
@@ -28,6 +29,8 @@ type ShareView struct {
 	Path        string `json:"path"`
 	PoolMounted bool   `json:"poolMounted"`
 	UNCPath     string `json:"uncPath"`
+	// NFSMount ist die Mount-Quelle „host:/pfad“, wenn der NFS-Export aktiv ist.
+	NFSMount string `json:"nfsMount,omitempty"`
 }
 
 // Manager verwaltet Freigaben: Datenbank, Validierung und Anwendung über den Agent.
@@ -80,7 +83,7 @@ func b2i(b bool) int {
 
 // load liest alle Freigaben samt Rechten (Reihenfolge der Rechte bleibt erhalten).
 func (m *Manager) load(ctx context.Context) (State, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT name, pool, subdir, comment, browsable, guest, guest_write, recycle, fruit FROM shares ORDER BY name COLLATE NOCASE`)
+	rows, err := m.db.QueryContext(ctx, `SELECT name, pool, subdir, comment, browsable, guest, guest_write, recycle, fruit, nfs_json FROM shares ORDER BY name COLLATE NOCASE`)
 	if err != nil {
 		return State{}, err
 	}
@@ -89,12 +92,17 @@ func (m *Manager) load(ctx context.Context) (State, error) {
 	for rows.Next() {
 		var s Share
 		var br, gu, gw, re, fr int
-		if err := rows.Scan(&s.Name, &s.Pool, &s.Subdir, &s.Comment, &br, &gu, &gw, &re, &fr); err != nil {
+		var nfsJSON string
+		if err := rows.Scan(&s.Name, &s.Pool, &s.Subdir, &s.Comment, &br, &gu, &gw, &re, &fr, &nfsJSON); err != nil {
 			rows.Close()
 			return State{}, err
 		}
 		s.Browsable, s.Guest, s.GuestWrite, s.Recycle, s.Fruit = br == 1, gu == 1, gw == 1, re == 1, fr == 1
 		s.ACL = []ACL{}
+		if nfsJSON != "" {
+			_ = json.Unmarshal([]byte(nfsJSON), &s.NFS)
+		}
+		s = normalize(s)
 		index[strings.ToLower(s.Name)] = len(st.Shares)
 		st.Shares = append(st.Shares, s)
 	}
@@ -123,11 +131,15 @@ func (m *Manager) load(ctx context.Context) (State, error) {
 }
 
 func (m *Manager) view(s Share) ShareView {
-	return ShareView{
+	v := ShareView{
 		Share: s, Path: s.Path(),
 		PoolMounted: m.mounted(storage.PoolPath(s.Pool)),
 		UNCPath:     `\\` + m.hostname() + `\` + s.Name,
 	}
+	if s.NFS.Enabled {
+		v.NFSMount = m.hostname() + ":" + s.Path()
+	}
+	return v
 }
 
 // List liefert alle Freigaben.
@@ -228,13 +240,13 @@ func (m *Manager) applyAndCommit(ctx context.Context, log jobs.Logger, st State,
 
 func writeShare(ctx context.Context, tx *sql.Tx, s Share, now time.Time, create bool) error {
 	if create {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO shares(name, pool, subdir, comment, browsable, guest, guest_write, recycle, fruit, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-			s.Name, s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.GuestWrite), b2i(s.Recycle), b2i(s.Fruit), now.UTC().Format(time.RFC3339)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO shares(name, pool, subdir, comment, browsable, guest, guest_write, recycle, fruit, nfs_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			s.Name, s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.GuestWrite), b2i(s.Recycle), b2i(s.Fruit), nfsJSON(s.NFS), now.UTC().Format(time.RFC3339)); err != nil {
 			return err
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `UPDATE shares SET pool=?, subdir=?, comment=?, browsable=?, guest=?, guest_write=?, recycle=?, fruit=? WHERE name = ?`,
-			s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.GuestWrite), b2i(s.Recycle), b2i(s.Fruit), s.Name); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE shares SET pool=?, subdir=?, comment=?, browsable=?, guest=?, guest_write=?, recycle=?, fruit=?, nfs_json=? WHERE name = ?`,
+			s.Pool, s.Subdir, s.Comment, b2i(s.Browsable), b2i(s.Guest), b2i(s.GuestWrite), b2i(s.Recycle), b2i(s.Fruit), nfsJSON(s.NFS), s.Name); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM share_acl WHERE share_name = ?`, s.Name); err != nil {
@@ -253,7 +265,22 @@ func normalize(s Share) Share {
 	if s.ACL == nil {
 		s.ACL = []ACL{}
 	}
+	if s.NFS.Clients == nil {
+		s.NFS.Clients = []string{}
+	}
+	if s.NFS.Squash == "" {
+		s.NFS.Squash = SquashRoot
+	}
 	return s
+}
+
+// nfsJSON liefert den gespeicherten Wert: leer, solange NFS nie konfiguriert wurde.
+func nfsJSON(n NFS) string {
+	if !n.Enabled && len(n.Clients) == 0 && !n.ReadOnly {
+		return ""
+	}
+	b, _ := json.Marshal(n)
+	return string(b)
 }
 
 // Create legt eine Freigabe an.

@@ -50,6 +50,8 @@ type Share struct {
 	Recycle    bool  `json:"recycle"`
 	Fruit      bool  `json:"fruit"`
 	ACL        []ACL `json:"acl"`
+	// NFS ist der optionale zusätzliche Export per NFS (Zugriff nur nach Client-Liste, nicht nach ACL).
+	NFS NFS `json:"nfs"`
 }
 
 // Path ist der absolute Ordner der Freigabe.
@@ -70,6 +72,7 @@ func invalid(field, msg string) error {
 // Validate prüft den gesamten Zustand.
 func (st State) Validate() error {
 	seen := map[string]bool{}
+	fsids := map[int]string{}
 	for _, s := range st.Shares {
 		if err := s.Validate(); err != nil {
 			return err
@@ -79,6 +82,13 @@ func (st State) Validate() error {
 			return invalid("name", "Es gibt bereits eine Freigabe mit diesem Namen.")
 		}
 		seen[key] = true
+		if s.NFS.Enabled {
+			id := FSID(s.Name)
+			if other, dup := fsids[id]; dup {
+				return invalid("nfs", "Die NFS-Kennung von „"+s.Name+"“ kollidiert mit „"+other+"“. Bitte einen der Namen ändern.")
+			}
+			fsids[id] = s.Name
+		}
 	}
 	return nil
 }
@@ -104,6 +114,9 @@ func (s Share) Validate() error {
 	}
 	if len([]rune(s.Comment)) > 128 || strings.ContainsAny(s.Comment, `\%`) || strings.IndexFunc(s.Comment, unicode.IsControl) >= 0 {
 		return invalid("comment", "Höchstens 128 Zeichen, ohne Steuerzeichen, Backslash und Prozentzeichen")
+	}
+	if err := s.NFS.Validate(); err != nil {
+		return err
 	}
 	granted := false
 	seen := map[string]bool{}
