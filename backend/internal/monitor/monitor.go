@@ -105,7 +105,7 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	}
 	pools, perr := m.src.ListPools(ctx)
 	if perr != nil {
-		unknown = append(unknown, "pool-unmounted:", "snapraid-sync:", "snapraid-scrub:")
+		unknown = append(unknown, "pool-unmounted:", "snapraid-sync:", "snapraid-scrub:", "snapraid-recovery:")
 		err = errors.Join(err, fmt.Errorf("pools: %w", perr))
 	}
 	for _, p := range pools {
@@ -114,12 +114,19 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		}
 		st, serr := m.src.SnapraidStatus(ctx, p.Name)
 		if serr != nil {
-			unknown = append(unknown, "snapraid-sync:"+p.Name, "snapraid-scrub:"+p.Name)
+			unknown = append(unknown, "snapraid-sync:"+p.Name, "snapraid-scrub:"+p.Name, "snapraid-recovery:"+p.Name)
 			err = errors.Join(err, fmt.Errorf("snapraid %s: %w", p.Name, serr))
 			continue
 		}
 		if !st.Enabled {
 			continue
+		}
+		if rec := st.Recovery; rec != nil {
+			detail := "Die Dateien der ersetzten Platte " + rec.Disk + " sind noch nicht wiederhergestellt; Synchronisierung und Prüfung pausieren."
+			if st.LastFix != nil && strings.TrimSpace(st.LastFix.Message) != "" {
+				detail += " Letztes Ergebnis: " + st.LastFix.Message
+			}
+			add("snapraid-recovery:"+p.Name, "crit", "SnapRAID-Wiederherstellung offen: "+p.Name, detail+" Wiederhole sie oder brich sie unter „Speicherpools“ ab.")
 		}
 		if r := st.LastSync; r != nil && (r.Result == snapraid.ResultFailed || r.Result == snapraid.ResultBlocked) {
 			add("snapraid-sync:"+p.Name, "crit", "SnapRAID-Synchronisierung fehlgeschlagen: "+p.Name, orDefault(r.Message, "Die letzte Synchronisierung ist nicht durchgelaufen."))
