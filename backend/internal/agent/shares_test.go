@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -157,5 +158,129 @@ func TestApplySharesSkipsReloadWhenSmbdInactive(t *testing.T) {
 	}
 	if f.Called("smbcontrol") {
 		t.Fatal("smbcontrol ohne laufenden smbd")
+	}
+}
+
+const poolOptsQuery = "findmnt -n -o OPTIONS --mountpoint /srv/pools/media"
+
+func nfsState() shares.State {
+	st := oneShare()
+	st.Shares[0].NFS = shares.NFS{Enabled: true, Clients: []string{"192.168.1.0/24"}, Squash: "root"}
+	return st
+}
+
+// withNoforget lässt den Pool „media“ die für NFS nötige Option melden.
+func withNoforget(f *sysexec.FakeRunner) {
+	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: []byte("rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,noforget\n")}
+}
+
+func TestApplyWritesExportsAndReloads(t *testing.T) {
+	d, f := sharesEnv(t)
+	withNoforget(f)
+	if _, err := ApplyShares(context.Background(), d, nfsState()); err != nil {
+		t.Fatal(err)
+	}
+	b, err := d.FS.ReadFile(exportsFile)
+	want := "/srv/pools/media/Filme 192.168.1.0/24(rw,sync,no_subtree_check,root_squash,fsid=" + strconv.Itoa(shares.FSID("Filme")) + ")"
+	if err != nil || !strings.HasPrefix(string(b), storage.ManagedHeader+"\n") || !strings.Contains(string(b), want) {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	assertOrder(t, f, "testparm -s", "exportfs -ra", "smbcontrol smbd reload-config")
+}
+
+func TestApplyNfsRefusedWithoutNoforget(t *testing.T) {
+	d, f := sharesEnv(t) // Pool meldet noforget nicht
+	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: []byte("rw,relatime,allow_other\n")}
+	_, err := ApplyShares(context.Background(), d, nfsState())
+	if apierr.From(err).Code != apierr.Conflict || !strings.Contains(err.Error(), "neu eingehängt") {
+		t.Fatalf("%v", err)
+	}
+	if d.FS.Exists(exportsFile) || d.FS.Exists("/etc/samba/betternas.d/filme.conf") || countCalls(f, "exportfs") != 0 || countCalls(f, "testparm") != 0 {
+		t.Fatalf("es wurde etwas geändert: %v", f.Calls)
+	}
+}
+
+func TestApplyExportfsFailureRollsBack(t *testing.T) {
+	d, f := sharesEnv(t)
+	withNoforget(f)
+	if _, err := ApplyShares(context.Background(), d, oneShare()); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := d.FS.ReadFile("/etc/samba/betternas.d/filme.conf")
+	reloads := countCalls(f, "smbcontrol")
+	f.Responses["exportfs -ra"] = sysexec.Result{ExitCode: 1, Stderr: []byte("exportfs: kaputt")}
+	st := nfsState()
+	st.Shares[0].Comment = "geändert" // auch der Samba-Teil ändert sich und muss zurückgesetzt werden
+	_, err := ApplyShares(context.Background(), d, st)
+	if err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	after, _ := d.FS.ReadFile("/etc/samba/betternas.d/filme.conf")
+	if string(after) != string(before) {
+		t.Fatalf("Samba-Datei nicht zurückgesetzt:\n%s", after)
+	}
+	if d.FS.Exists(exportsFile) {
+		t.Fatal("Exportdatei nicht zurückgesetzt")
+	}
+	if countCalls(f, "smbcontrol") != reloads {
+		t.Fatal("Samba darf bei Fehler nicht neu geladen werden")
+	}
+}
+
+func TestApplyLeavesForeignExports(t *testing.T) {
+	d, f := sharesEnv(t)
+	withNoforget(f)
+	d.FS.MkdirAll("/etc/exports.d", 0o755)
+	d.FS.WriteFile(exportsFile, []byte("/srv/meins 10.0.0.1(rw)\n"), 0o644)
+	_, err := ApplyShares(context.Background(), d, nfsState())
+	if apierr.From(err).Code != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+	if b, _ := d.FS.ReadFile(exportsFile); string(b) != "/srv/meins 10.0.0.1(rw)\n" {
+		t.Fatal("fremde Exportdatei verändert")
+	}
+	if d.FS.Exists("/etc/samba/betternas.d/filme.conf") || countCalls(f, "exportfs") != 0 {
+		t.Fatalf("es wurde etwas geändert: %v", f.Calls)
+	}
+}
+
+func TestApplyNoNfsDoesNotTouchExportfs(t *testing.T) {
+	d, f := sharesEnv(t)
+	if _, err := ApplyShares(context.Background(), d, oneShare()); err != nil {
+		t.Fatal(err)
+	}
+	if d.FS.Exists(exportsFile) || countCalls(f, "exportfs") != 0 {
+		t.Fatalf("NFS wurde berührt: %v", f.Calls)
+	}
+}
+
+func TestApplyDisablingNfsEmptiesExports(t *testing.T) {
+	d, f := sharesEnv(t)
+	withNoforget(f)
+	if _, err := ApplyShares(context.Background(), d, nfsState()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyShares(context.Background(), d, oneShare()); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := d.FS.ReadFile(exportsFile)
+	if string(b) != storage.ManagedHeader+"\n" {
+		t.Fatalf("Exportdatei nicht geleert:\n%s", b)
+	}
+	if countCalls(f, "exportfs -ra") != 2 {
+		t.Fatalf("exportfs -ra %d-mal", countCalls(f, "exportfs -ra"))
+	}
+}
+
+func TestExportsRejectInjection(t *testing.T) {
+	d, f := sharesEnv(t)
+	withNoforget(f)
+	st := nfsState()
+	st.Shares[0].NFS.Clients = []string{"10.0.0.1(rw,no_root_squash)"}
+	if _, err := ApplyShares(context.Background(), d, st); apierr.From(err).Code != apierr.InvalidParams {
+		t.Fatalf("%v", err)
+	}
+	if d.FS.Exists(exportsFile) || countCalls(f, "exportfs") != 0 {
+		t.Fatal("Exportdatei entstanden")
 	}
 }

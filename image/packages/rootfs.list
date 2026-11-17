@@ -27,6 +27,7 @@ nftables
 avahi-daemon
 libnss-mdns
 samba
+nfs-kernel-server
 wsdd2
 mergerfs
 snapraid

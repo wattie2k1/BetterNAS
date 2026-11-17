@@ -170,3 +170,16 @@ func TestValidateRejectsParityInPool(t *testing.T) {
 		t.Fatal("unknown role accepted")
 	}
 }
+
+func TestPoolUnitHasNfsOptions(t *testing.T) {
+	files, err := RenderUnits(testState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := string(files[UnitName(PoolPath("media"))])
+	for _, want := range []string{"noforget", "inodecalc=path-hash", "nfsopenhack=all"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("Pool-Unit ohne %s:\n%s", want, unit)
+		}
+	}
+}

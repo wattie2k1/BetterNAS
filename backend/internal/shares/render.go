@@ -99,3 +99,33 @@ func Render(st State) (map[string][]byte, error) {
 	out["shares.conf"] = []byte(inc.String())
 	return out, nil
 }
+
+// RenderExports erzeugt /etc/exports.d/betternas.exports: je Freigabe mit aktivem NFS eine Zeile.
+func RenderExports(st State) []byte {
+	var b strings.Builder
+	b.WriteString(storage.ManagedHeader + "\n")
+	list := append([]Share(nil), st.Shares...)
+	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
+	for _, s := range list {
+		if !s.NFS.Enabled {
+			continue
+		}
+		opts := []string{"rw", "sync", "no_subtree_check"}
+		if s.NFS.ReadOnly {
+			opts[0] = "ro"
+		}
+		if s.NFS.Squash == SquashAll {
+			opts = append(opts, "all_squash", "anonuid=65534", "anongid=100")
+		} else {
+			opts = append(opts, "root_squash")
+		}
+		opts = append(opts, fmt.Sprintf("fsid=%d", FSID(s.Name)))
+		o := "(" + strings.Join(opts, ",") + ")"
+		b.WriteString(strings.ReplaceAll(s.Path(), " ", `\040`))
+		for _, c := range s.NFS.Clients {
+			b.WriteString(" " + c + o)
+		}
+		b.WriteString("\n")
+	}
+	return []byte(b.String())
+}

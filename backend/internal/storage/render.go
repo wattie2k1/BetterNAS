@@ -55,7 +55,7 @@ After=%s
 What=%s
 Where=%s
 Type=fuse.mergerfs
-Options=category.create=%s,minfreespace=%s,moveonenospc=true,cache.files=off,dropcacheonclose=true,fsname=bnas-%s,nofail
+Options=category.create=%s,minfreespace=%s,moveonenospc=true,cache.files=off,dropcacheonclose=true,noforget,inodecalc=path-hash,nfsopenhack=all,fsname=bnas-%s,nofail
 
 [Install]
 WantedBy=multi-user.target %s
