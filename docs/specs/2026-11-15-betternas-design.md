@@ -398,3 +398,17 @@ Plattenersatz (nur Datenplatten): neue Tabelle `snapraid_alias` führt die neue 
 SnapRAID-Konfiguration anwenden (Rückbau bei Fehler) → DB tauschen → `snapraid -d <name> fix` → Marker weg → Sync. Bei
 unwiederherstellbaren Dateien oder Fehlern bleibt der Marker (Alarm „Wiederherstellung offen“), die Wiederherstellung ist
 wiederholbar oder abbrechbar. Nicht in 6b: Austausch von Paritätsplatten und Formatieren der Ersatzplatte im Assistenten.
+
+Abweichung Phase 6c: TOTP-2FA ist pro Administrator optional (RFC 6238, SHA-1, 6 Stellen, ±1 Schritt, Wiederverwendungsschutz über
+den zuletzt akzeptierten Zeitschritt; Tabelle `totp`, Geheimnis im Klartext in der DB und damit im Backup). Die Anmeldung läuft
+zweistufig: Passwort → `{"mfaRequired":true,"mfaToken"}` (nur im Speicher, 5 min, einmal, 5 Fehlversuche, keine Sitzung) →
+`POST /api/v1/auth/login/totp` mit Code oder Wiederherstellungscode (10 Stück, SHA-256 gespeichert, je einmal); Fehlversuche zählen im
+IP-Rate-Limit. Einrichten/Abschalten im Profil (QR mit `qrcode`, nur Anzeige). Aussperrung: ein anderer Administrator setzt die 2FA
+zurück (`DELETE /api/v1/users/{name}/totp`); notfalls `sqlite3 /var/lib/betternas/betternas.db "DELETE FROM totp WHERE username='…'"`.
+NFS ist ein zusätzlicher Export einer Freigabe (`Share.NFS`: Clients Pflicht, nie `*`; `readOnly`; Squash `root`|`all`), erzeugt
+`/etc/exports.d/betternas.exports` (je Export stabile `fsid`), geladen mit `exportfs -ra` und bei Fehler samt Samba-Dateien
+zurückgesetzt. Der Zugriff richtet sich nur nach der Client-Liste, nicht nach den Samba-Rechten. mergerfs-Pools bekommen
+`noforget,inodecalc=path-hash,nfsopenhack=all`; diese Optionen gelten erst nach Neumounten/Neustart. Weil mergerfs-Optionen
+Daemon-Optionen sind (nicht in `mountinfo`), prüft der Agent vor dem Export per `pgrep -af fsname=bnas-<pool>`, ob der laufende
+mergerfs-Prozess `noforget` trägt, und lehnt sonst mit dem Hinweis auf einen Neustart ab. Nicht in 6c: 2FA-Pflicht, WebAuthn,
+Kerberos, Time-Machine-Ziel.

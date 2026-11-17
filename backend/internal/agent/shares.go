@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -17,6 +18,29 @@ const (
 	exportsDir  = "/etc/exports.d"
 	exportsFile = exportsDir + "/betternas.exports"
 )
+
+// poolHasNFSOptions prüft, ob der laufende mergerfs-Prozess des Pools mit noforget gestartet wurde.
+// (mergerfs-Optionen sind Daemon-Optionen und stehen nicht in /proc/self/mountinfo, wohl aber in der Kommandozeile.)
+func poolHasNFSOptions(ctx context.Context, d Deps, pool string) (bool, error) {
+	res, err := d.Runner.Run(ctx, nil, "pgrep", "-af", "--", "fsname=bnas-"+pool)
+	if err != nil {
+		return false, err
+	}
+	if res.ExitCode != 0 {
+		return false, nil
+	}
+	name := regexp.MustCompile(`fsname=bnas-` + regexp.QuoteMeta(pool) + `(,|\s|$)`)
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || path.Base(f[1]) != "mergerfs" {
+			continue
+		}
+		if name.MatchString(line) && strings.Contains(line, "noforget") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 func isManaged(b []byte) bool { return bytes.HasPrefix(b, []byte(storage.ManagedHeader+"\n")) }
 
@@ -56,14 +80,11 @@ func ApplyShares(ctx context.Context, d Deps, st shares.State) (ApplyResult, err
 	}
 	sort.Strings(pools)
 	for _, p := range pools {
-		res, err := d.Runner.Run(ctx, nil, "findmnt", "-n", "-o", "OPTIONS", "--mountpoint", storage.PoolPath(p))
+		ok, err := poolHasNFSOptions(ctx, d, p)
 		if err != nil {
 			return ApplyResult{}, err
 		}
-		if res.ExitCode != 0 {
-			return ApplyResult{}, apierr.New(apierr.InvalidParams, "Der Pool "+p+" ist nicht eingehängt.").With("pool", p)
-		}
-		if !strings.Contains(string(res.Stdout), "noforget") {
+		if !ok {
 			return ApplyResult{}, apierr.New(apierr.Conflict, "Der Pool "+p+" muss für NFS neu eingehängt werden (Neustart des NAS), damit die NFS-Optionen wirksam werden.").With("pool", p)
 		}
 	}

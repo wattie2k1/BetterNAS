@@ -161,7 +161,11 @@ func TestApplySharesSkipsReloadWhenSmbdInactive(t *testing.T) {
 	}
 }
 
-const poolOptsQuery = "findmnt -n -o OPTIONS --mountpoint /srv/pools/media"
+const poolOptsQuery = "pgrep -af -- fsname=bnas-media"
+
+func mergerfsLine(pool, opts string) []byte {
+	return []byte("4711 mergerfs /srv/disks/d1:/srv/disks/d2 /srv/pools/" + pool + " -o rw," + opts + ",fsname=bnas-" + pool + ",dev,suid\n")
+}
 
 func nfsState() shares.State {
 	st := oneShare()
@@ -171,7 +175,7 @@ func nfsState() shares.State {
 
 // withNoforget lässt den Pool „media“ die für NFS nötige Option melden.
 func withNoforget(f *sysexec.FakeRunner) {
-	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: []byte("rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,noforget\n")}
+	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: mergerfsLine("media", "category.create=epmfs,noforget,inodecalc=path-hash,nfsopenhack=all")}
 }
 
 func TestApplyWritesExportsAndReloads(t *testing.T) {
@@ -190,13 +194,32 @@ func TestApplyWritesExportsAndReloads(t *testing.T) {
 
 func TestApplyNfsRefusedWithoutNoforget(t *testing.T) {
 	d, f := sharesEnv(t) // Pool meldet noforget nicht
-	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: []byte("rw,relatime,allow_other\n")}
+	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: mergerfsLine("media", "category.create=epmfs,moveonenospc=true")}
 	_, err := ApplyShares(context.Background(), d, nfsState())
 	if apierr.From(err).Code != apierr.Conflict || !strings.Contains(err.Error(), "neu eingehängt") {
 		t.Fatalf("%v", err)
 	}
 	if d.FS.Exists(exportsFile) || d.FS.Exists("/etc/samba/betternas.d/filme.conf") || countCalls(f, "exportfs") != 0 || countCalls(f, "testparm") != 0 {
 		t.Fatalf("es wurde etwas geändert: %v", f.Calls)
+	}
+}
+
+func TestApplyNfsPoolNameNotPrefixMatched(t *testing.T) {
+	d, f := sharesEnv(t)
+	// ein anderer Pool „media2“ hat noforget, „media“ nicht
+	f.Responses[poolOptsQuery] = sysexec.Result{Stdout: append(
+		mergerfsLine("media", "category.create=epmfs"),
+		mergerfsLine("media2", "category.create=epmfs,noforget")...)}
+	if _, err := ApplyShares(context.Background(), d, nfsState()); apierr.From(err).Code != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestApplyNfsNoMergerfsProcessRefused(t *testing.T) {
+	d, f := sharesEnv(t)
+	f.Responses[poolOptsQuery] = sysexec.Result{ExitCode: 1} // pgrep: kein Treffer
+	if _, err := ApplyShares(context.Background(), d, nfsState()); apierr.From(err).Code != apierr.Conflict {
+		t.Fatalf("%v", err)
 	}
 }
 
