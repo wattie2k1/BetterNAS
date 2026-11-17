@@ -163,8 +163,10 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   gap: 14px;
 }
 .app {
-  all: unset;
   box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   display: flex;
   align-items: center;
