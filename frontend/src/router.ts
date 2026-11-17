@@ -6,13 +6,12 @@ import AppLayout from '@/components/AppLayout.vue'
 import LoginView from '@/views/LoginView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import DisksView from '@/views/storage/DisksView.vue'
-import UsersView from '@/views/users/UsersView.vue'
+import UsersGroupsView from '@/views/users/UsersGroupsView.vue'
 import UpdatesView from '@/views/system/UpdatesView.vue'
 import NotificationsView from '@/views/system/NotificationsView.vue'
 import BackupView from '@/views/system/BackupView.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
-import GroupsView from '@/views/users/GroupsView.vue'
 import PoolsView from '@/views/storage/PoolsView.vue'
 import StacksView from '@/views/docker/StacksView.vue'
 import ResourcesView from '@/views/docker/ResourcesView.vue'
@@ -43,8 +42,8 @@ export const router = createRouter({
         { path: 'system/benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Benachrichtigungen' } },
         { path: 'system/sicherung', name: 'backup', component: BackupView, meta: { title: 'Sicherung' } },
         { path: 'profil', name: 'profile', component: ProfileView, meta: { title: 'Profil' } },
-        { path: 'benutzer', name: 'users', component: UsersView, meta: { title: 'Benutzer' } },
-        { path: 'benutzer/gruppen', name: 'groups', component: GroupsView, meta: { title: 'Gruppen' } },
+        { path: 'benutzer', name: 'users', component: UsersGroupsView, meta: { title: 'Benutzer & Gruppen' } },
+        { path: 'benutzer/gruppen', redirect: { name: 'users', query: { tab: 'gruppen' } } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

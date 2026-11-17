@@ -45,12 +45,10 @@ function save(input: GroupInput) {
     run(() => store.setMembers(name, input.members), 'Gruppe gespeichert')
   } else run(() => store.createGroup(input), 'Gruppe angelegt')
 }
+defineExpose({ openNew })
 </script>
 
 <template>
-  <div class="toolbar">
-    <Button label="Neue Gruppe" icon="pi pi-plus" @click="openNew" />
-  </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <p v-if="!store.groups.length && !store.loading" class="empty">
     Noch keine Gruppen. Mit Gruppen lassen sich Freigaben für mehrere Benutzer auf einmal berechtigen.
@@ -88,11 +86,6 @@ function save(input: GroupInput) {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
-}
 .empty {
   color: var(--p-text-muted-color);
 }

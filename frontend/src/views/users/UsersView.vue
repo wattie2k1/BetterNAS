@@ -54,12 +54,10 @@ function save(input: UserInput) {
     run(() => store.updateUser(name, { fullName: input.fullName, groups: input.groups, admin: input.admin }), 'Benutzer gespeichert')
   } else run(() => store.createUser(input), 'Benutzer angelegt')
 }
+defineExpose({ openNew })
 </script>
 
 <template>
-  <div class="toolbar">
-    <Button label="Neuer Benutzer" icon="pi pi-user-plus" @click="openNew" />
-  </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <div class="table-wrap">
     <table class="users">
@@ -145,11 +143,6 @@ function save(input: UserInput) {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-}
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
 }
 .table-wrap {
   overflow-x: auto;
