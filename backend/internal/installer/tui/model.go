@@ -93,6 +93,7 @@ type Model struct {
 	result   error
 	events   chan tea.Msg
 	width    int
+	height   int
 }
 
 // New erzeugt das Modell.
@@ -231,7 +232,7 @@ func (m *Model) current() *field {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
+		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case progressMsg:
 		m.progress = msg

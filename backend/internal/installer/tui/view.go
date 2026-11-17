@@ -9,15 +9,25 @@ import (
 )
 
 var (
-	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#1F6FEB")).Padding(0, 2)
-	stepStyle   = lipgloss.NewStyle().Bold(true).MarginTop(1)
-	labelStyle  = lipgloss.NewStyle().Width(28)
-	focusStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#58A6FF")).Bold(true)
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#8B949E"))
+	accent    = lipgloss.Color("#8B5CF6")
+	accentAlt = lipgloss.Color("#6366F1")
+	textCol   = lipgloss.Color("#E6EDF3")
+	mutedCol  = lipgloss.Color("#8B949E")
+	okCol     = lipgloss.Color("#3FB950")
+
+	logoStyle   = lipgloss.NewStyle().Bold(true).Foreground(accent)
+	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(textCol)
+	stepStyle   = lipgloss.NewStyle().Bold(true).Foreground(accent)
+	labelStyle  = lipgloss.NewStyle().Width(34).Foreground(mutedCol)
+	focusStyle  = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	dimStyle    = lipgloss.NewStyle().Foreground(mutedCol)
 	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#F85149")).Bold(true)
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#D29922"))
-	buttonStyle = lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.RoundedBorder())
-	activeBtn   = buttonStyle.BorderForeground(lipgloss.Color("#58A6FF")).Foreground(lipgloss.Color("#58A6FF")).Bold(true)
+	selStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(accent)
+	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#30363D")).Padding(0, 1)
+	cardStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accentAlt).Padding(1, 3)
+	buttonStyle = lipgloss.NewStyle().Padding(0, 3).Border(lipgloss.RoundedBorder()).BorderForeground(mutedCol)
+	activeBtn   = lipgloss.NewStyle().Padding(0, 3).Border(lipgloss.RoundedBorder()).BorderForeground(accent).Foreground(accent).Bold(true)
 )
 
 var stepKeys = map[Step]string{
@@ -27,40 +37,89 @@ var stepKeys = map[Step]string{
 	StepInstalling: "step.install", StepDone: "step.done", StepFailed: "step.failed",
 }
 
+const cardWidth = 78
+
+func (m Model) innerWidth() int {
+	w := cardWidth
+	if m.width > 0 && m.width-4 < w {
+		w = m.width - 4
+	}
+	if w < 40 {
+		w = 40
+	}
+	return w - 8 // Rahmen und Innenabstand
+}
+
+// stepDots zeigt den Fortschritt durch die neun Schritte.
+func (m Model) stepDots() string {
+	var parts []string
+	for i := 0; i <= int(StepSummary); i++ {
+		switch {
+		case i < int(m.step):
+			parts = append(parts, lipgloss.NewStyle().Foreground(okCol).Render("●"))
+		case i == int(m.step):
+			parts = append(parts, focusStyle.Render("◉"))
+		default:
+			parts = append(parts, dimStyle.Render("○"))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func (m Model) footer() string {
+	var parts []string
+	for _, p := range strings.Split(m.t("help"), " · ") {
+		k, d, ok := strings.Cut(p, ": ")
+		if !ok {
+			parts = append(parts, dimStyle.Render(p))
+			continue
+		}
+		parts = append(parts, keyStyle.Render(k)+" "+dimStyle.Render(d))
+	}
+	return strings.Join(parts, " ")
+}
+
 func (m Model) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(m.t("title")) + "\n")
 	head := m.t(stepKeys[m.step])
+	b.WriteString(logoStyle.Render("◆ BetterNAS") + "  " + dimStyle.Render(strings.TrimPrefix(m.t("title"), "BetterNAS ")) + "\n")
 	if m.step <= StepSummary {
-		head = fmt.Sprintf("%d/9  %s", int(m.step)+1, head)
+		b.WriteString(m.stepDots() + "  " + dimStyle.Render(fmt.Sprintf("%d/9", int(m.step)+1)) + "\n")
+	} else {
+		b.WriteString("\n")
 	}
-	b.WriteString(stepStyle.Render(head) + "\n\n")
+	b.WriteString("\n" + titleStyle.Render(head) + "\n" + dimStyle.Render(strings.Repeat("─", m.innerWidth())) + "\n\n")
 
 	switch m.step {
 	case StepSummary:
 		b.WriteString(m.summaryView())
 	case StepInstalling:
-		bar := progress.New(progress.WithDefaultGradient(), progress.WithWidth(50))
-		b.WriteString(bar.ViewAs(float64(m.progress.percent)/100) + "\n\n" + m.progress.step + "\n")
+		bar := progress.New(progress.WithGradient("#6366F1", "#A78BFA"), progress.WithWidth(m.innerWidth()-2))
+		b.WriteString(bar.ViewAs(float64(m.progress.percent)/100) + "\n\n" + dimStyle.Render(m.progress.step) + "\n")
 	case StepDone:
-		b.WriteString(fmt.Sprintf(m.t("done.text"), m.answers.Hostname) + "\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(okCol).Bold(true).Render("✓ ") + fmt.Sprintf(m.t("done.text"), m.answers.Hostname) + "\n")
 	case StepFailed:
 		msg := ""
 		if m.result != nil {
 			msg = m.result.Error()
 		}
-		b.WriteString(errStyle.Render(msg) + "\n\n" + fmt.Sprintf(m.t("failed.text"), m.deps.LogPath) + "\n")
+		b.WriteString(errStyle.Render("✗ "+msg) + "\n\n" + fmt.Sprintf(m.t("failed.text"), m.deps.LogPath) + "\n")
 	default:
 		b.WriteString(m.formView())
 	}
 
 	if m.errText != "" {
-		b.WriteString("\n" + errStyle.Render(m.errText) + "\n")
+		b.WriteString("\n" + errStyle.Render("! "+m.errText) + "\n")
 	}
+	card := cardStyle.Width(m.innerWidth() + 6).Render(strings.TrimRight(b.String(), "\n"))
+	out := card
 	if m.step <= StepSummary {
-		b.WriteString("\n" + dimStyle.Render(m.t("help")) + "\n")
+		out = lipgloss.JoinVertical(lipgloss.Center, card, m.footer())
 	}
-	return b.String()
+	if m.width > 0 && m.height > 0 {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, out)
+	}
+	return out + "\n"
 }
 
 func (m Model) formView() string {
@@ -79,14 +138,15 @@ func (m Model) formView() string {
 	if len(vis) == 1 && fs[vis[0]].kind == kindChoice {
 		f := fs[vis[0]]
 		for i, o := range f.options {
-			line := "  " + o
+			note := ""
 			if m.step == StepDisk {
-				line += m.targetNotes(i)
+				note = m.targetNotes(i)
 			}
 			if i == f.idx {
-				line = focusStyle.Render("▸ " + strings.TrimPrefix(line, "  "))
+				b.WriteString(selStyle.Render(" ▸ "+o+" ") + note + "\n")
+			} else {
+				b.WriteString("   " + o + " " + note + "\n")
 			}
-			b.WriteString(line + "\n")
 		}
 		return b.String()
 	}
@@ -105,16 +165,16 @@ func (m Model) formView() string {
 					opt = map[string]string{"dhcp": m.t("net.dhcp"), "static": m.t("net.static")}[f.values[f.idx]]
 				}
 			}
-			val = "◀ " + opt + " ▶"
+			val = focusStyle.Render("◀ ") + opt + focusStyle.Render(" ▶")
 		case kindToggle:
-			box := "[ ]"
+			box := dimStyle.Render("▢")
 			if f.on {
-				box = "[x]"
+				box = lipgloss.NewStyle().Foreground(okCol).Bold(true).Render("▣")
 			}
 			val = box
 		}
 		if pos == m.focus {
-			label = focusStyle.Render(labelStyle.Render("▸ " + m.t(f.key)))
+			label = focusStyle.Width(34).Render("▸ " + m.t(f.key))
 		}
 		b.WriteString(label + " " + val + "\n")
 	}
@@ -140,7 +200,7 @@ func (m Model) summaryView() string {
 	a := m.answers
 	t := m.target()
 	var b strings.Builder
-	row := func(k, v string) { b.WriteString(labelStyle.Render(m.t(k)) + " " + v + "\n") }
+	row := func(k, v string) { b.WriteString(labelStyle.Render(m.t(k)) + " " + titleStyle.Render(v) + "\n") }
 	row("sum.disk", describeTarget(t))
 	parts := "EFI 512 MiB, System "
 	if a.CreateAppdata && t.SizeBytes>>30 >= uint64(a.RootSizeGiB)+9 {
