@@ -6,6 +6,7 @@ import Password from 'primevue/password'
 import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
 import { MIN_PASSWORD_LEN } from '@/api/users'
+import TotpCard from '@/components/users/TotpCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUsersStore } from '@/stores/users'
 
@@ -60,6 +61,8 @@ async function changePassword() {
         </dd>
       </dl>
     </section>
+
+    <TotpCard />
 
     <section class="card glass">
       <h2>Passwort ändern</h2>
