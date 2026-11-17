@@ -174,3 +174,23 @@ func TestVMInterfacesAndDirectNetwork(t *testing.T) {
 		t.Fatal("unbekannte Schnittstelle")
 	}
 }
+
+func TestVMBridgeNetworkListedOnlyWhenPresent(t *testing.T) {
+	d, _, root := vmEnv(t)
+	ctx := context.Background()
+	if n, _ := VMNetworks(ctx, d); len(n) != 1 || n[0] != "default" {
+		t.Fatalf("%v", n)
+	}
+	spec := okVMSpec()
+	spec.Network = "bridge:br0"
+	if code(VMCreate(ctx, d, spec, false)) != apierr.InvalidParams {
+		t.Fatal("ohne br0 muss das Netz abgelehnt werden")
+	}
+	writeFile(t, root, "/sys/class/net/br0/bridge/x")
+	if n, _ := VMNetworks(ctx, d); len(n) != 2 || n[1] != "bridge:br0" {
+		t.Fatalf("%v", n)
+	}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+}

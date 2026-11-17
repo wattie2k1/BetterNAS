@@ -171,3 +171,29 @@ func TestParseDisplayPort(t *testing.T) {
 		}
 	}
 }
+
+func TestBridgeNetwork(t *testing.T) {
+	s := okSpec()
+	s.Network = BridgeNetwork
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	x, err := BuildXML(s, true)
+	if err != nil || !strings.Contains(x, "<interface type='bridge'>") || !strings.Contains(x, "<source bridge='br0'/>") {
+		t.Fatalf("%v\n%s", err, x)
+	}
+	for _, bad := range []string{"bridge:br1", "bridge:", "bridge:br0 ", "bridge:br0'/><x"} {
+		s.Network = bad
+		if s.Validate() == nil {
+			t.Errorf("%q muss abgelehnt werden", bad)
+		}
+	}
+}
+
+func TestParseDomIfList(t *testing.T) {
+	out := " Interface   Type     Source   Model    MAC\n-----------------------------------------------\n vnet2       bridge   br0      virtio   52:54:00:aa:bb:cc\n -           direct   eno1     virtio   52:54:00:aa:bb:cd\n\n"
+	l := ParseDomIfList([]byte(out))
+	if len(l) != 2 || l[0] != (DomIface{"bridge", "br0"}) || l[1] != (DomIface{"direct", "eno1"}) {
+		t.Fatalf("%v", l)
+	}
+}

@@ -112,3 +112,22 @@ func ParseDisplayPort(out []byte) (int, bool) {
 	}
 	return 5900 + n, true
 }
+
+// DomIface ist eine Netzwerkschnittstelle einer VM laut `virsh domiflist`.
+type DomIface struct {
+	Type   string
+	Source string
+}
+
+// ParseDomIfList liest die Ausgabe von `virsh domiflist` (Spalten: Interface Type Source Model MAC).
+func ParseDomIfList(out []byte) []DomIface {
+	var list []DomIface
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 5 || f[0] == "Interface" || strings.HasPrefix(f[0], "---") {
+			continue
+		}
+		list = append(list, DomIface{Type: f[1], Source: f[2]})
+	}
+	return list
+}

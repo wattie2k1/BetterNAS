@@ -46,8 +46,14 @@ func DirectInterface(network string) (string, bool) {
 	return "", false
 }
 
-// ValidNetwork prüft einen libvirt-Netznamen oder ein „direct:<schnittstelle>“-Netz.
+// BridgeNetwork ist das Netz über die optionale Host-Bridge br0 (siehe Netzwerk-Seite).
+const BridgeNetwork = "bridge:br0"
+
+// ValidNetwork prüft einen libvirt-Netznamen, ein „direct:<schnittstelle>“-Netz oder die Bridge br0.
 func ValidNetwork(n string) bool {
+	if n == BridgeNetwork {
+		return true
+	}
 	if ifc, ok := DirectInterface(n); ok {
 		return InterfaceRe.MatchString(ifc)
 	}
