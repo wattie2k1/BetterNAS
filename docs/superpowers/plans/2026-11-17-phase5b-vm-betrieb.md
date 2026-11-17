@@ -19,9 +19,9 @@
 - `direct:<if>`: Schnittstelle `^[a-z0-9][a-z0-9._-]{0,14}$` und in `/sys/class/net` als physisch gelistet.
 
 ## Tasks
-- [ ] 1 Paket `internal/vm`: `SnapshotRe`, `Snapshot`, `ParseSnapshots`, `ParseDisplayPort`, `direct:`-Netz in Spec/XML (Tests)
-- [ ] 2 Agent: `vm.snapshots|snapshot.create|revert|delete`, `vm.clone`, `vm.display`, `vm.iso.delete`, `vm.interfaces` (Tests)
-- [ ] 3 API/Manager: Routen + Audit, Konsolen-Proxy, ISO-Upload/-Löschen (Tests)
-- [ ] 4 Packaging: `virtinst`, Verzeichnisrechte, `ReadWritePaths`
-- [ ] 5 GUI: Konsole (noVNC), Snapshots, Klonen, Upload, LAN-Netz im Assistenten (Tests)
-- [ ] 6 Integrationstest, Ausrollen (0.4.0-rc4), Memory/Spec §8
+- [x] 1 Paket `internal/vm`: `SnapshotRe`, `Snapshot`, `ParseSnapshots`, `ParseDisplayPort`, `direct:`-Netz in Spec/XML (Tests)
+- [x] 2 Agent: `vm.snapshots|snapshot.create|revert|delete`, `vm.clone`, `vm.display`, `vm.iso.delete`, `vm.interfaces` (Tests)
+- [x] 3 API/Manager: Routen + Audit, Konsolen-Proxy, ISO-Upload/-Löschen (Tests)
+- [x] 4 Packaging: `virtinst`, Verzeichnisrechte, `ReadWritePaths`
+- [x] 5 GUI: Konsole (noVNC), Snapshots, Klonen, Upload, LAN-Netz im Assistenten (Tests)
+- [x] 6 Integrationstest, Ausrollen (0.4.0-rc4), Memory/Spec §8

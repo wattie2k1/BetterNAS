@@ -5,8 +5,11 @@ package agent
 
 import (
 	"context"
+	"io"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 
@@ -179,6 +182,16 @@ func TestVMOps(t *testing.T) {
 	if err != nil || port < 5900 || port > 5999 {
 		t.Fatalf("%d %v", port, err)
 	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	banner := make([]byte, 4)
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, err := io.ReadFull(conn, banner); err != nil || string(banner) != "RFB " {
+		t.Fatalf("VNC-Banner: %q %v", banner, err)
+	}
+	conn.Close()
 	if code(VMClone(ctx, d, name, clone+"2")) != "conflict" {
 		t.Fatal("laufende VM darf nicht geklont werden")
 	}
@@ -191,5 +204,37 @@ func TestVMOps(t *testing.T) {
 	}
 	if list, _ = VMSnapshots(ctx, d, name); len(list) != 0 {
 		t.Fatalf("%+v", list)
+	}
+}
+
+// TestVMSnapshotUEFI prüft, ob Snapshots auch bei UEFI-VMs (mit und ohne TPM) funktionieren.
+func TestVMSnapshotUEFI(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if _, err := exec.LookPath("virsh"); err != nil {
+		t.Skip("virsh ist nicht installiert")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	for _, tpm := range []bool{false, true} {
+		const name = "bnas-it-uefi"
+		_ = VMDelete(ctx, d, name, true)
+		spec := vm.Spec{Name: name, OS: "linux", Firmware: "uefi", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1, TPM: tpm}
+		if err := VMCreate(ctx, d, spec, false); err != nil {
+			t.Fatal(err)
+		}
+		err := VMSnapshotCreate(ctx, d, name, "u1")
+		t.Logf("UEFI tpm=%v: Snapshot-Fehler=%v", tpm, err)
+		if err == nil {
+			err = VMSnapshotRevert(ctx, d, name, "u1")
+			t.Logf("UEFI tpm=%v: Revert-Fehler=%v", tpm, err)
+		}
+		if err := VMDelete(ctx, d, name, true); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
