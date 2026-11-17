@@ -64,13 +64,53 @@ func (m *Manager) loadSnapraid(ctx context.Context) (map[string]snapraid.PoolCon
 	if err := prows.Err(); err != nil {
 		return nil, err
 	}
+	aliases, err := m.loadAliases(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range pools {
 		if c, ok := out[p.Name]; ok {
 			c.Data = p.Branches
+			c.Names = namesFor(aliases[p.Name], p.Branches)
 			out[p.Name] = c
 		}
 	}
 	return out, nil
+}
+
+// loadAliases liefert je Pool: Platten-ID → SnapRAID-Name.
+func (m *Manager) loadAliases(ctx context.Context) (map[string]map[string]string, error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT pool_name, disk_id, name FROM snapraid_alias`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]map[string]string{}
+	for rows.Next() {
+		var pool, disk, name string
+		if err := rows.Scan(&pool, &disk, &name); err != nil {
+			return nil, err
+		}
+		if out[pool] == nil {
+			out[pool] = map[string]string{}
+		}
+		out[pool][disk] = name
+	}
+	return out, rows.Err()
+}
+
+// namesFor behält nur Aliase von Platten, die aktuell Datenplatten des Pools sind (leer → nil).
+func namesFor(all map[string]string, data []string) map[string]string {
+	var out map[string]string
+	for _, id := range data {
+		if n, ok := all[id]; ok {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[id] = n
+		}
+	}
+	return out
 }
 
 // snapraidState macht aus der Konfiguration einen sortierten Agent-Zustand; skip wird ausgelassen.
@@ -148,7 +188,11 @@ func (m *Manager) prepareEnable(ctx context.Context, pool string, in SnapraidInp
 	if i < 0 {
 		return snapraid.PoolConfig{}, nil, apierr.New(apierr.NotFound, "Pool nicht gefunden")
 	}
-	cfg := snapraid.PoolConfig{Pool: pool, Data: pools[i].Branches, Parity: in.Parity, Settings: in.Settings}.WithDefaults()
+	aliases, err := m.loadAliases(ctx)
+	if err != nil {
+		return snapraid.PoolConfig{}, nil, err
+	}
+	cfg := snapraid.PoolConfig{Pool: pool, Data: pools[i].Branches, Parity: in.Parity, Names: namesFor(aliases[pool], pools[i].Branches), Settings: in.Settings}.WithDefaults()
 	if err := cfg.Validate(); err != nil {
 		return snapraid.PoolConfig{}, nil, err
 	}

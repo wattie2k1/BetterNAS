@@ -81,3 +81,21 @@ func TestRenderRejectsInvalid(t *testing.T) {
 		t.Fatal("invalid state rendered")
 	}
 }
+
+func TestRenderUsesAliasName(t *testing.T) {
+	cfg := PoolConfig{Pool: "media", Data: []string{"d1", "new2"}, Parity: []string{"p1"}, Names: map[string]string{"new2": "old2"}}.WithDefaults()
+	files, err := Render(State{Pools: []PoolConfig{cfg}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := string(files[ConfPath("media")])
+	if !strings.Contains(conf, "data old2 /srv/disks/new2/\n") || strings.Contains(conf, "data new2 ") {
+		t.Errorf("Alias nicht verwendet:\n%s", conf)
+	}
+	if !strings.Contains(conf, "data d1 /srv/disks/d1/\n") {
+		t.Errorf("unveränderte Platte:\n%s", conf)
+	}
+	if !strings.Contains(conf, "content /srv/disks/new2/.snapraid.content") {
+		t.Errorf("Content-Datei liegt auf der neuen Platte:\n%s", conf)
+	}
+}

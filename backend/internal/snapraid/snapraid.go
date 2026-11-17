@@ -111,7 +111,17 @@ type PoolConfig struct {
 	Pool   string   `json:"pool"`
 	Data   []string `json:"data"`
 	Parity []string `json:"parity"`
+	// Names ordnet Platten-IDs einen abweichenden SnapRAID-Namen zu (ersetzte Platten behalten den Namen der alten).
+	Names map[string]string `json:"names,omitempty"`
 	Settings
+}
+
+// Name liefert den SnapRAID-Namen einer Datenplatte (ohne Alias: die ID).
+func (p PoolConfig) Name(id string) string {
+	if n, ok := p.Names[id]; ok {
+		return n
+	}
+	return id
 }
 
 // WithDefaults füllt leere Einstellungen mit Standardwerten.
@@ -140,6 +150,26 @@ func (p PoolConfig) Validate() error {
 			return invalid("Datenträger doppelt verwendet: " + id)
 		}
 		seen[id] = true
+	}
+	isData := map[string]bool{}
+	for _, id := range p.Data {
+		isData[id] = true
+	}
+	for id, name := range p.Names {
+		if !isData[id] {
+			return invalid("Alias für eine Platte, die keine Datenplatte des Pools ist: " + id)
+		}
+		if !diskIDRe.MatchString(name) {
+			return invalid("Ungültiger SnapRAID-Name: " + name)
+		}
+	}
+	names := map[string]bool{}
+	for _, id := range p.Data {
+		n := p.Name(id)
+		if names[n] {
+			return invalid("SnapRAID-Name doppelt: " + n)
+		}
+		names[n] = true
 	}
 	return p.Settings.Validate()
 }
