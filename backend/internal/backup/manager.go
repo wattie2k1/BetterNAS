@@ -52,6 +52,7 @@ type Manager struct {
 	version    string
 	hub        *events.Hub
 	now        func() time.Time
+	after      func(time.Duration) <-chan time.Time
 
 	mu     sync.Mutex
 	tokens map[string]pendingRestore
@@ -62,7 +63,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, dir, version string, hub *events.Hub) *Manager {
 	return &Manager{
 		db: d, agent: agent, dir: dir, restoreDir: filepath.Join(filepath.Dir(dir), "restore"),
-		version: version, hub: hub, now: time.Now, tokens: map[string]pendingRestore{},
+		version: version, hub: hub, now: time.Now, after: time.After, tokens: map[string]pendingRestore{},
 	}
 }
 

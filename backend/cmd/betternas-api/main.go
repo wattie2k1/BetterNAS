@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/betternas/betternas/internal/api"
 	"github.com/betternas/betternas/internal/auth"
+	"github.com/betternas/betternas/internal/backup"
 	"github.com/betternas/betternas/internal/db"
 	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/events"
@@ -40,6 +42,14 @@ func main() {
 	flag.Parse()
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(log)
+
+	// Eine vorgemerkte Wiederherstellung wird vor dem Öffnen der DB eingesetzt.
+	stateDir := filepath.Dir(cfg.DBPath)
+	if applied, err := backup.ApplyPending(filepath.Join(stateDir, "restore"), cfg.DBPath, 3); err != nil {
+		log.Error("wiederherstellung einsetzen", "err", err)
+	} else if applied {
+		log.Info("wiederherstellung eingesetzt – alle Sitzungen sind ungültig")
+	}
 
 	d, err := db.Open(cfg.DBPath)
 	if err != nil {
@@ -113,7 +123,9 @@ func main() {
 	ns := notify.NewService(d, hub)
 	mon := monitor.New(d, sm, ns, hub)
 	go mon.Run(ctx)
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Notify: ns, Monitor: mon})
+	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)
+	go bm.Run(ctx, ns)
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Notify: ns, Monitor: mon, Backup: bm})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
