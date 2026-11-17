@@ -134,7 +134,7 @@ check "Admin in betternas-admin"    'id -nG | grep -qw betternas-admin'
 check "Samba-Benutzer angelegt"     "echo $PASSWORD | sudo -S pdbedit -L | grep -q '^ittest:'"
 check "mergerfs installiert"        'command -v mergerfs'
 check "snapraid installiert"        'command -v snapraid'
-check "NFS-Server installiert"      'command -v exportfs'
+check "NFS-Server installiert"      'test -x /usr/sbin/exportfs'
 check "Docker installiert"          'command -v docker && command -v virsh && command -v virt-clone'
 check "systemd ohne Fehler"         'test "$(systemctl is-system-running)" = running'
 check "BetterNAS-Dienste aktiv"     'systemctl is-active betternas-agent betternas-api'
