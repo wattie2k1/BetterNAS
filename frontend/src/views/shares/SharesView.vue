@@ -62,6 +62,7 @@ async function copy(text: string) {
     toast.add({ severity: 'warn', summary: 'Kopieren nicht möglich', detail: text, life: 8000 })
   }
 }
+const nfsCommand = (s: ShareView) => `mount -t nfs ${s.nfsMount} /mnt`
 const smbUrl = (s: ShareView) => `smb://${s.uncPath.split('\\')[2]}.local/${s.name}`
 </script>
 
@@ -88,6 +89,7 @@ const smbUrl = (s: ShareView) => `smb://${s.uncPath.split('\\')[2]}.local/${s.na
           <Tag v-if="s.guest" value="Gast" severity="warn" />
           <Tag v-if="s.recycle" value="Papierkorb" severity="secondary" />
           <Tag v-if="s.fruit" value="macOS" severity="secondary" />
+          <Tag v-if="s.nfs?.enabled" value="NFS" severity="info" />
           <Tag v-if="!s.browsable" value="Versteckt" severity="secondary" />
         </div>
         <div class="addr">
@@ -97,6 +99,10 @@ const smbUrl = (s: ShareView) => `smb://${s.uncPath.split('\\')[2]}.local/${s.na
         <div class="addr">
           <code>{{ smbUrl(s) }}</code>
           <Button icon="pi pi-copy" size="small" text rounded aria-label="Mac-Adresse kopieren" @click="copy(smbUrl(s))" />
+        </div>
+        <div v-if="s.nfsMount" class="addr" data-test="nfs-mount">
+          <code>{{ nfsCommand(s) }}</code>
+          <Button icon="pi pi-copy" size="small" text rounded aria-label="NFS-Befehl kopieren" @click="copy(nfsCommand(s))" />
         </div>
       </template>
       <template #footer>
