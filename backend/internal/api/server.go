@@ -49,6 +49,8 @@ type Deps struct {
 	VMs *vm.Manager
 	// Notify ist optional (nil = keine Benachrichtigungs-Routen).
 	Notify *notify.Service
+	// TOTP ist optional (nil = keine 2FA-Routen).
+	TOTP *auth.TOTPStore
 	// Backup ist optional (nil = keine Backup-Routen).
 	Backup *backup.Manager
 	// Monitor ist optional (nil = keine aktiven Meldungen).
@@ -89,6 +91,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Updates != nil {
 		s.registerUpdates(api)
+	}
+	if deps.TOTP != nil {
+		s.registerTOTP(api)
 	}
 	if deps.Backup != nil {
 		s.registerBackup(api)

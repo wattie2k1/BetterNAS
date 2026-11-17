@@ -181,7 +181,11 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 // Me liefert den angemeldeten Benutzer und das CSRF-Token.
 func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	s := SessionFrom(r.Context())
-	writeJSON(w, http.StatusOK, map[string]string{"username": s.Username, "csrfToken": s.CSRF})
+	totp := false
+	if h.totp != nil {
+		totp, _ = h.totp.Enabled(r.Context(), s.Username)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"username": s.Username, "csrfToken": s.CSRF, "totp": totp})
 }
 
 // RequireSession verlangt eine gültige Sitzung und bei ändernden Anfragen ein passendes CSRF-Token.
