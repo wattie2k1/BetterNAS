@@ -112,3 +112,16 @@ systemd; er läuft auch in einem privilegierten Container, z. B. mit Colima:
 
 Der Daten-Teil des e2e-Tests braucht `python3` und `smbclient` auf dem Rechner, der ihn ausführt (ohne `smbclient` entfallen
 die SMB-Prüfungen).
+
+## Release veröffentlichen (GitHub)
+
+APT-Repo über GitHub Pages, ISO als Release-Asset:
+
+```bash
+make remote VERSION=0.6.0 APT_URL=https://<owner>.github.io/<repo> MODES="uefi bios secureboot"
+tools/release.sh <owner>/<repo> 0.6.0
+```
+
+`APT_URL` muss beim ISO-Bau gesetzt sein, sonst trägt das Image keine BetterNAS-Paketquelle ein.
+Das Repo braucht aktivierte Pages (Quelle: Branch `gh-pages`); der Signierschlüssel liegt unter
+`~/.betternas/apt-signing-key.asc` und muss gesichert sein (`make apt-key` erzeugt ihn einmalig).
