@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import GeneralSettings from '@/views/settings/GeneralSettings.vue'
 import WebAccessSettings from '@/views/settings/WebAccessSettings.vue'
 import PowerSettings from '@/views/settings/PowerSettings.vue'
 import { systemApi } from '@/api/system'
+import { usePowerStore } from '@/stores/power'
 
 vi.mock('@/api/system', () => ({
   systemApi: { settings: vi.fn(), timezones: vi.fn(), update: vi.fn(), power: vi.fn(), certificate: vi.fn(), regenerateCertificate: vi.fn(), installCertificate: vi.fn() },
 }))
 
-const plugins = [PrimeVue, ToastService]
+const pinia = createPinia()
+const plugins = [PrimeVue, ToastService, pinia]
 const base = { hostname: 'betternas', timezone: 'Europe/Berlin', ntp: true, ntpSynced: true, ntpServers: [] as string[], time: '' }
 const cert = { subject: 'CN=betternas', issuer: 'CN=betternas', dnsNames: ['betternas', 'betternas.local'], ipAddresses: [], notBefore: '2026-01-01T00:00:00Z', notAfter: '2036-01-01T00:00:00Z', fingerprint: 'AA:BB', selfSigned: true, expired: false }
 
@@ -67,6 +70,7 @@ describe('WebAccessSettings', () => {
 describe('PowerSettings', () => {
   it('verlangt das Bestätigungswort', async () => {
     vi.mocked(systemApi.power).mockResolvedValue()
+    setActivePinia(pinia)
     const w = mount(PowerSettings, { global: { plugins }, attachTo: document.body })
     await w.find('[data-test="power-reboot"]').trigger('click')
     await flushPromises()
@@ -81,6 +85,8 @@ describe('PowerSettings', () => {
     await flushPromises()
     expect(systemApi.power).toHaveBeenCalledWith('reboot', 'NEUSTARTEN')
     expect(w.find('[data-test="power-done"]').exists()).toBe(true)
+    expect(usePowerStore().phase).toBe('rebooting')
+    usePowerStore().stop()
     w.unmount()
   })
 })

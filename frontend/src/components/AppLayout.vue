@@ -6,6 +6,7 @@ import Drawer from 'primevue/drawer'
 import Toast from 'primevue/toast'
 import { useAuthStore } from '@/stores/auth'
 import { useJobsStore, type Job } from '@/stores/jobs'
+import { useRebootStore } from '@/stores/reboot'
 import { useStorageStore } from '@/stores/storage'
 import { useUsersStore } from '@/stores/users'
 import { useSharesStore } from '@/stores/shares'
@@ -15,9 +16,11 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useBackupStore } from '@/stores/backup'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
+import PowerOverlay from './PowerOverlay.vue'
 
 const auth = useAuthStore()
 const jobs = useJobsStore()
+const reboot = useRebootStore()
 const storage = useStorageStore()
 const usersStore = useUsersStore()
 const sharesStore = useSharesStore()
@@ -53,6 +56,7 @@ let disconnect: (() => void) | undefined
 onMounted(() => {
   clock = setInterval(() => (now.value = new Date()), 15000)
   jobs.load().catch(() => {})
+  reboot.start()
   disconnect = connectEvents((m) => {
     if (m.type === 'job.updated') jobs.update(m.data as Job)
     storage.handleEvent(m)
@@ -66,6 +70,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   disconnect?.()
+  reboot.stop()
   clearInterval(clock)
 })
 
@@ -99,6 +104,7 @@ async function logout() {
         <button class="chip round glass" aria-label="Aufträge" @click="showJobs = true">
           <i class="pi pi-list-check" />
           <Badge v-if="jobs.running.length" :value="jobs.running.length" severity="info" class="badge" />
+          <Badge v-else-if="reboot.status.required" value="!" severity="warn" class="badge" data-test="reboot-badge" />
         </button>
         <div class="chip user glass">
           <RouterLink to="/profil" class="profile-link" aria-label="Profil" title="Profil">
@@ -113,6 +119,7 @@ async function logout() {
       </main>
     </div>
     <Toast position="bottom-right" />
+    <PowerOverlay />
     <Drawer v-model:visible="showJobs" header="Aufträge" position="right" class="jobs-drawer">
       <JobsPanel />
     </Drawer>

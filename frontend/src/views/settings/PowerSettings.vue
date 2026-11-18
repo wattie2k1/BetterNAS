@@ -6,8 +6,10 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import { systemApi, type PowerAction } from '@/api/system'
+import { usePowerStore } from '@/stores/power'
 
 const toast = useToast()
+const power = usePowerStore()
 const WORDS: Record<PowerAction, string> = { reboot: 'NEUSTARTEN', poweroff: 'HERUNTERFAHREN' }
 const action = ref<PowerAction | null>(null)
 const typed = ref('')
@@ -26,7 +28,9 @@ async function run() {
   if (!action.value) return
   busy.value = true
   try {
-    await systemApi.power(action.value, typed.value)
+    const chosen = action.value
+    await systemApi.power(chosen, typed.value)
+    power.begin(chosen)
     done.value = action.value === 'reboot' ? 'Das NAS startet in wenigen Sekunden neu und ist nach etwa einer Minute wieder erreichbar.' : 'Das NAS fährt in wenigen Sekunden herunter. Zum Einschalten brauchst du den Netzschalter.'
     toast.add({ severity: 'info', summary: action.value === 'reboot' ? 'Neustart angefordert' : 'Herunterfahren angefordert', life: 6000 })
     action.value = null
