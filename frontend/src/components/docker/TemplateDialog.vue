@@ -6,12 +6,14 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import FolderPicker from '@/components/docker/FolderPicker.vue'
 import { dockerApi, type HostDevice, type StackFiles } from '@/api/docker'
-import { APP_TEMPLATES, defaultValues, fieldError, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
+import { APP_TEMPLATES, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
 
 const props = defineProps<{ visible: boolean; existing: string[] }>()
 const emit = defineEmits<{ 'update:visible': [boolean]; create: [files: StackFiles] }>()
 
 const picked = ref<AppTemplate | null>(null)
+const query = ref('')
+const groups = computed(() => groupTemplates(APP_TEMPLATES, query.value))
 const name = ref('')
 const values = ref<Record<string, string>>({})
 const browsing = ref<string | null>(null)
@@ -23,7 +25,10 @@ const deviceNote = computed(() => deviceOptions.value.find((d) => d.path === dev
 watch(
   () => props.visible,
   (v) => {
-    if (v) picked.value = null
+    if (v) {
+      picked.value = null
+      query.value = ''
+    }
   },
 )
 
@@ -74,12 +79,19 @@ function submit() {
     :style="{ width: 'min(720px, 96vw)' }"
     @update:visible="emit('update:visible', $event)"
   >
-    <div v-if="!picked" class="tpl-grid" data-test="template-list">
-      <button v-for="t in APP_TEMPLATES" :key="t.id" type="button" class="tpl" :data-test="`template-${t.id}`" @click="pick(t)">
-        <i :class="t.icon" />
-        <strong>{{ t.title }}</strong>
-        <span>{{ t.description }}</span>
-      </button>
+    <div v-if="!picked" data-test="template-list">
+      <InputText v-model="query" class="search" placeholder="Vorlage suchen" aria-label="Vorlage suchen" autocomplete="off" data-test="template-search" />
+      <p v-if="!groups.length" class="hint" data-test="template-empty">Keine Vorlage gefunden.</p>
+      <section v-for="g in groups" :key="g.category">
+        <h3 class="group" :data-test="`template-group-${g.category}`">{{ g.category }}</h3>
+        <div class="tpl-grid">
+          <button v-for="t in g.items" :key="t.id" type="button" class="tpl" :data-test="`template-${t.id}`" @click="pick(t)">
+            <i :class="t.icon" />
+            <strong>{{ t.title }}</strong>
+            <span>{{ t.description }}</span>
+          </button>
+        </div>
+      </section>
     </div>
     <div v-else class="form" data-test="template-form">
       <div class="field">
@@ -116,6 +128,7 @@ function submit() {
         <small v-else-if="!deviceOptions.length" class="hint">Kein passendes Gerät gefunden.</small>
         <small v-else-if="picked.device.hint" class="hint">{{ picked.device.hint }}</small>
       </div>
+      <Message v-if="picked.notice" severity="warn" :closable="false" data-test="tpl-notice">{{ picked.notice }}</Message>
       <Message severity="info" :closable="false">
         Die Eingaben werden in der .env gespeichert (nur für Administratoren lesbar). Im nächsten Schritt kannst du alles noch ändern, bevor der Stack angelegt wird.
       </Message>
@@ -135,6 +148,15 @@ function submit() {
 </template>
 
 <style scoped>
+.search {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+.group {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.95rem;
+  color: var(--bn-text-soft);
+}
 .tpl-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

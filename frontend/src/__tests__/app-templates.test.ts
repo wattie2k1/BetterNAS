@@ -122,4 +122,58 @@ describe('TemplateDialog', () => {
     expect(ev.env).toContain('PORT=8096')
     w.unmount()
   })
+
+  const q = (sel: string) => document.querySelector<HTMLElement>(sel)
+  const setSearch = async (w: ReturnType<typeof mountIt>, v: string) => {
+    const el = q('[data-test="template-search"]') as HTMLInputElement
+    el.value = v
+    el.dispatchEvent(new Event('input'))
+    await w.vm.$nextTick()
+  }
+
+  it('zeigt je Kategorie eine Überschrift', async () => {
+    const w = mountIt()
+    await w.vm.$nextTick()
+    expect(q('[data-test="template-group-Medien"]')).toBeTruthy()
+    expect(q('[data-test="template-group-Netzwerk"]')).toBeTruthy()
+    w.unmount()
+  })
+
+  it('filtert per Suche und meldet fehlende Treffer', async () => {
+    const w = mountIt()
+    await w.vm.$nextTick()
+    await setSearch(w, 'jelly')
+    expect(document.querySelectorAll('[data-test^="template-"][data-test$="fin"]').length).toBe(1)
+    expect(q('[data-test="template-nextcloud"]')).toBeNull()
+    await setSearch(w, 'xyz')
+    expect(q('[data-test="template-empty"]')).toBeTruthy()
+    expect(q('[data-test="template-jellyfin"]')).toBeNull()
+    w.unmount()
+  })
+
+  it('leert die Suche beim erneuten Öffnen', async () => {
+    const w = mountIt()
+    await w.vm.$nextTick()
+    await setSearch(w, 'jelly')
+    await w.setProps({ visible: false })
+    await w.setProps({ visible: true })
+    await w.vm.$nextTick()
+    expect((q('[data-test="template-search"]') as HTMLInputElement).value).toBe('')
+    w.unmount()
+  })
+
+  it('zeigt den Warnhinweis nur bei Vorlagen mit notice', async () => {
+    const w = mountIt()
+    await w.vm.$nextTick()
+    q('[data-test="template-homeassistant"]')!.click()
+    await w.vm.$nextTick()
+    expect(q('[data-test="tpl-notice"]')?.textContent).toContain('privileged')
+    await w.setProps({ visible: false })
+    await w.setProps({ visible: true })
+    await w.vm.$nextTick()
+    q('[data-test="template-jellyfin"]')!.click()
+    await w.vm.$nextTick()
+    expect(q('[data-test="tpl-notice"]')).toBeNull()
+    w.unmount()
+  })
 })
