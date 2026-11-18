@@ -58,7 +58,7 @@ func BuildXML(s Spec, kvm bool) (string, error) {
 	b.WriteString("    <type arch='x86_64' machine='q35'>hvm</type>\n    <boot dev='cdrom'/>\n    <boot dev='hd'/>\n  </os>\n")
 	b.WriteString("  <features>\n    <acpi/>\n    <apic/>\n")
 	if win {
-		b.WriteString("    <hyperv mode='custom'>\n      <relaxed state='on'/>\n      <vapic state='on'/>\n      <spinlocks state='on' retries='8191'/>\n    </hyperv>\n")
+		b.WriteString(HypervXML)
 	}
 	b.WriteString("  </features>\n")
 	if kvm {

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/rpc"
@@ -61,9 +62,25 @@ func VMConfigure(ctx context.Context, d Deps, name string, u vm.ConfigUpdate) er
 	if err != nil {
 		return err
 	}
-	if cur, perr := vm.ParseConfig(res.Stdout); perr == nil && cur.Network != u.Network {
-		if err := checkNetwork(ctx, d, u.Network); err != nil {
-			return err
+	if cur, perr := vm.ParseConfig(res.Stdout); perr == nil {
+		if cur.Network != u.Network {
+			if err := checkNetwork(ctx, d, u.Network); err != nil {
+				return err
+			}
+		}
+		if u.ExtraNICs != nil {
+			known := map[string]string{}
+			for _, n := range cur.ExtraNICs {
+				known[n.MAC] = n.Network
+			}
+			for _, n := range *u.ExtraNICs {
+				if old, ok := known[strings.ToLower(n.MAC)]; ok && old == n.Network {
+					continue
+				}
+				if err := checkNetwork(ctx, d, n.Network); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	xml, nvram, err := vm.ApplyConfig(string(res.Stdout), u)

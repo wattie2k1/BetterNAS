@@ -35,6 +35,7 @@ type Config struct {
 	Boot       string      `json:"boot"` // hd | cdrom (zuerst) | custom (Reihenfolge pro Gerät, nicht änderbar)
 	MAC        string      `json:"mac"`  // MAC-Adresse der ersten Netzwerkkarte
 	USB        []USBDevice `json:"usb"`  // durchgereichte USB-Geräte
+	Tuning
 }
 
 // USBDevice ist ein USB-Gerät des Hosts (Hersteller-/Produkt-ID, je vier Hexziffern in Kleinbuchstaben).
@@ -64,6 +65,7 @@ type ConfigUpdate struct {
 	BootFirst string       `json:"bootFirst"` // hd | cdrom
 	MAC       string       `json:"mac"`
 	USB       *[]USBDevice `json:"usb"`
+	TuningUpdate
 }
 
 // Validate prüft alle Felder gegen die festen Grenzen.
@@ -84,7 +86,7 @@ func (u ConfigUpdate) Validate() error {
 	case u.Media != "" && !ISORe.MatchString(u.Media):
 		return invalid("Ungültiger ISO-Dateiname")
 	}
-	return nil
+	return u.validateTuning()
 }
 
 type domXML struct {
@@ -158,7 +160,7 @@ func ParseConfig(xmlData []byte) (Config, error) {
 	if err := xml.NewDecoder(bytes.NewReader(xmlData)).Decode(&d); err != nil {
 		return Config{}, err
 	}
-	c := Config{Name: d.Name, VCPUs: d.VCPU, Firmware: "bios", Disks: []string{}}
+	c := Config{Name: d.Name, VCPUs: d.VCPU, Firmware: "bios", Disks: []string{}, Tuning: parseTuning(xmlData)}
 	c.MemoryMiB = int(float64(d.Memory.V)*mibPerUnit[d.Memory.Unit] + 0.5)
 	if d.OS.Firmware == "efi" || d.OS.Loader.Type == "pflash" {
 		c.Firmware = "uefi"
@@ -441,6 +443,10 @@ func ApplyConfig(xmlStr string, u ConfigUpdate) (string, string, error) {
 			b.WriteString(usbHostdev(d))
 		}
 		out = strings.Replace(out, "  </devices>", b.String()+"  </devices>", 1)
+	}
+	out, err = applyTuning(out, cur, u)
+	if err != nil {
+		return "", "", err
 	}
 	return out, nvram, nil
 }

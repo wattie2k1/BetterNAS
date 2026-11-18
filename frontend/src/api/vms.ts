@@ -51,6 +51,27 @@ export interface VmConfig {
   boot: 'hd' | 'cdrom' | 'custom'
   mac: string
   usb: VmUsbDevice[]
+  cpuMode: 'host-passthrough' | 'host-model' | 'other'
+  /** 0 = keine CPU-Topologie festgelegt. */
+  sockets: number
+  threads: number
+  hyperv: boolean
+  clock: 'utc' | 'localtime' | 'other'
+  extraNics: VmNic[]
+  diskOpts: VmDiskOpt[]
+}
+
+export interface VmNic {
+  network: string
+  model: string
+  /** Leer = wird beim Anlegen automatisch vergeben. */
+  mac: string
+}
+
+export interface VmDiskOpt {
+  path: string
+  cache: 'default' | 'none' | 'writeback' | 'writethrough'
+  discard: 'ignore' | 'unmap'
 }
 
 export interface VmUsbDevice {
@@ -73,6 +94,12 @@ export interface VmConfigUpdate {
   bootFirst?: 'hd' | 'cdrom'
   mac?: string
   usb?: VmUsbDevice[]
+  cpuMode?: 'host-passthrough' | 'host-model'
+  topology?: { sockets: number; threads: number }
+  hyperv?: boolean
+  clock?: 'utc' | 'localtime'
+  extraNics?: VmNic[]
+  diskOpts?: VmDiskOpt[]
 }
 
 export interface VmDisk {

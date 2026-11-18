@@ -81,3 +81,35 @@ func TestVMConfigureRejects(t *testing.T) {
 		t.Fatal("nichts darf definiert werden")
 	}
 }
+
+func TestVMConfigureTuning(t *testing.T) {
+	d, f, _ := configEnv(t, "shut off")
+	on := true
+	nics := []vm.NIC{{Network: "default", Model: "virtio"}}
+	opts := []vm.DiskOpt{{Path: "/srv/vms/disks/homeassistant.qcow2", Cache: "none", Discard: "unmap"}}
+	u := vm.ConfigUpdate{VCPUs: 4, MemoryMiB: 4096, SecureBoot: true, Network: "default",
+		TuningUpdate: vm.TuningUpdate{CPUMode: "host-model", Topology: &vm.Topology{Sockets: 1, Threads: 2}, Hyperv: &on, Clock: "localtime", ExtraNICs: &nics, DiskOpts: &opts}}
+	if err := VMConfigure(context.Background(), d, "homeassistant", u); err != nil {
+		t.Fatal(err)
+	}
+	i := f.Index(v + "define /dev/stdin")
+	if i < 0 {
+		t.Fatal(f.Calls)
+	}
+	x := string(f.Stdins[i])
+	for _, want := range []string{"mode='host-model'", "cores='2' threads='2'", "<hyperv", "offset='localtime'", "discard='unmap'", "cache='none'", "<interface type='network'>"} {
+		if !strings.Contains(x, want) {
+			t.Errorf("%q fehlt:\n%s", want, x)
+		}
+	}
+	// Nicht vorhandenes Netz bei einer Zusatzkarte wird abgelehnt.
+	d, f, _ = configEnv(t, "shut off")
+	bad := []vm.NIC{{Network: "gibtsnicht"}}
+	u.ExtraNICs = &bad
+	if code(VMConfigure(context.Background(), d, "homeassistant", u)) != apierr.InvalidParams {
+		t.Fatal("Netz fehlt")
+	}
+	if f.Called(v + "define") {
+		t.Fatal("nichts darf definiert werden")
+	}
+}

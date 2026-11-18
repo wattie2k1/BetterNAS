@@ -303,3 +303,24 @@ func TestUSBRoute(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func TestTuningRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	body := `{"vcpus":4,"memoryMiB":2048,"network":"default","cpuMode":"host-model","topology":{"sockets":1,"threads":2},"hyperv":true,"clock":"localtime","extraNics":[{"network":"default","model":"virtio"}],"diskOpts":[{"path":"/srv/vms/disks/d.qcow2","cache":"none","discard":"unmap"}]}`
+	if w := s.do("POST", "/api/v1/vms/debian/config", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	p, _ := stub.calls["vm.configure"].(map[string]any)
+	if p["cpuMode"] != "host-model" || p["hyperv"] != true || p["clock"] != "localtime" || p["topology"].(map[string]any)["threads"] != float64(2) || len(p["extraNics"].([]any)) != 1 || len(p["diskOpts"].([]any)) != 1 {
+		t.Fatalf("%v", p)
+	}
+	for _, bad := range []string{
+		`{"vcpus":5,"memoryMiB":2048,"network":"default","topology":{"sockets":1,"threads":2}}`,
+		`{"vcpus":2,"memoryMiB":2048,"network":"default","clock":"gmt"}`,
+		`{"vcpus":2,"memoryMiB":2048,"network":"default","diskOpts":[{"path":"/x","cache":"unsafe","discard":"unmap"}]}`,
+	} {
+		if w := s.do("POST", "/api/v1/vms/debian/config", bad); w.Code != 400 {
+			t.Fatalf("%q: %d", bad, w.Code)
+		}
+	}
+}

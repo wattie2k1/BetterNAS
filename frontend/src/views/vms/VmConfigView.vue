@@ -12,6 +12,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import { vmsApi, type VmConfig, type VmConfigUpdate, type VmDisk, type VmUsbDevice } from '@/api/vms'
 import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
+import VmAdvanced, { type AdvancedState } from '@/components/vms/VmAdvanced.vue'
 import { useVmsStore } from '@/stores/vms'
 
 const route = useRoute()
@@ -55,6 +56,8 @@ const usbChanged = computed(() => {
   return [...usbSel.value].sort().join(',') !== cur
 })
 const usbStorageSel = computed(() => usbOptions.value.some((d) => d.storage && usbSel.value.includes(usbKey(d))))
+const adv = ref<AdvancedState>({ dirty: false, valid: true, update: {} })
+const resetKey = ref(0)
 const disks = ref<VmDisk[]>([])
 const resizeDisk = ref<VmDisk | null>(null)
 const resizeOpen = ref(false)
@@ -70,7 +73,7 @@ async function loadDisks() {
 
 const editable = computed(() => cfg.value?.state === 'shutoff')
 const inRange = (n: number | null, lo: number, hi: number) => n !== null && Number.isInteger(n) && n >= lo && n <= hi
-const valid = computed(() => inRange(vcpus.value, 1, 64) && inRange(ramMiB.value, 256, 262144) && macValid.value)
+const valid = computed(() => inRange(vcpus.value, 1, 64) && inRange(ramMiB.value, 256, 262144) && macValid.value && adv.value.valid)
 const dirty = computed(
   () =>
     !!cfg.value &&
@@ -82,7 +85,8 @@ const dirty = computed(
       media.value !== cfg.value.media ||
       (cfg.value.boot !== 'custom' && bootFirst.value !== (cfg.value.boot ?? 'hd')) ||
       mac.value.toLowerCase() !== (cfg.value.mac ?? '').toLowerCase() ||
-      usbChanged.value),
+      usbChanged.value ||
+      adv.value.dirty),
 )
 const secureBootChanged = computed(() => !!cfg.value && secureBoot.value !== cfg.value.secureBoot)
 
@@ -100,6 +104,7 @@ const mediaOptions = computed(() => [{ label: 'Leer (kein Medium eingelegt)', va
 const stateLabel: Record<string, string> = { running: 'Läuft', shutoff: 'Aus', paused: 'Pausiert', shuttingdown: 'Fährt herunter', crashed: 'Abgestürzt', other: 'Unbekannt' }
 
 function apply(c: VmConfig) {
+  resetKey.value++
   cfg.value = c
   vcpus.value = c.vcpus
   ramMiB.value = c.memoryMiB
@@ -139,7 +144,7 @@ async function save() {
     if (c.boot !== 'custom' && bootFirst.value !== (c.boot ?? 'hd')) upd.bootFirst = bootFirst.value
     if (mac.value.toLowerCase() !== (c.mac ?? '').toLowerCase()) upd.mac = mac.value.toLowerCase()
     if (usbChanged.value) upd.usb = usbOptions.value.filter((d) => usbSel.value.includes(usbKey(d))).map(({ vendor, product }) => ({ vendor, product }))
-    await vmsApi.configure(name, upd)
+    await vmsApi.configure(name, { ...upd, ...adv.value.update })
     toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', detail: name, life: 4000 })
     await load()
     void store.refresh()
@@ -264,6 +269,8 @@ const back = () => router?.push('/vms')
       <span v-else class="hint">{{ cfg.disks.join(', ') || '–' }}</span>
     </div>
     <DiskResizeDialog v-model:visible="resizeOpen" :vm="name" :disk="resizeDisk" @resized="load" />
+
+    <VmAdvanced :cfg="cfg" :vcpus="vcpus" :editable="editable" :net-options="netOptions" :reset="resetKey" @change="adv = $event" />
 
     <dl class="info">
       <dt>Firmware</dt>
