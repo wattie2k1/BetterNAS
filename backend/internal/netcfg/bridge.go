@@ -49,6 +49,10 @@ type Status struct {
 	Pending bool `json:"pending"`
 	// Deadline (Unix-Sekunden) der Bestätigung, solange Pending.
 	Deadline int64 `json:"deadline"`
+	// Addresses sind die IPv4-Adressen von br0 (nur wenn aktiv); über sie ist das NAS nach der Umstellung erreichbar.
+	Addresses []string `json:"addresses"`
+	// Hostname des NAS (erreichbar als <Hostname>.local).
+	Hostname string `json:"hostname"`
 	// Candidates sind die möglichen Schnittstellen (physisch, ohne WLAN).
 	Candidates []string `json:"candidates"`
 }
@@ -118,4 +122,18 @@ networkctl reload
 networkctl reconfigure %[6]s
 rm -f %[7]s
 `, Dir, NetdevFile, PortFile, BridgeFile, Name, iface, StateFile)
+}
+
+// ParseAddrs liest die IPv4-Adressen aus der Ausgabe von `ip -4 -o addr show`.
+func ParseAddrs(out []byte) []string {
+	addrs := []string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		for i, w := range f {
+			if w == "inet" && i+1 < len(f) {
+				addrs = append(addrs, strings.SplitN(f[i+1], "/", 2)[0])
+			}
+		}
+	}
+	return addrs
 }

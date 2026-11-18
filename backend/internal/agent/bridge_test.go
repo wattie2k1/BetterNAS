@@ -62,9 +62,14 @@ func TestBridgeEnableConfirmDisable(t *testing.T) {
 	if read(t, root, "etc/systemd/network/10-betternas.network") != origNet {
 		t.Fatal("die bisherige Konfiguration darf nicht verändert werden")
 	}
+	f.Responses["ip -4 -o addr show dev br0"] = sysexec.Result{Stdout: []byte("5: br0    inet 192.168.1.65/24 brd 192.168.1.255 scope global dynamic br0\\       valid_lft 86398sec\n")}
+	f.Responses["hostname"] = sysexec.Result{Stdout: []byte("betternas\n")}
 	st, _ := BridgeStatus(ctx, d)
 	if !st.Active || !st.Pending || st.Interface != "eno1" || st.Deadline == 0 {
 		t.Fatalf("%+v", st)
+	}
+	if len(st.Addresses) != 1 || st.Addresses[0] != "192.168.1.65" || st.Hostname != "betternas" {
+		t.Fatalf("Adresse und Hostname erwartet: %+v", st)
 	}
 	if code(BridgeEnable(ctx, d, "eno1")) != apierr.Conflict {
 		t.Fatal("doppelt")

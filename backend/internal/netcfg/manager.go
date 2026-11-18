@@ -31,10 +31,13 @@ func (m *Manager) record(ctx context.Context, actor, action, target string, err 
 
 // Status liefert den Bridge-Zustand.
 func (m *Manager) Status(ctx context.Context) (Status, error) {
-	st := Status{Candidates: []string{}}
+	st := Status{Candidates: []string{}, Addresses: []string{}}
 	err := m.agent.Call(ctx, "network.bridge.status", nil, &st)
 	if st.Candidates == nil {
 		st.Candidates = []string{}
+	}
+	if st.Addresses == nil {
+		st.Addresses = []string{}
 	}
 	return st, err
 }
