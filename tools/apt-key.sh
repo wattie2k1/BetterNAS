@@ -28,5 +28,5 @@ docker run --rm --platform linux/amd64 -v "$SRC/packaging/apt:/out" "$BUILDER" s
 	rm -rf "$GNUPGHOME"
 ' > "$KEY"
 chmod 600 "$KEY"
-echo "Privater Schlüssel: $KEY  (bitte sichern – ohne ihn können keine Updates mehr signiert werden)"
+echo "Privater Schlüssel: $KEY  (bitte sichern; für Releases als Secret APT_SIGNING_KEY im Environment release hinterlegen, siehe README)"
 echo "Öffentlicher Schlüssel: packaging/apt/betternas-archive-keyring.asc"

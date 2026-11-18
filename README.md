@@ -57,23 +57,49 @@ Timer `betternas-snapraid-sync-<pool>.timer` und `…-scrub-<pool>.timer`.
 
 ## Updates und APT-Repository
 
-BetterNAS-Pakete kommen aus einem eigenen, signierten APT-Repository (Suite `stable`, Komponente `main`);
-das Basissystem aus den Debian-Quellen. Auf der Seite **System → Updates** lassen sich Updates suchen und installieren
-(die Installation läuft in einer eigenen systemd-Unit und übersteht den Neustart von BetterNAS selbst).
+BetterNAS-Pakete kommen aus einem eigenen, signierten APT-Repository (Komponente `main`, Suiten `stable` und
+`testing`); das Basissystem aus den Debian-Quellen. Auf der Seite **System → Updates** lassen sich Updates suchen
+und installieren (die Installation läuft in einer eigenen systemd-Unit und übersteht den Neustart von BetterNAS
+selbst). Das Repo liegt auf GitHub Pages (`https://wattie2k1.github.io/BetterNAS`); Veröffentlichen: siehe
+„Release veröffentlichen".
+
+### Kanäle
+
+| Kanal | Inhalt | Tag |
+|---|---|---|
+| `stable` (Standard) | Stabile Versionen | `vX.Y.Z` |
+| `testing` | Stabile Versionen und Release-Candidates | `vX.Y.Z-rcN` (nur `testing`), `vX.Y.Z` (beide) |
+
+- Die Paketversion eines Release-Candidates ist `X.Y.Z~rcN`: In Debian sortiert `~` **unter** der Release-Version,
+  während `-rcN` darüber läge und `X.Y.Z` das Testgerät nie ersetzen würde. Der Workflow schreibt das automatisch um.
+- Den Kanal stellt man in der GUI unter **System → Updates** um (Agent-Operation `updates.setchannel`, die nur das
+  Feld `Suites:` in `/etc/apt/sources.list.d/betternas.sources` ändert). Ein Wechsel von `testing` zurück zu `stable`
+  installiert keine ältere Version: das NAS bleibt auf seiner Version, bis `stable` sie einholt.
+- Ins ISO trägt `APT_SUITE=testing` (Standard `stable`) den Kanal ein.
+
+### Signierschlüssel
+
+Der private Schlüssel liegt als Secret `APT_SIGNING_KEY` im GitHub-Environment `release` (Pflicht-Freigabe, nur für
+Tags `v*`) und zusätzlich als **verschlüsselte Offline-Kopie** (Passwortmanager). Geht er verloren, können keine
+Updates mehr für bereits installierte Systeme signiert werden; der öffentliche Schlüssel liegt im Paket
+(`packaging/apt/betternas-archive-keyring.gpg`) und unter `https://wattie2k1.github.io/BetterNAS/betternas-archive-keyring.gpg`.
 
 ```bash
-make apt-key                         # einmalig: Signierschlüssel; privater Teil nach ~/.betternas/apt-signing-key.asc
-make build web deb VERSION=0.1.0
-make repo VERSION=0.1.0              # signiertes Repo nach dist/apt (auf einen Webserver hochladen)
-make rootfs iso APT_URL=https://…    # Adresse des Repos ins Image eintragen (ohne APT_URL: keine BetterNAS-Quelle)
+make apt-key                         # einmalig: neuer Signierschlüssel; privater Teil nach ~/.betternas/apt-signing-key.asc
 ```
 
-**Den privaten Schlüssel `~/.betternas/apt-signing-key.asc` selbst sichern.** Geht er verloren, können keine
-Updates mehr für bereits installierte Systeme signiert werden; der öffentliche Schlüssel liegt im Paket
-(`packaging/apt/betternas-archive-keyring.gpg`).
+**Rotation** (so, dass kein installiertes System zurückbleibt; der Keyring darf mehrere Schlüssel enthalten und
+`tools/apt-repo.sh` signiert mit allen Schlüsseln der Schlüsseldatei):
 
-Updates ohne Webserver testen: `make dev-repo VERSION=<neue-version>` veröffentlicht das Repo auf dem Entwicklungsrechner
-(`http://127.0.0.1:8088`) und trägt es dort als Quelle ein.
+1. Neuen Schlüssel erzeugen, öffentlichen Teil **zusätzlich** zum alten in `betternas-archive-keyring.gpg` aufnehmen
+   (`cat alt.gpg neu.gpg > …`). Release N liefert beide Schlüssel im Paket aus und wird noch mit dem **alten** signiert.
+2. Das Secret `APT_SIGNING_KEY` enthält ab Release N+1 **beide** privaten Schlüssel (Dateien hintereinander):
+   `InRelease` trägt dann zwei Signaturen; Systeme mit altem und neuem Keyring akzeptieren es.
+3. Release N+2 entfernt den alten Schlüssel aus dem Keyring und aus dem Secret. Erst danach den alten privaten Schlüssel
+   vernichten.
+
+Updates ohne GitHub testen: `make dev-repo VERSION=<neue-version>` veröffentlicht das Repo auf dem Entwicklungsrechner
+(`http://127.0.0.1:8088`) und trägt es dort als Quelle ein. Lokale Werkzeuge: `make test-tools`.
 
 ## Auf echter Hardware installieren
 
