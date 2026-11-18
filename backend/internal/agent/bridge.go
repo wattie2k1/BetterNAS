@@ -34,6 +34,19 @@ func timerActive(ctx context.Context, d Deps) bool {
 	return err == nil && res.ExitCode == 0 && strings.TrimSpace(string(res.Stdout)) == "active"
 }
 
+// ensureBridgeFirewall legt die Unit mit der Firewall-Regel an (idempotent) und startet sie.
+func ensureBridgeFirewall(ctx context.Context, d Deps) error {
+	if err := d.FS.WriteFile(netcfg.FirewallUnitFile, []byte(netcfg.RenderFirewallUnit()), 0o644); err != nil {
+		return err
+	}
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", "--now", netcfg.FirewallUnit}} {
+		if res, err := d.Runner.Run(ctx, nil, "systemctl", args...); err != nil || res.ExitCode != 0 {
+			return apierr.New(apierr.Internal, "Die Firewall-Regel für die Bridge konnte nicht eingerichtet werden").With("detail", strings.TrimSpace(string(res.Stderr)))
+		}
+	}
+	return nil
+}
+
 // BridgeStatus liefert den Zustand der Bridge br0.
 func BridgeStatus(ctx context.Context, d Deps) (netcfg.Status, error) {
 	cands, err := VMInterfaces(ctx, d)
@@ -48,6 +61,10 @@ func BridgeStatus(ctx context.Context, d Deps) (netcfg.Status, error) {
 	if ok && d.FS.Exists(netcfg.Dir+"/"+netcfg.NetdevFile) {
 		st.Active = true
 		st.Interface = state.Interface
+		// Bridges aus früheren Versionen bekommen die Regel nachträglich.
+		if !d.FS.Exists(netcfg.FirewallUnitFile) {
+			_ = ensureBridgeFirewall(ctx, d)
+		}
 		if res, err := d.Runner.Run(ctx, nil, "ip", "-4", "-o", "addr", "show", "dev", netcfg.Name); err == nil && res.ExitCode == 0 {
 			st.Addresses = netcfg.ParseAddrs(res.Stdout)
 		}
@@ -165,6 +182,10 @@ func BridgeEnable(ctx context.Context, d Deps, iface string) error {
 			runRollback(ctx, d)
 			return apierr.New(apierr.Internal, "Die Bridge konnte nicht aktiviert werden; die alte Konfiguration wurde wiederhergestellt").With("detail", strings.TrimSpace(string(res.Stderr)))
 		}
+	}
+	if err := ensureBridgeFirewall(ctx, d); err != nil {
+		runRollback(ctx, d)
+		return err
 	}
 	return nil
 }

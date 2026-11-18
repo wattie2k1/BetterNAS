@@ -28,6 +28,10 @@ const (
 	// ConfirmSeconds ist die Frist, binnen der die neue Konfiguration bestätigt werden muss.
 	ConfirmSeconds = 120
 
+	// FirewallUnit erlaubt Verkehr innerhalb von br0 trotz Docker (siehe RenderFirewallUnit).
+	FirewallUnit     = "bnas-br0-fw.service"
+	FirewallUnitFile = "/etc/systemd/system/" + FirewallUnit
+
 	// Name der Bridge.
 	Name = "br0"
 )
@@ -121,7 +125,33 @@ ip link del %[5]s 2>/dev/null
 networkctl reload
 networkctl reconfigure %[6]s
 rm -f %[7]s
-`, Dir, NetdevFile, PortFile, BridgeFile, Name, iface, StateFile)
+systemctl disable --now %[8]s 2>/dev/null
+iptables -D DOCKER-USER -i %[5]s -o %[5]s -j ACCEPT 2>/dev/null
+rm -f %[9]s
+systemctl daemon-reload
+`, Dir, NetdevFile, PortFile, BridgeFile, Name, iface, StateFile, FirewallUnit, FirewallUnitFile)
+}
+
+// RenderFirewallUnit liefert die systemd-Unit für die Firewall-Regel der Bridge.
+// Docker setzt die FORWARD-Policy auf DROP, und mit br_netfilter läuft auch der Verkehr zwischen den Ports von br0
+// (VM ↔ Router, z. B. DHCP) durch iptables. Ohne diese Regel bekommen VMs keine IPv4-Adresse. Die Regel steht in
+// DOCKER-USER, das Docker nie überschreibt; die Unit hängt an docker.service und läuft nach dessen Neustart erneut.
+func RenderFirewallUnit() string {
+	rule := "-i " + Name + " -o " + Name + " -j ACCEPT"
+	return `# Verwaltet von BetterNAS – nicht manuell bearbeiten
+[Unit]
+Description=BetterNAS: Verkehr innerhalb der Bridge ` + Name + ` trotz Docker-Firewall erlauben
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -nL DOCKER-USER >/dev/null 2>&1 || exit 0; iptables -C DOCKER-USER ` + rule + ` 2>/dev/null || iptables -I DOCKER-USER 1 ` + rule + `'
+
+[Install]
+WantedBy=multi-user.target
+`
 }
 
 // ParseAddrs liest die IPv4-Adressen aus der Ausgabe von `ip -4 -o addr show`.

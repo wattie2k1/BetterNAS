@@ -59,6 +59,12 @@ func TestBridgeEnableConfirmDisable(t *testing.T) {
 	if !strings.Contains(read(t, root, "etc/systemd/network/05-bnas-br0-port.network"), "Bridge=br0") {
 		t.Fatal("port")
 	}
+	if u := read(t, root, "etc/systemd/system/bnas-br0-fw.service"); !strings.Contains(u, "iptables -I DOCKER-USER 1 -i br0 -o br0 -j ACCEPT") || !strings.Contains(u, "After=docker.service") {
+		t.Fatal("Firewall-Unit fehlt oder ist falsch:", u)
+	}
+	if !f.Called("systemctl enable --now bnas-br0-fw.service") {
+		t.Fatal(f.Calls)
+	}
 	if read(t, root, "etc/systemd/network/10-betternas.network") != origNet {
 		t.Fatal("die bisherige Konfiguration darf nicht verändert werden")
 	}
