@@ -121,7 +121,7 @@ const tileMeta: Record<string, { icon: string; title: string }> = {
   storage: { icon: 'pi pi-database', title: 'Speicher' },
   cpu: { icon: 'pi pi-bolt', title: 'Prozessor' },
   memory: { icon: 'pi pi-microchip', title: 'Arbeitsspeicher' },
-  disks: { icon: 'pi pi-hard-drive', title: 'Datenträger' },
+  disks: { icon: 'pi pi-server', title: 'Datenträger' },
   snapraid: { icon: 'pi pi-shield', title: 'SnapRAID' },
   docker: { icon: 'pi pi-box', title: 'Docker-Container' },
   system: { icon: 'pi pi-info-circle', title: 'System' },
