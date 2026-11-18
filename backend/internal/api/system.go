@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/betternas/betternas/internal/apierr"
+	"github.com/betternas/betternas/internal/system"
 	"github.com/betternas/betternas/internal/version"
 )
 
@@ -16,6 +17,16 @@ func (s *server) systemInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	info["version"] = version.Version
 	writeJSON(w, http.StatusOK, info)
+}
+
+// rebootRequired meldet, ob der Server nach Updates (z. B. neuer Kernel) neu gestartet werden muss.
+func (s *server) rebootRequired(w http.ResponseWriter, r *http.Request) {
+	checker := s.deps.RebootChecker
+	if checker == nil {
+		c := system.NewRebootChecker()
+		checker = &c
+	}
+	writeJSON(w, http.StatusOK, checker.Check())
 }
 
 func (s *server) listJobs(w http.ResponseWriter, r *http.Request) {

@@ -23,12 +23,21 @@ export interface CertInfo {
   expired: boolean
 }
 
+export interface RebootStatus {
+  required: boolean
+  reason?: string
+  runningKernel?: string
+  installedKernel?: string
+  packages: string[]
+}
+
 export type PowerAction = 'reboot' | 'poweroff'
 
 export const systemApi = {
   settings: () => api.get<SystemSettings>('/api/v1/system/settings'),
   timezones: () => api.get<string[]>('/api/v1/system/timezones'),
   update: (c: SystemSettingsChange) => api.put<void>('/api/v1/system/settings', c),
+  rebootRequired: () => api.get<RebootStatus>('/api/v1/system/reboot-required'),
   power: (action: PowerAction, confirm: string) => api.post<void>('/api/v1/system/power', { action, confirm }),
   certificate: () => api.get<CertInfo>('/api/v1/system/certificate'),
   regenerateCertificate: () => api.post<CertInfo>('/api/v1/system/certificate/regenerate'),

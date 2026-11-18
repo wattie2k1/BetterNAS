@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import ProgressBar from 'primevue/progressbar'
 import Tag from 'primevue/tag'
+import { RouterLink } from 'vue-router'
 import { useJobsStore } from '@/stores/jobs'
+import { useRebootStore } from '@/stores/reboot'
 
 const jobs = useJobsStore()
+const reboot = useRebootStore()
 
 const statusLabel: Record<string, { label: string; severity: string }> = {
   queued: { label: 'Wartet', severity: 'secondary' },
@@ -16,6 +19,15 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
 </script>
 
 <template>
+  <div v-if="reboot.status.required" class="reboot" data-test="reboot-required" role="alert">
+    <div class="row">
+      <strong><i class="pi pi-exclamation-triangle" /> Neustart erforderlich</strong>
+      <Tag value="Offen" severity="warn" />
+    </div>
+    <p class="why">{{ reboot.status.reason || 'Ein Update verlangt einen Neustart des Servers.' }}</p>
+    <p v-if="reboot.status.packages.length" class="meta">Betroffen: {{ reboot.status.packages.join(', ') }}</p>
+    <RouterLink to="/einstellungen/energie">Zu Energie &amp; Neustart</RouterLink>
+  </div>
   <p v-if="!jobs.jobs.length" class="empty">Noch keine Aufträge.</p>
   <ul class="jobs">
     <li v-for="j in jobs.jobs" :key="j.id">
@@ -34,6 +46,19 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
 </template>
 
 <style scoped>
+.reboot {
+  border: 1px solid var(--p-orange-400, #fb923c);
+  background: color-mix(in srgb, var(--p-orange-400, #fb923c) 14%, transparent);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+}
+.reboot .why {
+  margin: 0.4rem 0 0.2rem;
+}
+.reboot .meta {
+  margin: 0 0 0.4rem;
+}
 .empty {
   color: var(--p-text-muted-color);
 }

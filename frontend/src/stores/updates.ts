@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { updatesApi, type UpdateChannel, type UpdateOverview } from '@/api/updates'
 import { useJobsStore } from './jobs'
+import { useRebootStore } from './reboot'
 
 export const POLL_INTERVAL_MS = 2000
 
@@ -75,6 +76,7 @@ export const useUpdatesStore = defineStore('updates', () => {
       /* Version nicht lesbar: nicht neu laden */
     }
     await load()
+    void useRebootStore().load()
     if (after && startVersion && after !== startVersion) reloadNeeded.value = true
   }
 

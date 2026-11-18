@@ -33,9 +33,11 @@ type Config struct {
 type Deps struct {
 	DB    *sql.DB
 	Agent *rpc.Client
-	Jobs  *jobs.Manager
-	Hub   *events.Hub
-	Auth  *auth.Handlers
+	// RebootChecker ist optional (nil = das laufende System prüfen).
+	RebootChecker *system.RebootChecker
+	Jobs          *jobs.Manager
+	Hub           *events.Hub
+	Auth          *auth.Handlers
 	// Storage ist optional (nil = keine Speicher-Routen).
 	Storage *storage.Manager
 	// Users ist optional (nil = keine Benutzer-Routen).
@@ -82,6 +84,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	api.HandleFunc("POST /api/v1/auth/logout", deps.Auth.Logout)
 	api.HandleFunc("GET /api/v1/auth/me", deps.Auth.Me)
 	api.HandleFunc("GET /api/v1/system/info", s.systemInfo)
+	api.HandleFunc("GET /api/v1/system/reboot-required", s.rebootRequired)
 	api.HandleFunc("GET /api/v1/jobs", s.listJobs)
 	api.HandleFunc("GET /api/v1/jobs/{id}", s.getJob)
 	api.HandleFunc("GET /api/v1/ws", s.websocket)
