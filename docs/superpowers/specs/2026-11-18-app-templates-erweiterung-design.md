@@ -15,13 +15,13 @@ Neu, in Gruppen (Gruppenname = Kategorie im Dialog):
 - **Downloader:** qBittorrent, SABnzbd, NZBGet
 - ***arr und Wunschliste:** Prowlarr, Radarr, Sonarr, Lidarr, Bazarr, Seerr
 - **Medien:** Plex (mit GPU-Option), Emby (mit GPU-Option), Audiobookshelf, RomM (mit MariaDB)
-- **Verwaltung:** Portainer, Dozzle, Filebrowser, Heimdall, Duplicati
+- **Verwaltung:** Portainer, Dozzle, Heimdall, Duplicati
 - **Netzwerk:** Tailscale
 - **Wissen und Dokumente:** Wiki.js (mit Postgres), Mealie, Stirling-PDF
 - **Entwicklung:** Gitea
 - **Medien-Werkzeug:** Tdarr (Server mit eingebautem Knoten, mit GPU-Option)
 
-Das sind 24 neue Vorlagen (zusammen 35). Die bestehenden 11 bekommen nachträglich eine Kategorie.
+Das sind 23 neue Vorlagen (zusammen 34). Die bestehenden 11 bekommen nachträglich eine Kategorie.
 Vaultwarden gibt es schon.
 
 ## Ziele
@@ -31,7 +31,7 @@ Vaultwarden gibt es schon.
 - Downloader, *arr, Plex und Emby sind **einzelne Stacks mit gemeinsamem Datenordner**: alle fragen nach demselben
   Ordner (Vorgabe `/srv/pools`) und binden ihn als `/data` ein. Nur so funktionieren Hardlinks und Verschieben ohne
   Kopieren. Die Hinweise nennen die empfohlene Struktur (`/data/downloads`, `/data/media/{filme,serie,musik}`).
-- Der Vorlagen-Dialog bleibt bei 35 Einträgen bedienbar: Kategorien als Überschriften und ein Suchfeld.
+- Der Vorlagen-Dialog bleibt bei 34 Einträgen bedienbar: Kategorien als Überschriften und ein Suchfeld.
 
 ## Nicht-Ziele
 
@@ -53,6 +53,7 @@ Vaultwarden gibt es schon.
 - **Scrutiny:** SMART-Überwachung ist schon eingebaut (Monitor, smartmontools).
 - **Recyclarr, Frigate, Linkwarden:** Recyclarr hat keine Oberfläche und braucht eine eigene Konfigurationsdatei, Frigate
   und Linkwarden brauchen zu viel Zusatzkonfiguration bzw. mehrere Dienste für eine Formular-Vorlage.
+- **Filebrowser:** das Projekt ist seit 2026-09-01 archiviert, ohne künftige Sicherheitsfixes; mit Schreibzugriff auf die Pools nicht vertretbar (beim Abschlussreview entfernt).
 - **Infinidysk, RomVault:** vom Nutzer gestrichen (nicht zuordenbar bzw. kein Linux-Image).
 - **Readarr:** vom Projekt eingestellt.
 

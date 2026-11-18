@@ -16,7 +16,10 @@ describe('Vorlagen', () => {
       // Ausnahmen: die IP-Adresse (nur im Browser vorbelegt) und Pflichtangaben, die nur der Nutzer kennt (z. B. Auth-Key).
       for (const f of t.fields) {
         const userSupplied = f.kind === 'ip' || (f.kind === 'text' && !f.optional && v[f.key] === '')
-        expect(fieldError(f, v[f.key]), `${t.id}.${f.key}`).toBe(userSupplied ? 'Pflichtfeld' : '')
+        const err = fieldError(f, v[f.key])
+        // Schreibordner: die Wurzel /srv/pools ist als Vorgabe bewusst ungültig (der Nutzer wählt einen Pool).
+        if (f.pool) expect(err, `${t.id}.${f.key}`).toMatch(/Pool/)
+        else expect(err, `${t.id}.${f.key}`).toBe(userSupplied ? 'Pflichtfeld' : '')
       }
     }
   })
@@ -318,7 +321,6 @@ describe('Verwaltungs- und Netzwerk-Vorlagen', () => {
     const cases: [string, string, string][] = [
       ['portainer', '9443', '${PORT}:9443'],
       ['dozzle', '8888', '${PORT}:8080'],
-      ['filebrowser', '8089', '${PORT}:80'],
       ['heimdall', '8090', '${PORT}:80'],
       ['duplicati', '8200', '${PORT}:8200'],
     ]
@@ -363,5 +365,51 @@ describe('Verwaltungs- und Netzwerk-Vorlagen', () => {
     expect(fieldError(key, '')).toBe('Pflichtfeld')
     expect(fieldError(key, 'tskey-auth-kABC123CNTRL-xyz789')).toBe('')
     expect(t.fields.find((f) => f.key === 'NODE_NAME')?.optional).toBe(true)
+  })
+})
+
+describe('Abschlussreview: Rechte, Ordner, Hinweise', () => {
+  const withIds = () => APP_TEMPLATES.filter((t) => t.fields.some((f) => f.key === 'PUID'))
+
+  it('Medien-Apps laufen in der Gruppe users (100) mit group-writable Dateien, wie die Samba-Freigaben', () => {
+    expect(withIds().length).toBeGreaterThan(10)
+    for (const t of withIds()) {
+      expect(defaultValues(t, t.stack).PGID, t.id).toBe('100')
+      expect(t.compose, t.id).toContain('UMASK: "002"')
+    }
+  })
+
+  it('Schreibordner lehnen die Pool-Wurzel /srv/pools ab, Plex und Emby (nur lesen) nicht', () => {
+    const data = APP_TEMPLATES.find((t) => t.id === 'radarr')!.fields.find((f) => f.key === 'DATA_DIR')!
+    for (const bad of ['/srv/pools', '/srv/pools/']) expect(fieldError(data, bad), bad).toMatch(/Pool/)
+    expect(fieldError(data, '/srv/pools/Medien')).toBe('')
+    for (const [id, key] of [['qbittorrent', 'DATA_DIR'], ['tdarr', 'DATA_DIR'], ['romm', 'ROMS_DIR'], ['duplicati', 'BACKUP_DIR'], ['audiobookshelf', 'PODCASTS_DIR']]) {
+      const t = APP_TEMPLATES.find((x) => x.id === id)!
+      expect(fieldError(t.fields.find((f) => f.key === key)!, '/srv/pools'), `${id}.${key}`).toMatch(/Pool/)
+    }
+    for (const id of ['plex', 'emby']) {
+      const t = APP_TEMPLATES.find((x) => x.id === id)!
+      expect(fieldError(t.fields.find((f) => f.key === 'DATA_DIR')!, '/srv/pools'), id).toBe('')
+    }
+  })
+
+  it('Seerr läuft als root, damit der von Docker angelegte Ordner beschreibbar ist', () => {
+    const t = APP_TEMPLATES.find((x) => x.id === 'seerr')!
+    expect(t.compose).toContain('user: "0:0"')
+    expect(JSON.stringify(t.fields)).not.toContain('chown')
+  })
+
+  it('es gibt keine Vorlage für archivierte Projekte ohne Sicherheitsfixes (Filebrowser)', () => {
+    expect(APP_TEMPLATES.map((t) => t.id)).not.toContain('filebrowser')
+  })
+
+  it('RomM bewahrt Cover und Metadaten in einem Volume auf', () => {
+    const { files } = tpl('romm')
+    expect(files.compose).toContain('romm-resources:/romm/resources')
+    expect(files.compose).toMatch(/^volumes:\n(  .*\n)*  romm-resources:/m)
+  })
+
+  it('Plex und Tailscale weisen auf die BetterNAS-Firewall hin', () => {
+    for (const id of ['plex', 'tailscale']) expect(APP_TEMPLATES.find((t) => t.id === id)?.notice, id).toMatch(/Firewall/)
   })
 })

@@ -33,6 +33,8 @@ export interface TemplateField {
   kind: FieldKind
   /** Darf leer bleiben (landet als `KEY=` in der .env). */
   optional?: boolean
+  /** Schreibordner: muss in einem Pool liegen, die Wurzel /srv/pools selbst ist nicht erlaubt. */
+  pool?: boolean
   /** Vorgabe; bei Pfaden mit dem Stacknamen. */
   def?: (stack: string) => string
   hint?: string
@@ -76,14 +78,15 @@ export const dataField: TemplateField = {
   label: 'Datenordner (Downloads und Medien)',
   kind: 'path',
   def: () => '/srv/pools',
+  pool: true,
   hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Daten. Alle Medien-Apps sollten denselben Ordner nutzen, mit den Unterordnern downloads und media/filme, media/serien, media/musik. Nur so funktionieren Hardlinks, ohne Dateien zu kopieren.',
 }
 
-const IDS_HINT = 'Benutzer- und Gruppen-ID, unter der die App Dateien anlegt. Alle Medien-Apps sollten dieselben Werte nutzen.'
+const IDS_HINT = 'Benutzer- und Gruppen-ID, unter der die App Dateien anlegt. Die Gruppe 100 (users) nutzen auch die SMB-Freigaben, deshalb dürfen alle Nutzer die Dateien bearbeiten. Alle Medien-Apps sollten dieselben Werte nutzen.'
 /** Benutzer- und Gruppen-ID der Medien-Apps (gleiche Werte in allen Stacks, damit Berechtigungen und Hardlinks stimmen). */
 export const idFields: TemplateField[] = [
   { key: 'PUID', label: 'Benutzer-ID (PUID)', kind: 'text', def: () => '1000', hint: IDS_HINT },
-  { key: 'PGID', label: 'Gruppen-ID (PGID)', kind: 'text', def: () => '1000' },
+  { key: 'PGID', label: 'Gruppen-ID (PGID)', kind: 'text', def: () => '100' },
 ]
 
 export const APP_TEMPLATES: AppTemplate[] = [
@@ -461,6 +464,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
       WEBUI_PORT: "8080"
     ports:
@@ -492,6 +496,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:8080"
@@ -520,6 +525,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:6789"
@@ -547,6 +553,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:9696"
@@ -574,6 +581,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:7878"
@@ -602,6 +610,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:8989"
@@ -630,6 +639,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:8686"
@@ -658,6 +668,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:6767"
@@ -675,12 +686,13 @@ volumes:
     stack: 'seerr',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '5055' },
-      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config'), hint: 'Seerr läuft als Benutzer 1000. Der Ordner muss ihm gehören (chown 1000:1000), sonst startet der Dienst nicht.' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
     ],
     compose: `services:
   seerr:
     image: ghcr.io/seerr-team/seerr:latest
     init: true
+    user: "0:0"
     restart: unless-stopped
     environment:
       TZ: Europe/Berlin
@@ -697,9 +709,10 @@ volumes:
     icon: 'pi pi-play',
     category: 'Medien',
     stack: 'plex',
+    notice: 'Plex läuft im Host-Netz und braucht Port 32400. Ist die BetterNAS-Firewall eingeschaltet, wird dieser Port blockiert, bis du ihn dort freigibst.',
     fields: [
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { ...dataField, label: 'Medienordner (nur lesen)' },
+      { ...dataField, pool: false, label: 'Medienordner (nur lesen)' },
       ...idFields,
       {
         key: 'PLEX_CLAIM',
@@ -723,6 +736,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
       VERSION: docker
       PLEX_CLAIM: "\${PLEX_CLAIM}"
@@ -742,7 +756,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8097' },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { ...dataField, label: 'Medienordner (nur lesen)' },
+      { ...dataField, pool: false, label: 'Medienordner (nur lesen)' },
       ...idFields,
     ],
     device: {
@@ -757,6 +771,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:8096"
@@ -778,7 +793,7 @@ volumes:
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
       { key: 'METADATA_DIR', label: 'Ordner für Metadaten', kind: 'path', def: appdata('metadata') },
       { key: 'AUDIOBOOKS_DIR', label: 'Ordner für Hörbücher', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Hoerbuecher' },
-      { key: 'PODCASTS_DIR', label: 'Ordner für Podcasts', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Podcasts' },
+      { key: 'PODCASTS_DIR', label: 'Ordner für Podcasts', kind: 'path', pool: true, def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Podcasts' },
     ],
     compose: `services:
   audiobookshelf:
@@ -822,6 +837,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
       serverIP: 0.0.0.0
       serverPort: "8266"
@@ -850,7 +866,7 @@ volumes:
     stack: 'romm',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8087' },
-      { key: 'ROMS_DIR', label: 'Ordner der Spielesammlung', kind: 'path', def: () => '/srv/pools', hint: 'Darin erwartet RomM den Unterordner roms mit einem Ordner je Plattform, z. B. <Ordner>/roms/snes.' },
+      { key: 'ROMS_DIR', label: 'Ordner der Spielesammlung', kind: 'path', pool: true, def: () => '/srv/pools', hint: 'Darin erwartet RomM den Unterordner roms mit einem Ordner je Plattform, z. B. <Ordner>/roms/snes.' },
       { key: 'ASSETS_DIR', label: 'Ordner für Spielstände und Medien', kind: 'path', def: appdata('assets') },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
       { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('mariadb'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
@@ -876,6 +892,7 @@ volumes:
       - \${ROMS_DIR}:/romm/library
       - \${ASSETS_DIR}:/romm/assets
       - \${CONFIG_DIR}:/romm/config
+      - romm-resources:/romm/resources
   romm-db:
     image: mariadb:11
     restart: unless-stopped
@@ -892,6 +909,8 @@ volumes:
       retries: 10
     volumes:
       - \${DB_DIR}:/var/lib/mysql
+volumes:
+  romm-resources:
 `,
   },
   {
@@ -1051,32 +1070,6 @@ volumes:
 `,
   },
   {
-    id: 'filebrowser',
-    title: 'Filebrowser',
-    description: 'Dateien der Pools im Browser ansehen, hoch- und herunterladen.',
-    icon: 'pi pi-folder',
-    category: 'Verwaltung',
-    stack: 'filebrowser',
-    fields: [
-      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8089' },
-      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { key: 'DATA_DIR', label: 'Sichtbarer Ordner', kind: 'path', def: () => '/srv/pools', hint: 'Alles darin ist im Filebrowser les- und schreibbar. Das Anfangspasswort des Benutzers admin steht im Protokoll des Containers.' },
-    ],
-    compose: `services:
-  filebrowser:
-    image: filebrowser/filebrowser:latest
-    restart: unless-stopped
-    environment:
-      FB_DATABASE: /database/filebrowser.db
-      FB_ROOT: /srv
-    ports:
-      - "\${PORT}:80"
-    volumes:
-      - \${CONFIG_DIR}:/database
-      - \${DATA_DIR}:/srv
-`,
-  },
-  {
     id: 'heimdall',
     title: 'Heimdall',
     description: 'Startseite mit Kacheln für alle Dienste im Heimnetz.',
@@ -1095,6 +1088,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:80"
@@ -1113,7 +1107,7 @@ volumes:
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8200' },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
       { key: 'SOURCE_DIR', label: 'Zu sichernder Ordner (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: 'Duplicati sieht ihn als /source.' },
-      { key: 'BACKUP_DIR', label: 'Ordner für die Sicherungen', kind: 'path', def: () => '/srv/pools', hint: 'Besser auf einem anderen Pool als die Originale. Duplicati sieht ihn als /backups.' },
+      { key: 'BACKUP_DIR', label: 'Ordner für die Sicherungen', kind: 'path', pool: true, def: () => '/srv/pools', hint: 'Besser auf einem anderen Pool als die Originale. Duplicati sieht ihn als /backups.' },
       ...idFields,
     ],
     compose: `services:
@@ -1123,6 +1117,7 @@ volumes:
     environment:
       PUID: "\${PUID}"
       PGID: "\${PGID}"
+      UMASK: "002"
       TZ: Europe/Berlin
     ports:
       - "\${PORT}:8200"
@@ -1139,7 +1134,7 @@ volumes:
     icon: 'pi pi-globe',
     category: 'Netzwerk',
     stack: 'tailscale',
-    notice: 'Tailscale läuft im Host-Netz mit erweiterten Rechten (NET_ADMIN) und braucht das Gerät /dev/net/tun. Den Auth-Key erzeugst du in der Tailscale-Verwaltung; er wird in der .env gespeichert.',
+    notice: 'Tailscale läuft im Host-Netz mit erweiterten Rechten (NET_ADMIN) und braucht das Gerät /dev/net/tun. Den Auth-Key erzeugst du in der Tailscale-Verwaltung; er wird in der .env gespeichert. Die BetterNAS-Firewall blockiert den Tailscale-Port 41641/udp (dann läuft die Verbindung nur über Relays) und im Modus „Nur Heimnetz“ auch den Zugriff über das Tailscale-Netz.',
     fields: [
       { key: 'AUTH_KEY', label: 'Auth-Key von Tailscale', kind: 'text', def: () => '', hint: 'In der Tailscale-Verwaltung unter Einstellungen → Keys erzeugen (Form tskey-auth-…). Wiederverwendbar und ohne Ablauf, wenn der Dienst auch nach Neuinstallation wieder beitreten soll.' },
       { key: 'NODE_NAME', label: 'Name im Tailscale-Netz (optional)', kind: 'text', optional: true, def: () => 'betternas' },
@@ -1198,7 +1193,9 @@ export function fieldError(f: TemplateField, value: string): string {
     }
     case 'path':
       if (!v.startsWith('/') || v.includes('..')) return 'Absoluter Pfad ohne „..“'
-      return /^[A-Za-z0-9_./+@-]+$/.test(v) ? '' : 'Nur Buchstaben, Ziffern und _ . / + @ -'
+      if (!/^[A-Za-z0-9_./+@-]+$/.test(v)) return 'Nur Buchstaben, Ziffern und _ . / + @ -'
+      if (f.pool && v.replace(/\/+$/, '') === '/srv/pools') return 'Wähle einen Ordner in einem Pool (z. B. /srv/pools/<Pool>/Daten), nicht die Wurzel /srv/pools.'
+      return ''
     case 'secret':
       return /^[A-Za-z0-9_.@+-]{8,}$/.test(v) ? '' : 'Mindestens 8 Zeichen aus Buchstaben, Ziffern und _ . @ + -'
     case 'ip': {

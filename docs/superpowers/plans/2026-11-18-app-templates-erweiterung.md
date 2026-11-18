@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 24 neue App-Vorlagen (zusammen 35) für Docker → „Neuer Stack aus Vorlage“, mit Kategorien und Suche im Dialog.
+**Goal:** 23 neue App-Vorlagen (zusammen 34) für Docker → „Neuer Stack aus Vorlage“, mit Kategorien und Suche im Dialog.
 
 **Architecture:** Reine Frontend-Änderung. `AppTemplate` bekommt `category` (und optional `notice`), `TemplateField` ein Flag `optional`; gemeinsame Helfer für Datenordner und `PUID`/`PGID` halten die Medien-Apps einheitlich. Der Dialog gruppiert nach Kategorie und filtert per Suchfeld. Neue Vorlagen sind Einträge in `APP_TEMPLATES`; die vorhandenen Listen-Tests werden um allgemeine Regeln erweitert, die jede neue Vorlage automatisch prüfen.
 
@@ -184,7 +184,7 @@ Beschreibungen nennen die Rolle in einem Satz und enthalten bei Prowlarr, Radarr
 
 ---
 
-### Task 7: Verwaltung und Netzwerk (Portainer, Dozzle, Filebrowser, Heimdall, Duplicati, Tailscale)
+### Task 7: Verwaltung und Netzwerk (Portainer, Dozzle, Heimdall, Duplicati, Tailscale (Filebrowser beim Abschlussreview entfernt: Projekt archiviert))
 
 **Files:**
 - Modify: `frontend/src/utils/appTemplates.ts`
@@ -220,7 +220,7 @@ Beschreibungen nennen die Rolle in einem Satz und enthalten bei Prowlarr, Radarr
 **Interfaces:**
 - Consumes: alle Vorlagen aus Tasks 3–7, `renderTemplate`, `defaultValues`.
 
-- [ ] **Step 1: Alle 24 neuen Vorlagen** rendern und auf dem Testgerät (`ssh betternas-dev`) mit `docker compose -p tpltest-<id> config -q` prüfen → keine Fehler. Ordner aus den Standardwerten vorher anlegen.
+- [ ] **Step 1: Alle 23 neuen Vorlagen** rendern und auf dem Testgerät (`ssh betternas-dev`) mit `docker compose -p tpltest-<id> config -q` prüfen → keine Fehler. Ordner aus den Standardwerten vorher anlegen.
 - [ ] **Step 2: Stichproben starten** (`up -d`, HTTP-Abfrage, danach `down -v --rmi all` und Ordner entfernen): je eine pro Gruppe – `qbittorrent`, `radarr`, `emby`, `romm` (zwei Container), `wikijs`, `portainer`, `gitea`, `heimdall` – und `plex` (Host-Netz, nur Port 32400 antwortet). `tailscale` nur `config -q` (braucht Schlüssel). Nach jedem Test Aufräumen prüfen (`docker ps -a`, `docker volume ls`).
 - [ ] **Step 3: Gefundene Fehler** (falsche Variablen, Image-Tags, Ports, Umgebungsvariablen) in `appTemplates.ts` korrigieren; betroffene Tests anpassen; `npx vitest run` → PASS.
 - [ ] **Step 4: Version hochzählen** (`0.7.0+dev33`), bauen und ausrollen wie bisher (`make build web deb deploy VERSION=…`); API startet (`systemctl is-active betternas-api`).
