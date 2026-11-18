@@ -29,6 +29,8 @@ function stub(over: { previewResponse?: Response } = {}) {
       new Headers(init?.headers).forEach((v, k) => (headers[k] = v))
       calls.push({ url, method, body: init?.body, headers })
       const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status })
+      if (url === '/api/v1/backups/config' && method === 'GET') return json({ enabled: true, time: '02:30', keep: 7 })
+      if (url === '/api/v1/backups/config' && method === 'PUT') return json(JSON.parse(init!.body as string))
       if (url === '/api/v1/backups' && method === 'GET') return json(list)
       if (url === '/api/v1/backups' && method === 'POST') return json(list[0], 201)
       if (url.endsWith('/restore/preview')) return over.previewResponse ?? json(preview)
@@ -64,6 +66,21 @@ describe('Sicherung', () => {
     expect(rows[0].text()).toContain('2 Pools')
     expect(rows[0].text()).toContain('3 Freigaben')
     expect(rows[0].find('a[download]').attributes('href')).toBe('/api/v1/backups/betternas-backup-20260617-023000.tar.gz')
+  })
+
+  it('zeigt die Einstellungen und speichert Uhrzeit und Anzahl', async () => {
+    const calls = stub()
+    const w = mountView()
+    await flushPromises()
+    expect((w.find('[data-test="cfg-time"]').element as HTMLInputElement).value).toBe('02:30')
+    expect((w.find('[data-test="cfg-keep"]').element as HTMLInputElement).value).toBe('7')
+    expect(w.find('[data-test="cfg-save"]').attributes('disabled')).toBeDefined() // unverändert
+    await w.find('[data-test="cfg-time"]').setValue('04:15')
+    await w.find('[data-test="cfg-keep"]').setValue('14')
+    await w.find('[data-test="cfg-save"]').trigger('click')
+    await flushPromises()
+    const put = calls.find((c) => c.method === 'PUT' && c.url === '/api/v1/backups/config')
+    expect(JSON.parse(put!.body as string)).toEqual({ enabled: true, time: '04:15', keep: 14 })
   })
 
   it('legt per Knopf eine Sicherung an und lädt die Liste neu', async () => {

@@ -22,7 +22,29 @@ const source = ref('')
 const typed = ref('')
 const busy = ref(false)
 
-onMounted(() => store.load())
+const form = ref({ enabled: true, time: '02:30', keep: 7 })
+const savingCfg = ref(false)
+const cfgDirty = computed(() => JSON.stringify(form.value) !== JSON.stringify(store.config))
+
+onMounted(async () => {
+  void store.load()
+  await store.loadConfig()
+  form.value = { ...store.config }
+})
+
+async function saveConfig() {
+  savingCfg.value = true
+  error.value = ''
+  try {
+    await store.saveConfig({ enabled: form.value.enabled, time: form.value.time, keep: Number(form.value.keep) })
+    form.value = { ...store.config }
+    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', life: 3000 })
+  } catch (e) {
+    error.value = msg(e)
+  } finally {
+    savingCfg.value = false
+  }
+}
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const dialogOpen = computed({ get: () => preview.value !== null, set: (v: boolean) => !v && (preview.value = null) })
@@ -102,10 +124,26 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
   </div>
 
   <p class="sub">
-    BetterNAS sichert seine Konfiguration jede Nacht um 02:30 (die letzten 7 bleiben). Die Sicherungen liegen auf der Systemplatte –
-    lade regelmäßig eine herunter und bewahre sie außerhalb des NAS auf. Sie enthalten auch Zugangsdaten (z. B. für Mail und ntfy) –
-    behandle sie vertraulich.
+    Die Sicherungen liegen auf der Systemplatte – lade regelmäßig eine herunter und bewahre sie außerhalb des NAS auf.
+    Sie enthalten auch Zugangsdaten (z. B. für Mail und ntfy) – behandle sie vertraulich.
   </p>
+
+  <section class="cfg" data-test="backup-config">
+    <h3>Automatische Sicherung</h3>
+    <label class="check"><input v-model="form.enabled" type="checkbox" data-test="cfg-enabled" /> Täglich automatisch sichern</label>
+    <div class="cfg-fields">
+      <div class="field">
+        <label for="cfg-time">Uhrzeit</label>
+        <input id="cfg-time" v-model="form.time" type="time" required :disabled="!form.enabled" data-test="cfg-time" />
+      </div>
+      <div class="field">
+        <label for="cfg-keep">Anzahl behaltener Sicherungen</label>
+        <input id="cfg-keep" v-model.number="form.keep" type="number" min="1" max="90" data-test="cfg-keep" />
+      </div>
+    </div>
+    <p class="sub">Ältere Sicherungen werden nach jeder neuen Sicherung automatisch gelöscht – auch manuell angelegte zählen mit.</p>
+    <Button label="Speichern" icon="pi pi-check" size="small" data-test="cfg-save" :loading="savingCfg" :disabled="!cfgDirty" @click="saveConfig" />
+  </section>
 
   <p v-if="!store.backups.length && !store.loading" class="sub">Noch keine Sicherung vorhanden.</p>
   <div v-else class="table-wrap">
@@ -182,6 +220,47 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
 }
 .table-wrap {
   overflow-x: auto;
+}
+.cfg {
+  margin: 0 0 1.2rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--bn-border-soft);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+.cfg h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.cfg-fields {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.field label {
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+}
+.field input {
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--bn-border);
+  background: var(--bn-glass);
+  color: inherit;
+  font: inherit;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 .backups {
   width: 100%;

@@ -22,10 +22,7 @@ type Agent interface {
 	Call(ctx context.Context, method string, params, result any) error
 }
 
-const (
-	keepBackups = 7
-	tokenTTL    = 15 * time.Minute
-)
+const tokenTTL = 15 * time.Minute
 
 // Preview ist die Vorschau einer Wiederherstellung.
 type Preview struct {
@@ -53,6 +50,7 @@ type Manager struct {
 	hub        *events.Hub
 	now        func() time.Time
 	after      func(time.Duration) <-chan time.Time
+	wake       chan struct{} // Einstellungen geändert → Planer neu berechnen
 
 	mu     sync.Mutex
 	tokens map[string]pendingRestore
@@ -63,7 +61,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, dir, version string, hub *events.Hub) *Manager {
 	return &Manager{
 		db: d, agent: agent, dir: dir, restoreDir: filepath.Join(filepath.Dir(dir), "restore"),
-		version: version, hub: hub, now: time.Now, after: time.After, tokens: map[string]pendingRestore{},
+		version: version, hub: hub, now: time.Now, after: time.After, wake: make(chan struct{}, 1), tokens: map[string]pendingRestore{},
 	}
 }
 
@@ -88,9 +86,30 @@ func (m *Manager) Create(ctx context.Context, actor string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	_ = Prune(m.dir, keepBackups)
+	cfg, _ := LoadConfig(ctx, m.db)
+	_ = Prune(m.dir, cfg.Keep)
 	m.publish()
 	return info, nil
+}
+
+// Config liefert die Einstellungen der automatischen Sicherung.
+func (m *Manager) Config(ctx context.Context) (Config, error) { return LoadConfig(ctx, m.db) }
+
+// SetConfig speichert neue Einstellungen, räumt sofort nach der neuen Aufbewahrung auf
+// und weckt den Planer, damit die neue Uhrzeit gilt.
+func (m *Manager) SetConfig(ctx context.Context, actor string, c Config) error {
+	err := SaveConfig(ctx, m.db, c)
+	m.record(ctx, actor, "backup.config", c.String(), err)
+	if err != nil {
+		return err
+	}
+	_ = Prune(m.dir, c.Keep)
+	select {
+	case m.wake <- struct{}{}:
+	default:
+	}
+	m.publish()
+	return nil
 }
 
 // List liefert die abgelegten Sicherungen.

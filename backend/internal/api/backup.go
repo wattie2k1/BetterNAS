@@ -6,6 +6,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
+	"github.com/betternas/betternas/internal/backup"
 )
 
 // maxBackupUpload begrenzt hochgeladene Archive (in Tests verkleinert).
@@ -15,6 +16,25 @@ func (s *server) registerBackup(mux *http.ServeMux) {
 	m := s.deps.Backup
 	actor := func(r *http.Request) string { return auth.SessionFrom(r.Context()).Username }
 
+	mux.HandleFunc("GET /api/v1/backups/config", func(w http.ResponseWriter, r *http.Request) {
+		c, err := m.Config(r.Context())
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, c)
+	})
+	mux.HandleFunc("PUT /api/v1/backups/config", func(w http.ResponseWriter, r *http.Request) {
+		var in backup.Config
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetConfig(r.Context(), actor(r), in); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, in)
+	})
 	mux.HandleFunc("GET /api/v1/backups", func(w http.ResponseWriter, r *http.Request) {
 		l, err := m.List(r.Context())
 		if err != nil {

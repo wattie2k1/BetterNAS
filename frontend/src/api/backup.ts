@@ -22,9 +22,17 @@ export interface RestorePreview {
   warnings: string[]
 }
 
+export interface BackupConfig {
+  enabled: boolean
+  time: string
+  keep: number
+}
+
 const enc = encodeURIComponent
 
 export const backupApi = {
+  getConfig: () => api.get<BackupConfig>('/api/v1/backups/config'),
+  setConfig: (c: BackupConfig) => api.put<BackupConfig>('/api/v1/backups/config', c),
   list: () => api.get<BackupInfo[]>('/api/v1/backups'),
   create: () => api.post<BackupInfo>('/api/v1/backups'),
   remove: (name: string) => api.del<void>(`/api/v1/backups/${enc(name)}`),

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { backupApi, type BackupInfo, type RestorePreview } from '@/api/backup'
+import { backupApi, type BackupConfig, type BackupInfo, type RestorePreview } from '@/api/backup'
 import type { EventMessage } from '@/api/ws'
 
 export const RESTART_POLL_MS = 2000
@@ -26,6 +26,21 @@ export const useBackupStore = defineStore('backup', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  const config = ref<BackupConfig>({ enabled: true, time: '02:30', keep: 7 })
+
+  async function loadConfig() {
+    try {
+      config.value = await backupApi.getConfig()
+    } catch (e) {
+      error.value = message(e)
+    }
+  }
+
+  async function saveConfig(c: BackupConfig) {
+    config.value = await backupApi.setConfig(c)
+    await load()
   }
 
   async function create() {
@@ -62,5 +77,5 @@ export const useBackupStore = defineStore('backup', () => {
     if (m.type === 'backups.changed') void load()
   }
 
-  return { backups, loading, error, restarting, load, create, remove, previewUpload, previewStored, restore, handleEvent }
+  return { backups, config, loading, error, restarting, load, loadConfig, saveConfig, create, remove, previewUpload, previewStored, restore, handleEvent }
 })

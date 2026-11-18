@@ -37,15 +37,53 @@ func TestNextRun(t *testing.T) {
 		{at(2026, 2, 28, 23, 0), at(2026, 3, 1, 2, 30)},
 	}
 	for _, c := range cases {
-		if got := nextRun(c.now); !got.Equal(c.want) {
+		if got := nextRun(c.now, 2, 30); !got.Equal(c.want) {
 			t.Errorf("%v: %v statt %v", c.now, got, c.want)
 		}
 	}
 	// Sommerzeit-Lücke (2026-03-29 02:30 gibt es nicht): nie in der Vergangenheit, höchstens ~26 h entfernt
 	now := at(2026, 3, 28, 3, 0)
-	got := nextRun(now)
+	got := nextRun(now, 2, 30)
 	if !got.After(now) || got.Sub(now) > 26*time.Hour {
 		t.Errorf("Lücke: %v", got)
+	}
+}
+
+func TestNextRunCustomTime(t *testing.T) {
+	now := time.Date(2026, 11, 17, 4, 15, 0, 0, time.UTC)
+	if got, want := nextRun(now, 23, 5), time.Date(2026, 11, 17, 23, 5, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("%v statt %v", got, want)
+	}
+	if got, want := nextRun(now, 4, 0), time.Date(2026, 11, 18, 4, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("%v statt %v", got, want)
+	}
+}
+
+func TestConfigDefaultsValidateAndPrune(t *testing.T) {
+	e := newMgr(t)
+	c, err := e.m.Config(e.ctx)
+	if err != nil || c != DefaultConfig() {
+		t.Fatalf("%+v %v", c, err)
+	}
+	for _, bad := range []Config{{Time: "25:00", Keep: 3}, {Time: "2:30", Keep: 3}, {Time: "02:30", Keep: 0}, {Time: "02:30", Keep: 91}} {
+		if err := e.m.SetConfig(e.ctx, "anna", bad); err == nil {
+			t.Errorf("%+v akzeptiert", bad)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		e.m.now = func() time.Time { return time.Date(2026, 11, 17, 2, 30, i, 0, time.UTC) }
+		if _, err := e.m.Create(e.ctx, "anna"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.m.SetConfig(e.ctx, "anna", Config{Enabled: false, Time: "04:00", Keep: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ := e.m.List(e.ctx); len(l) > 2 {
+		t.Fatalf("%d Backups nach Prune", len(l))
+	}
+	if c, _ := e.m.Config(e.ctx); c.Time != "04:00" || c.Keep != 2 || c.Enabled {
+		t.Fatalf("%+v", c)
 	}
 }
 
