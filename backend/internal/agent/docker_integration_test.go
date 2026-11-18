@@ -276,3 +276,98 @@ func TestDockerOps(t *testing.T) {
 		t.Logf("busybox:stable hat ein Update (%s → %s)", sts[0].Local, sts[0].Remote)
 	}
 }
+
+// TestDockerRollback prüft Update-Merken und Rollback mit echtem Docker. Das „neue Image“ eines Updates wird
+// lokal erzeugt (docker commit), damit kein Registry-Zugriff nötig ist.
+func TestDockerRollback(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker ist nicht installiert")
+	}
+	if _, err := os.Stat("/run/systemd/system"); err != nil {
+		t.Skip("braucht systemd")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := DockerStatus(ctx, d); !st.Active {
+		t.Skip("Docker-Dienst läuft nicht")
+	}
+	sh := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("docker", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("docker %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	const name, ref = "bnasrb", "bnasrb-img:latest"
+	_ = DeleteStack(ctx, d, name)
+	t.Cleanup(func() {
+		_ = DeleteStack(ctx, d, name)
+		_ = exec.Command("docker", "rm", "-f", "bnasrb-tmp").Run()
+		_ = exec.Command("docker", "rmi", "-f", ref).Run()
+	})
+
+	if exec.Command("docker", "image", "inspect", "busybox:stable").Run() != nil {
+		sh("pull", "busybox:stable")
+	}
+	sh("tag", "busybox:stable", ref)
+	idA := sh("image", "inspect", "--format", "{{.Id}}", ref)
+
+	compose := "services:\n  app:\n    image: " + ref + "\n    pull_policy: never\n    command: [\"sleep\", \"600\"]\n"
+	if err := SaveStack(ctx, d, StackSave{StackFiles: StackFiles{Name: name, Compose: compose}, Create: true}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(action string) {
+		t.Helper()
+		unit, err := RunStack(ctx, d, name, action)
+		if err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+		waitRun(t, d, unit)
+	}
+	runningImage := func() string {
+		t.Helper()
+		cid := sh("ps", "-q", "--filter", "label=com.docker.compose.project="+name)
+		return sh("inspect", "--format", "{{.Image}}", cid)
+	}
+
+	run("up")
+	if got := runningImage(); got != idA {
+		t.Fatalf("Image vor dem Update: %s, erwartet %s", got, idA)
+	}
+	run("update") // merkt idA vor
+	// Das „Update“ bringt ein neues Image unter demselben Tag.
+	sh("run", "--name", "bnasrb-tmp", "busybox:stable", "true")
+	sh("commit", "bnasrb-tmp", ref)
+	sh("rm", "bnasrb-tmp")
+	idB := sh("image", "inspect", "--format", "{{.Id}}", ref)
+	if idA == idB {
+		t.Fatal("Testaufbau: Image-ID unverändert")
+	}
+	if err := StackRollbackCommit(ctx, d, name); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := ListStacks(ctx, d); len(list) == 0 || list[0].Rollback == "" {
+		t.Fatalf("kein Rollback-Stand: %+v", list)
+	}
+	run("up") // Container läuft jetzt mit dem neuen Image B
+	if got := runningImage(); got != idB {
+		t.Fatalf("Image nach Update: %s, erwartet %s", got, idB)
+	}
+	run("rollback")
+	if got := runningImage(); got != idA {
+		t.Fatalf("Image nach Rollback: %s, erwartet %s", got, idA)
+	}
+	if err := StackRollbackClear(ctx, d, name); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := ListStacks(ctx, d); list[0].Rollback != "" {
+		t.Fatalf("Rollback-Stand bleibt: %+v", list)
+	}
+	if out, _ := exec.Command("docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "betternas-rollback/"+name).Output(); strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("Rollback-Tags bleiben: %s", out)
+	}
+}
