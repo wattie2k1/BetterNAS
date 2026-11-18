@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/audit"
@@ -275,6 +276,33 @@ func (m *Manager) Config(ctx context.Context, name string) (Config, error) {
 	var c Config
 	err := m.agent.Call(ctx, "vm.config", map[string]string{"name": name}, &c)
 	return c, err
+}
+
+// Disks liefert die Festplatten einer VM mit Größe.
+func (m *Manager) Disks(ctx context.Context, name string) ([]Disk, error) {
+	if err := checkName(name); err != nil {
+		return nil, err
+	}
+	list := []Disk{}
+	err := m.agent.Call(ctx, "vm.disks", map[string]string{"name": name}, &list)
+	return list, err
+}
+
+// ResizeDisk vergrößert eine Festplatte einer ausgeschalteten VM.
+func (m *Manager) ResizeDisk(ctx context.Context, actor, name string, r DiskResize) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	params := struct {
+		Name string `json:"name"`
+		DiskResize
+	}{name, r}
+	err := m.agent.Call(ctx, "vm.disk.resize", params, nil)
+	m.record(ctx, actor, "vm.disk.resize", name+" "+r.Path+" -> "+strconv.Itoa(r.SizeGiB)+"G", err)
+	return err
 }
 
 // Configure ändert die Konfiguration einer ausgeschalteten VM.

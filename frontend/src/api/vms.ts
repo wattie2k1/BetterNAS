@@ -60,6 +60,19 @@ export interface VmConfigUpdate {
   guestAgent: boolean
 }
 
+export interface VmDisk {
+  path: string
+  sizeGiB: number
+  usedBytes: number
+  virtualSize: number
+}
+
+export interface VmDiskResize {
+  path: string
+  sizeGiB: number
+  deleteSnapshots: boolean
+}
+
 export interface VmSnapshot {
   name: string
   created: string
@@ -114,5 +127,7 @@ export const vmsApi = {
     }),
   config: (name: string) => api.get<VmConfig>(`/api/v1/vms/${enc(name)}/config`),
   configure: (name: string, u: VmConfigUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/config`, u),
+  disks: (name: string) => api.get<VmDisk[]>(`/api/v1/vms/${enc(name)}/disks`),
+  diskResize: (name: string, r: VmDiskResize) => api.post<void>(`/api/v1/vms/${enc(name)}/disks/resize`, r),
   remove: (name: string, disks: boolean) => api.del<void>(`/api/v1/vms/${enc(name)}${disks ? '?disks=1' : ''}`),
 }

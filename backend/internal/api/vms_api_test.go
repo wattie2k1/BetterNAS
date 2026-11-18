@@ -48,6 +48,8 @@ func (a *vmAgentStub) Call(_ context.Context, method string, params, result any)
 		out = []string{"eno1"}
 	case "vm.display":
 		out = map[string]int{"port": 5901}
+	case "vm.disks":
+		out = []vm.Disk{{Path: "/srv/vms/disks/debian.qcow2", SizeGiB: 40, VirtualSize: 40 * vm.GiB, UsedBytes: 1 << 30}}
 	case "vm.config":
 		out = vm.Config{Name: "debian", State: "shutoff", VCPUs: 2, MemoryMiB: 4096, Firmware: "uefi", Network: "default", Disks: []string{}}
 	}
@@ -260,5 +262,24 @@ func TestConfigRoutes(t *testing.T) {
 	}
 	if w := s.do("GET", "/api/v1/vms/-bad/config", ""); w.Code != 400 {
 		t.Fatalf("%d", w.Code)
+	}
+}
+
+func TestDiskRoutes(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vms/debian/disks", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"sizeGiB":40`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	body := `{"path":"/srv/vms/disks/debian.qcow2","sizeGiB":80,"deleteSnapshots":true}`
+	if w := s.do("POST", "/api/v1/vms/debian/disks/resize", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.disk.resize"].(map[string]any); p["name"] != "debian" || p["sizeGiB"] != float64(80) || p["deleteSnapshots"] != true {
+		t.Fatalf("%v", stub.calls["vm.disk.resize"])
+	}
+	for _, bad := range []string{`{"path":"/etc/passwd","sizeGiB":80}`, `{"path":"/srv/vms/disks/../x.qcow2","sizeGiB":80}`, `{"path":"/srv/vms/disks/a.qcow2","sizeGiB":0}`, `kaputt`} {
+		if w := s.do("POST", "/api/v1/vms/debian/disks/resize", bad); w.Code != 400 {
+			t.Fatalf("%q: %d", bad, w.Code)
+		}
 	}
 }

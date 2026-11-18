@@ -99,7 +99,19 @@ func (s *server) registerVMs(mux *http.ServeMux) {
 		}
 		noContent(w, m.Configure(r.Context(), actor(r), r.PathValue("name"), in))
 	})
-	mux.HandleFunc("POST /api/v1/vms/{name}/clone", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/vms/{name}/disks", func(w http.ResponseWriter, r *http.Request) {
+		v, err := m.Disks(r.Context(), r.PathValue("name"))
+		reply(w, v, err)
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/disks/resize", func(w http.ResponseWriter, r *http.Request) {
+		var in vm.DiskResize
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		noContent(w, m.ResizeDisk(r.Context(), actor(r), r.PathValue("name"), in))
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/clone",func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Name string `json:"name"`
 		}

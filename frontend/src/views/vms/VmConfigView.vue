@@ -8,7 +8,8 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
-import { vmsApi, type VmConfig } from '@/api/vms'
+import { vmsApi, type VmConfig, type VmDisk } from '@/api/vms'
+import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
 import { useVmsStore } from '@/stores/vms'
 
 const route = useRoute()
@@ -30,6 +31,18 @@ const media = ref('')
 const isos = ref<string[]>([])
 const networks = ref<string[]>([])
 const ifaces = ref<string[]>([])
+const disks = ref<VmDisk[]>([])
+const resizeDisk = ref<VmDisk | null>(null)
+const resizeOpen = ref(false)
+
+function openResize(d: VmDisk) {
+  resizeDisk.value = d
+  resizeOpen.value = true
+}
+const fmtGiB = (bytes: number) => (bytes / 1024 ** 3).toFixed(1).replace(/\.0$/, '')
+async function loadDisks() {
+  disks.value = await vmsApi.disks(name).catch(() => [])
+}
 
 const editable = computed(() => cfg.value?.state === 'shutoff')
 const inRange = (n: number | null, lo: number, hi: number) => n !== null && Number.isInteger(n) && n >= lo && n <= hi
@@ -72,7 +85,7 @@ function apply(c: VmConfig) {
 async function load() {
   loading.value = true
   try {
-    const [c, i, n, f] = await Promise.all([vmsApi.config(name), vmsApi.isos(), vmsApi.networks(), vmsApi.interfaces().catch(() => [])])
+    const [c, i, n, f] = await Promise.all([vmsApi.config(name), vmsApi.isos(), vmsApi.networks(), vmsApi.interfaces().catch(() => []), loadDisks()])
     isos.value = i
     networks.value = n
     ifaces.value = f
@@ -169,11 +182,24 @@ const back = () => router?.push('/vms')
       </label>
     </div>
 
+    <div class="field">
+      <label>Festplatten</label>
+      <ul v-if="disks.length" class="disks" data-test="cfg-disks">
+        <li v-for="d in disks" :key="d.path">
+          <div class="disk-info">
+            <span class="disk-path">{{ d.path }}</span>
+            <small class="hint">{{ d.sizeGiB ? `${d.sizeGiB} GiB, belegt ${fmtGiB(d.usedBytes)} GiB` : 'Größe unbekannt' }}</small>
+          </div>
+          <Button label="Vergrößern" icon="pi pi-arrows-v" size="small" severity="secondary" :disabled="!editable || !d.sizeGiB || !d.path.startsWith('/srv/vms/disks/')" data-test="cfg-disk-resize" @click="openResize(d)" />
+        </li>
+      </ul>
+      <span v-else class="hint">{{ cfg.disks.join(', ') || '–' }}</span>
+    </div>
+    <DiskResizeDialog v-model:visible="resizeOpen" :vm="name" :disk="resizeDisk" @resized="load" />
+
     <dl class="info">
       <dt>Firmware</dt>
       <dd>{{ cfg.firmware === 'uefi' ? 'UEFI' : 'BIOS' }}{{ cfg.tpm ? ' · TPM 2.0' : '' }}</dd>
-      <dt>Festplatten</dt>
-      <dd>{{ cfg.disks.join(', ') || '–' }}</dd>
     </dl>
 
     <footer>
@@ -220,6 +246,29 @@ const back = () => router?.push('/vms')
 .empty {
   color: var(--bn-text-soft);
   font-size: 0.8rem;
+}
+.disks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.disks li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.disk-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.disk-path {
+  font-size: 0.85rem;
+  word-break: break-all;
 }
 .info {
   display: grid;
