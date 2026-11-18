@@ -46,6 +46,8 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = []docker.VolumeInfo{{Name: "data", Unused: true}}
 	case "resource.prune":
 		out = docker.PruneResult{Reclaimed: "1.5GB"}
+	case "device.list":
+		out = []docker.HostDevice{{Kind: "gpu", Path: "/dev/dri/renderD128", Name: "Intel HD", GID: 991, Group: "render"}}
 	case "folder.list":
 		out = docker.FolderList{Path: "/srv/pools", Dirs: []docker.Folder{{Name: "tank", Path: "/srv/pools/tank"}}}
 	case "docker.status":
@@ -232,5 +234,12 @@ func TestDockerFolderRoute(t *testing.T) {
 		if w := s.do("GET", "/api/v1/docker/folders?path="+bad, ""); w.Code != 400 {
 			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
 		}
+	}
+}
+
+func TestDockerDevicesRoute(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/docker/devices", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"gid":991`) || !strings.Contains(w.Body.String(), `"/dev/dri/renderD128"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }

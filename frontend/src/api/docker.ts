@@ -62,6 +62,17 @@ export interface UpdateInfo {
   errors: string[]
 }
 
+/** Gerät des Hosts, das an Container durchgereicht werden kann. */
+export interface HostDevice {
+  kind: 'gpu' | 'serial'
+  path: string
+  name: string
+  /** Numerische Gruppe der Gerätedatei; gehört als group_add in die compose.yaml. */
+  gid: number
+  group: string
+  note?: string
+}
+
 /** Inhalt eines Ordners in der Ordnerauswahl; path/parent sind in der Übersicht leer bzw. bei einer Wurzel leer. */
 export interface FolderList {
   path: string
@@ -152,6 +163,7 @@ export const dockerApi = {
   updates: () => api.get<UpdateReport>('/api/v1/docker/updates'),
   checkUpdates: () => api.post<{ jobId: string }>('/api/v1/docker/updates/check'),
   folders: (path: string) => api.get<FolderList>(`/api/v1/docker/folders?path=${enc(path)}`),
+  devices: () => api.get<HostDevice[]>('/api/v1/docker/devices'),
   autoUpdate: () => api.get<AutoUpdateConfig>('/api/v1/docker/autoupdate'),
   setAutoUpdate: (c: AutoUpdateConfig) => api.put<AutoUpdateConfig>('/api/v1/docker/autoupdate', c),
   runAutoUpdate: () => api.post<{ jobId: string }>('/api/v1/docker/autoupdate/run'),

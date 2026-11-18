@@ -237,6 +237,13 @@ func (m *Manager) Folders(ctx context.Context, p string) (FolderList, error) {
 	return out, err
 }
 
+// HostDevices liefert die an Container durchreichbaren Geräte (GPU, USB-Seriell-Adapter).
+func (m *Manager) HostDevices(ctx context.Context) ([]HostDevice, error) {
+	list := []HostDevice{}
+	err := m.agent.Call(ctx, "device.list", nil, &list)
+	return list, err
+}
+
 // ListContainers liefert alle Container.
 func (m *Manager) ListContainers(ctx context.Context) ([]Container, error) {
 	list := []Container{}

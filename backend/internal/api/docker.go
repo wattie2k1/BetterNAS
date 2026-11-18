@@ -56,6 +56,10 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		l, err := m.Folders(r.Context(), r.URL.Query().Get("path"))
 		reply(w, l, err)
 	})
+	mux.HandleFunc("GET /api/v1/docker/devices", func(w http.ResponseWriter, r *http.Request) {
+		l, err := m.HostDevices(r.Context())
+		reply(w, l, err)
+	})
 	mux.HandleFunc("GET /api/v1/docker/autoupdate", func(w http.ResponseWriter, r *http.Request) {
 		c, err := m.AutoUpdate(r.Context())
 		reply(w, c, err)

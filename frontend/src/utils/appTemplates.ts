@@ -1,6 +1,7 @@
 // App-Vorlagen für Docker-Stacks: Eingaben (Ports, Pfade, Geheimnisse) landen in der .env,
 // die compose.yaml verweist darauf per ${VARIABLE}. Der Stack bleibt danach frei editierbar.
-import { STACK_NAME_RE, type StackFiles } from '@/api/docker'
+import { STACK_NAME_RE, type HostDevice, type StackFiles } from '@/api/docker'
+import { deviceSnippet } from '@/utils/deviceSnippet'
 
 export type FieldKind = 'text' | 'port' | 'path' | 'secret'
 
@@ -13,6 +14,13 @@ export interface TemplateField {
   hint?: string
 }
 
+/** Optionales Gerät (z. B. GPU für Hardware-Transcoding); der Marker `# @devices` in der compose.yaml zeigt, wo es hinkommt. */
+export interface TemplateDevice {
+  kind: 'gpu' | 'serial'
+  label: string
+  hint?: string
+}
+
 export interface AppTemplate {
   id: string
   title: string
@@ -21,6 +29,7 @@ export interface AppTemplate {
   /** Vorschlag für den Stacknamen. */
   stack: string
   fields: TemplateField[]
+  device?: TemplateDevice
   compose: string
 }
 
@@ -40,6 +49,11 @@ export const APP_TEMPLATES: AppTemplate[] = [
       { key: 'CACHE_DIR', label: 'Ordner für Cache', kind: 'path', def: appdata('cache') },
       { key: 'MEDIA_DIR', label: 'Medienordner (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: MEDIA_HINT },
     ],
+    device: {
+      kind: 'gpu',
+      label: 'Hardware-Transcoding (GPU)',
+      hint: 'Reicht die Grafikeinheit an Jellyfin durch. Danach in Jellyfin unter Wiedergabe → Transcodierung „VAAPI“ bzw. „Intel QuickSync“ wählen.',
+    },
     compose: `services:
   jellyfin:
     image: jellyfin/jellyfin:latest
@@ -50,6 +64,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
       - \${CONFIG_DIR}:/config
       - \${CACHE_DIR}:/cache
       - \${MEDIA_DIR}:/media:ro
+    # @devices
 `,
   },
   {
@@ -219,7 +234,9 @@ export function stackNameError(name: string, existing: string[]): string {
 }
 
 /** Erzeugt die Stack-Dateien; der Aufrufer hat vorher alle Felder geprüft. */
-export function renderTemplate(t: AppTemplate, name: string, values: Record<string, string>): StackFiles {
+export function renderTemplate(t: AppTemplate, name: string, values: Record<string, string>, devices: HostDevice[] = []): StackFiles {
   const env = t.fields.map((f) => `${f.key}=${values[f.key].trim()}`).join('\n') + '\n'
-  return { name, compose: t.compose, env }
+  // Der Marker `# @devices` wird durch die gewählten Geräte ersetzt oder verschwindet.
+  const compose = t.compose.replace(/^[ \t]*# @devices\n/m, deviceSnippet(devices))
+  return { name, compose, env }
 }

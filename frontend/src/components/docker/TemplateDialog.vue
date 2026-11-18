@@ -5,7 +5,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import FolderPicker from '@/components/docker/FolderPicker.vue'
-import type { StackFiles } from '@/api/docker'
+import { dockerApi, type HostDevice, type StackFiles } from '@/api/docker'
 import { APP_TEMPLATES, defaultValues, fieldError, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
 
 const props = defineProps<{ visible: boolean; existing: string[] }>()
@@ -15,6 +15,10 @@ const picked = ref<AppTemplate | null>(null)
 const name = ref('')
 const values = ref<Record<string, string>>({})
 const browsing = ref<string | null>(null)
+const devices = ref<HostDevice[]>([])
+const deviceChoice = ref('')
+const deviceOptions = computed(() => devices.value.filter((d) => d.kind === picked.value?.device?.kind))
+const deviceNote = computed(() => deviceOptions.value.find((d) => d.path === deviceChoice.value)?.note ?? '')
 
 watch(
   () => props.visible,
@@ -29,6 +33,9 @@ function pick(t: AppTemplate) {
   let n = 2
   while (props.existing.includes(name.value)) name.value = `${t.stack}-${n++}`
   values.value = defaultValues(t, name.value)
+  deviceChoice.value = ''
+  devices.value = []
+  if (t.device) dockerApi.devices().then((l) => (devices.value = l), () => (devices.value = []))
 }
 
 // Standardpfade folgen dem Stacknamen, solange sie nicht von Hand geändert wurden.
@@ -53,7 +60,7 @@ const valid = computed(() => !!picked.value && !nameErr.value && Object.values(e
 
 function submit() {
   if (!picked.value || !valid.value) return
-  emit('create', renderTemplate(picked.value, name.value, values.value))
+  emit('create', renderTemplate(picked.value, name.value, values.value, deviceOptions.value.filter((d) => d.path === deviceChoice.value)))
   emit('update:visible', false)
 }
 </script>
@@ -98,6 +105,16 @@ function submit() {
         </div>
         <small v-if="errors[f.key]" class="err">{{ errors[f.key] }}</small>
         <small v-else-if="f.hint" class="hint">{{ f.hint }}</small>
+      </div>
+      <div v-if="picked.device" class="field" data-test="tpl-device">
+        <label for="tpl-device-select">{{ picked.device.label }}</label>
+        <select id="tpl-device-select" v-model="deviceChoice" data-test="tpl-device-select" :disabled="!deviceOptions.length">
+          <option value="">Nicht durchreichen</option>
+          <option v-for="d in deviceOptions" :key="d.path" :value="d.path">{{ d.name }} ({{ d.path }})</option>
+        </select>
+        <small v-if="deviceNote" class="err">{{ deviceNote }}</small>
+        <small v-else-if="!deviceOptions.length" class="hint">Kein passendes Gerät gefunden.</small>
+        <small v-else-if="picked.device.hint" class="hint">{{ picked.device.hint }}</small>
       </div>
       <Message severity="info" :closable="false">
         Die Eingaben werden in der .env gespeichert (nur für Administratoren lesbar). Im nächsten Schritt kannst du alles noch ändern, bevor der Stack angelegt wird.

@@ -12,7 +12,9 @@ import TabPanel from 'primevue/tabpanel'
 import Textarea from 'primevue/textarea'
 import { useDockerStore } from '@/stores/docker'
 import FolderPicker from '@/components/docker/FolderPicker.vue'
-import { MAX_ICON_BYTES, STACK_NAME_RE, STACK_TEMPLATE, type IconChange, type StackCheck, type StackFiles } from '@/api/docker'
+import DevicePicker from '@/components/docker/DevicePicker.vue'
+import { deviceSnippet } from '@/utils/deviceSnippet'
+import { MAX_ICON_BYTES, STACK_NAME_RE, STACK_TEMPLATE, type HostDevice, type IconChange, type StackCheck, type StackFiles } from '@/api/docker'
 
 export type SubmitMode = 'save' | 'start' | 'check'
 
@@ -41,12 +43,21 @@ const tab = ref('compose')
 const editor = ref<{ insert?: (text: string) => boolean } | null>(null)
 const browsing = ref(false)
 const inserted = ref(false)
+const pickingDevice = ref(false)
+const insertedDevice = ref(false)
 
 /** Fügt einen gewählten Ordner als Bind-Mount ein; den Zielpfad im Container muss man noch anpassen. */
 function insertFolder(path: string) {
   const text = `${path}:/pfad-im-container`
   if (!editor.value?.insert?.(text)) compose.value = `${compose.value.replace(/\n*$/, '\n')}${text}\n`
   inserted.value = true
+}
+
+/** Fügt devices/group_add ein; der Aufrufer muss die Zeilen unter den passenden Dienst setzen. */
+function insertDevices(devs: HostDevice[]) {
+  const text = deviceSnippet(devs)
+  if (!editor.value?.insert?.(text)) compose.value = `${compose.value.replace(/\n*$/, '\n')}${text}`
+  insertedDevice.value = true
 }
 
 // --- Icon: gewählte Änderung wird erst mit „Speichern“ angewendet ---
@@ -129,6 +140,7 @@ watch(
     env.value = src?.env ?? ''
     tab.value = 'compose'
     inserted.value = false
+    insertedDevice.value = false
     resetIcon()
   },
   { immediate: true },
@@ -174,7 +186,9 @@ const files = (): StackFiles => ({
         <TabPanel value="compose">
           <div class="folder-bar">
             <Button data-test="stack-insert-folder" label="Ordner einfügen" icon="pi pi-folder-open" size="small" severity="secondary" text @click="browsing = true" />
-            <small v-if="inserted" class="hint" data-test="stack-insert-hint">Eingefügt. Ersetze „/pfad-im-container“ durch den Ordner, unter dem der Container die Daten erwartet.</small>
+            <Button data-test="stack-insert-device" label="Gerät einfügen" icon="pi pi-microchip" size="small" severity="secondary" text @click="pickingDevice = true" />
+            <small v-if="insertedDevice" class="hint" data-test="stack-device-hint">Eingefügt. Die Zeilen <code>devices:</code> und <code>group_add:</code> müssen direkt unter dem Dienst stehen, der das Gerät braucht (gleiche Einrückung wie <code>image:</code>).</small>
+            <small v-else-if="inserted" class="hint" data-test="stack-insert-hint">Eingefügt. Ersetze „/pfad-im-container“ durch den Ordner, unter dem der Container die Daten erwartet.</small>
           </div>
           <YamlEditor ref="editor" v-model="compose" />
         </TabPanel>
@@ -213,6 +227,7 @@ const files = (): StackFiles => ({
       <pre v-else class="out">{{ check.message }}</pre>
     </Message>
     <FolderPicker :visible="browsing" @update:visible="browsing = $event" @select="insertFolder" />
+    <DevicePicker :visible="pickingDevice" @update:visible="pickingDevice = $event" @select="insertDevices" />
     <template #footer>
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
       <Button data-test="stack-check" label="Speichern & prüfen" icon="pi pi-check-circle" severity="secondary" :disabled="!valid || busy" @click="emit('submit', files(), 'check')" />
@@ -225,8 +240,9 @@ const files = (): StackFiles => ({
 <style scoped>
 .folder-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   margin-bottom: 0.4rem;
 }
 .field {

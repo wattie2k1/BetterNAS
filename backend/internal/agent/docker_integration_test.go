@@ -10,10 +10,12 @@ import (
 	"github.com/betternas/betternas/internal/rpc"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/sysexec"
 )
 
@@ -421,5 +423,55 @@ func TestDockerFolders(t *testing.T) {
 				t.Fatalf("interner Ordner sichtbar: %s", f.Name)
 			}
 		}
+	}
+}
+
+// TestDockerDevices prüft die Geräteerkennung und dass die vorgeschlagenen Einstellungen (--device + --group-add)
+// einem Container ohne Root-Rechte den Zugriff auf die GPU geben.
+func TestDockerDevices(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker ist nicht installiert")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := DockerStatus(ctx, d); !st.Active {
+		t.Skip("Docker-Dienst läuft nicht")
+	}
+	list, err := ListHostDevices(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gpu *docker.HostDevice
+	for i := range list {
+		if list[i].Kind == "gpu" {
+			gpu = &list[i]
+			break
+		}
+	}
+	if gpu == nil {
+		t.Skip("keine GPU (/dev/dri/renderD*)")
+	}
+	t.Logf("GPU: %+v", *gpu)
+	if gpu.GID == 0 || gpu.Group == "" || gpu.Name == "" {
+		t.Fatalf("unvollständig: %+v", *gpu)
+	}
+	if exec.Command("docker", "image", "inspect", "busybox:stable").Run() != nil {
+		if out, err := exec.Command("docker", "pull", "busybox:stable").CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+	}
+	probe := func(extra ...string) error {
+		args := append([]string{"run", "--rm", "--user", "1234:1234", "--device", gpu.Path + ":" + gpu.Path}, extra...)
+		args = append(args, "busybox:stable", "sh", "-c", "test -r "+gpu.Path+" && test -w "+gpu.Path)
+		return exec.Command("docker", args...).Run()
+	}
+	if probe() == nil {
+		t.Skip("GPU ist ohne Gruppe zugänglich (Gerät ist weltweit lesbar); nichts zu beweisen")
+	}
+	if err := probe("--group-add", strconv.Itoa(gpu.GID)); err != nil {
+		t.Fatalf("mit group_add %d kein Zugriff: %v", gpu.GID, err)
 	}
 }

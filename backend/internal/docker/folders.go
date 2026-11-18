@@ -66,3 +66,13 @@ func CleanFolder(p string) (string, error) {
 	}
 	return c, nil
 }
+
+// HostDevice ist ein Gerät des Hosts, das an Container durchgereicht werden kann.
+type HostDevice struct {
+	Kind  string `json:"kind"`  // gpu | serial
+	Path  string `json:"path"`  // Pfad auf dem Host, so wie er in die compose.yaml gehört
+	Name  string `json:"name"`  // Anzeigename
+	GID   int    `json:"gid"`   // numerische Gruppe der Gerätedatei (für group_add)
+	Group string `json:"group"` // Name dieser Gruppe
+	Note  string `json:"note,omitempty"`
+}
