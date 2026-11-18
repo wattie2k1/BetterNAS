@@ -48,6 +48,8 @@ func (a *vmAgentStub) Call(_ context.Context, method string, params, result any)
 		out = []string{"eno1"}
 	case "vm.display":
 		out = map[string]int{"port": 5901}
+	case "vm.disk.add":
+		out = map[string]string{"path": "/srv/vms/disks/debian-2.qcow2"}
 	case "vm.usb":
 		out = []vm.USBDevice{{Vendor: "1a86", Product: "7523", Name: "QinHeng USB Serial"}}
 	case "vm.disks":
@@ -321,6 +323,35 @@ func TestTuningRoute(t *testing.T) {
 	} {
 		if w := s.do("POST", "/api/v1/vms/debian/config", bad); w.Code != 400 {
 			t.Fatalf("%q: %d", bad, w.Code)
+		}
+	}
+}
+
+func TestDiskAddRemoveRoutes(t *testing.T) {
+	s, stub := newVMAPI(t)
+	w := s.do("POST", "/api/v1/vms/debian/disks", `{"sizeGiB":50,"deleteSnapshots":true}`)
+	if w.Code != 201 || !strings.Contains(w.Body.String(), "debian-2.qcow2") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.disk.add"].(map[string]any); p["name"] != "debian" || p["sizeGiB"] != float64(50) || p["deleteSnapshots"] != true {
+		t.Fatalf("%v", stub.calls["vm.disk.add"])
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/disks/remove", `{"path":"/srv/vms/disks/debian-2.qcow2","deleteFile":true}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.disk.remove"].(map[string]any); p["path"] != "/srv/vms/disks/debian-2.qcow2" || p["deleteFile"] != true {
+		t.Fatalf("%v", stub.calls["vm.disk.remove"])
+	}
+	for _, bad := range []struct{ path, body string }{
+		{"/api/v1/vms/debian/disks", `{"sizeGiB":0}`},
+		{"/api/v1/vms/debian/disks", `{"sizeGiB":70000}`},
+		{"/api/v1/vms/debian/disks", `kaputt`},
+		{"/api/v1/vms/debian/disks/remove", `{"path":"/etc/passwd"}`},
+		{"/api/v1/vms/debian/disks/remove", `{"path":"/srv/vms/disks/../x.qcow2"}`},
+		{"/api/v1/vms/-bad/disks", `{"sizeGiB":5}`},
+	} {
+		if w := s.do("POST", bad.path, bad.body); w.Code != 400 {
+			t.Fatalf("%s %q: %d", bad.path, bad.body, w.Code)
 		}
 	}
 }

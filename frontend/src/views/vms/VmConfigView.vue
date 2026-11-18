@@ -11,6 +11,8 @@ import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import { vmsApi, type VmConfig, type VmConfigUpdate, type VmDisk, type VmUsbDevice } from '@/api/vms'
+import DiskAddDialog from '@/components/vms/DiskAddDialog.vue'
+import DiskRemoveDialog from '@/components/vms/DiskRemoveDialog.vue'
 import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
 import VmAdvanced, { type AdvancedState } from '@/components/vms/VmAdvanced.vue'
 import { useVmsStore } from '@/stores/vms'
@@ -61,6 +63,13 @@ const resetKey = ref(0)
 const disks = ref<VmDisk[]>([])
 const resizeDisk = ref<VmDisk | null>(null)
 const resizeOpen = ref(false)
+const addOpen = ref(false)
+const removeDisk = ref<VmDisk | null>(null)
+const removeOpen = ref(false)
+function openRemove(d: VmDisk) {
+  removeDisk.value = d
+  removeOpen.value = true
+}
 
 function openResize(d: VmDisk) {
   resizeDisk.value = d
@@ -258,17 +267,25 @@ const back = () => router?.push('/vms')
     <div class="field">
       <label>Festplatten</label>
       <ul v-if="disks.length" class="disks" data-test="cfg-disks">
-        <li v-for="d in disks" :key="d.path">
+        <li v-for="(d, i) in disks" :key="d.path">
           <div class="disk-info">
             <span class="disk-path">{{ d.path }}</span>
             <small class="hint">{{ d.sizeGiB ? `${d.sizeGiB} GiB, belegt ${fmtGiB(d.usedBytes)} GiB` : 'Größe unbekannt' }}</small>
           </div>
-          <Button label="Vergrößern" icon="pi pi-arrows-v" size="small" severity="secondary" :disabled="!editable || !d.sizeGiB || !d.path.startsWith('/srv/vms/disks/')" data-test="cfg-disk-resize" @click="openResize(d)" />
+          <div class="disk-actions">
+            <Button label="Vergrößern" icon="pi pi-arrows-v" size="small" severity="secondary" :disabled="!editable || !d.sizeGiB || !d.path.startsWith('/srv/vms/disks/')" data-test="cfg-disk-resize" @click="openResize(d)" />
+            <Button v-if="i > 0" icon="pi pi-trash" size="small" severity="danger" text aria-label="Festplatte entfernen" :disabled="!editable" data-test="cfg-disk-remove" @click="openRemove(d)" />
+          </div>
         </li>
       </ul>
       <span v-else class="hint">{{ cfg.disks.join(', ') || '–' }}</span>
+      <div>
+        <Button label="Festplatte hinzufügen" icon="pi pi-plus" size="small" severity="secondary" :disabled="!editable || !disks.length" data-test="cfg-disk-add" @click="addOpen = true" />
+      </div>
     </div>
     <DiskResizeDialog v-model:visible="resizeOpen" :vm="name" :disk="resizeDisk" @resized="load" />
+    <DiskAddDialog v-model:visible="addOpen" :vm="name" @added="load" />
+    <DiskRemoveDialog v-model:visible="removeOpen" :vm="name" :disk="removeDisk" @removed="load" />
 
     <VmAdvanced :cfg="cfg" :vcpus="vcpus" :editable="editable" :net-options="netOptions" :reset="resetKey" @change="adv = $event" />
 
@@ -343,6 +360,12 @@ const back = () => router?.push('/vms')
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+.disk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 .disk-info {
   display: flex;

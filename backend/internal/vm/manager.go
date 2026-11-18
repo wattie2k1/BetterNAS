@@ -312,6 +312,47 @@ func (m *Manager) ResizeDisk(ctx context.Context, actor, name string, r DiskResi
 	return err
 }
 
+// AddDisk legt eine leere Festplatte an und hängt sie an die ausgeschaltete VM. Es liefert den Dateipfad.
+func (m *Manager) AddDisk(ctx context.Context, actor, name string, a DiskAdd) (string, error) {
+	if err := checkName(name); err != nil {
+		return "", err
+	}
+	if err := a.Validate(); err != nil {
+		return "", err
+	}
+	params := struct {
+		Name string `json:"name"`
+		DiskAdd
+	}{name, a}
+	var out struct {
+		Path string `json:"path"`
+	}
+	err := m.agent.Call(ctx, "vm.disk.add", params, &out)
+	m.record(ctx, actor, "vm.disk.add", name+" "+out.Path+" "+strconv.Itoa(a.SizeGiB)+"G", err)
+	return out.Path, err
+}
+
+// RemoveDisk trennt eine Festplatte von der ausgeschalteten VM (auf Wunsch mit Löschen der Datei).
+func (m *Manager) RemoveDisk(ctx context.Context, actor, name string, r DiskRemove) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	params := struct {
+		Name string `json:"name"`
+		DiskRemove
+	}{name, r}
+	err := m.agent.Call(ctx, "vm.disk.remove", params, nil)
+	action := "vm.disk.remove"
+	if r.DeleteFile {
+		action = "vm.disk.delete"
+	}
+	m.record(ctx, actor, action, name+" "+r.Path, err)
+	return err
+}
+
 // Configure ändert die Konfiguration einer ausgeschalteten VM.
 func (m *Manager) Configure(ctx context.Context, actor, name string, u ConfigUpdate) error {
 	if err := checkName(name); err != nil {

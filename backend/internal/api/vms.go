@@ -107,6 +107,27 @@ func (s *server) registerVMs(mux *http.ServeMux) {
 		v, err := m.Disks(r.Context(), r.PathValue("name"))
 		reply(w, v, err)
 	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/disks", func(w http.ResponseWriter, r *http.Request) {
+		var in vm.DiskAdd
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		file, err := m.AddDisk(r.Context(), actor(r), r.PathValue("name"), in)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"path": file})
+	})
+	mux.HandleFunc("POST /api/v1/vms/{name}/disks/remove", func(w http.ResponseWriter, r *http.Request) {
+		var in vm.DiskRemove
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		noContent(w, m.RemoveDisk(r.Context(), actor(r), r.PathValue("name"), in))
+	})
 	mux.HandleFunc("POST /api/v1/vms/{name}/disks/resize", func(w http.ResponseWriter, r *http.Request) {
 		var in vm.DiskResize
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVMBody)).Decode(&in); err != nil {

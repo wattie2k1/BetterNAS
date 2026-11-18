@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/sysexec"
 	"github.com/betternas/betternas/internal/vm"
 )
@@ -380,5 +381,69 @@ func TestVMTuningLibvirt(t *testing.T) {
 	}
 	if c, _ = VMConfig(ctx, d, name); c.Hyperv || len(c.ExtraNICs) != 0 || len(c.USB) != 0 || c.Clock != "utc" {
 		t.Fatalf("%+v", c)
+	}
+}
+
+// TestVMDiskAddRemoveLibvirt hängt eine zweite Festplatte an und wieder ab (echtes libvirt/qemu-img),
+// einschließlich Snapshot-Bestätigung.
+func TestVMDiskAddRemoveLibvirt(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	const name = "bnas-it-disk"
+	t.Cleanup(func() {
+		_ = VMAction(ctx, d, name, "destroy")
+		_ = VMDelete(ctx, d, name, true)
+	})
+	_ = VMAction(ctx, d, name, "destroy")
+	_ = VMDelete(ctx, d, name, true)
+
+	spec := vm.Spec{Name: name, OS: "linux", Firmware: "bios", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	file, err := VMDiskAdd(ctx, d, name, vm.DiskAdd{SizeGiB: 2})
+	if err != nil || file != vm.ExtraDiskPath(name, 2) {
+		t.Fatalf("%q %v", file, err)
+	}
+	disks, err := VMDisks(ctx, d, name)
+	if err != nil || len(disks) != 2 || disks[1].Path != file || disks[1].SizeGiB != 2 {
+		t.Fatalf("%+v %v", disks, err)
+	}
+	// Mit Snapshot: ohne Bestätigung Konflikt, mit Bestätigung wird er gelöscht.
+	if err := VMSnapshotCreate(ctx, d, name, "s1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VMDiskAdd(ctx, d, name, vm.DiskAdd{SizeGiB: 1}); code(err) != apierr.Conflict {
+		t.Fatalf("Konflikt erwartet: %v", err)
+	}
+	if err := VMDiskRemove(ctx, d, name, vm.DiskRemove{Path: file}); code(err) != apierr.Conflict {
+		t.Fatalf("Konflikt erwartet: %v", err)
+	}
+	if err := VMDiskRemove(ctx, d, name, vm.DiskRemove{Path: file, DeleteFile: true, DeleteSnapshots: true}); err != nil {
+		t.Fatal(err)
+	}
+	if disks, _ = VMDisks(ctx, d, name); len(disks) != 1 {
+		t.Fatalf("%+v", disks)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("Datei muss gelöscht sein")
+	}
+	if snaps, _ := VMSnapshots(ctx, d, name); len(snaps) != 0 {
+		t.Fatalf("Snapshots müssen gelöscht sein: %+v", snaps)
+	}
+	// Die Systemfestplatte lässt sich nicht entfernen.
+	if err := VMDiskRemove(ctx, d, name, vm.DiskRemove{Path: vm.DiskPath(name)}); code(err) != apierr.InvalidParams {
+		t.Fatalf("%v", err)
 	}
 }

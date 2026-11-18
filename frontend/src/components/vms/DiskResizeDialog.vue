@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import Button from 'primevue/button'
-import Checkbox from 'primevue/checkbox'
 import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
-import { vmsApi, type VmDisk, type VmSnapshot } from '@/api/vms'
+import { vmsApi, type VmDisk } from '@/api/vms'
+import SnapshotConfirm from './SnapshotConfirm.vue'
+import { useSnapshotGuard } from './useSnapshotGuard'
 
 const props = defineProps<{ vm: string; disk: VmDisk | null }>()
 const open = defineModel<boolean>('visible', { required: true })
@@ -14,32 +15,22 @@ const emit = defineEmits<{ resized: [] }>()
 const toast = useToast()
 
 const sizeGiB = ref<number | null>(null)
-const snapshots = ref<VmSnapshot[]>([])
-const confirmDelete = ref(false)
 const busy = ref(false)
+const guard = useSnapshotGuard(() => props.vm, open)
 
 const minGiB = computed(() => (props.disk?.sizeGiB ?? 0) + 1)
 const valid = computed(() => sizeGiB.value !== null && Number.isInteger(sizeGiB.value) && sizeGiB.value >= minGiB.value && sizeGiB.value <= 65536)
-const needsConfirm = computed(() => snapshots.value.length > 0)
-const canSubmit = computed(() => valid.value && (!needsConfirm.value || confirmDelete.value) && !busy.value)
+const canSubmit = computed(() => valid.value && guard.ok.value && !busy.value)
 
-watch(open, async (v) => {
-  if (!v || !props.disk) return
-  sizeGiB.value = props.disk.sizeGiB + Math.max(1, Math.round(props.disk.sizeGiB / 4))
-  confirmDelete.value = false
-  snapshots.value = []
-  try {
-    snapshots.value = await vmsApi.snapshots(props.vm)
-  } catch {
-    /* Fehlt die Bestätigung, meldet der Agent das beim Speichern ohnehin als Fehler. */
-  }
+watch(open, (v) => {
+  if (v && props.disk) sizeGiB.value = props.disk.sizeGiB + Math.max(1, Math.round(props.disk.sizeGiB / 4))
 })
 
 async function submit() {
   if (!props.disk || !canSubmit.value) return
   busy.value = true
   try {
-    await vmsApi.diskResize(props.vm, { path: props.disk.path, sizeGiB: sizeGiB.value!, deleteSnapshots: needsConfirm.value && confirmDelete.value })
+    await vmsApi.diskResize(props.vm, { path: props.disk.path, sizeGiB: sizeGiB.value!, deleteSnapshots: guard.deleteSnapshots.value })
     toast.add({ severity: 'success', summary: 'Festplatte vergrößert', detail: `${props.vm}: ${sizeGiB.value} GiB`, life: 6000 })
     open.value = false
     emit('resized')
@@ -59,13 +50,7 @@ async function submit() {
         <label for="dr-size">Neue Größe (GiB) – aktuell {{ disk.sizeGiB }} GiB</label>
         <InputNumber v-model="sizeGiB" input-id="dr-size" :min="minGiB" :max="65536" show-buttons data-test="dr-size" />
       </div>
-      <Message v-if="needsConfirm" severity="warn" :closable="false" data-test="dr-snapshots">
-        Diese VM hat {{ snapshots.length }} Snapshot(s): {{ snapshots.map((s) => s.name).join(', ') }}. Mit Snapshots lässt sich die Festplatte nicht vergrößern – sie werden dafür endgültig gelöscht.
-        <label class="row">
-          <Checkbox v-model="confirmDelete" binary input-id="dr-confirm" data-test="dr-confirm" />
-          <span>Snapshots löschen und Festplatte vergrößern</span>
-        </label>
-      </Message>
+      <SnapshotConfirm v-model="guard.confirmDelete.value" :snapshots="guard.snapshots.value" prefix="dr" action="Festplatte vergrößern" />
       <Message severity="info" :closable="false">
         Verkleinern ist nicht möglich. Danach muss das System in der VM den neuen Platz nutzen: unter Linux z. B. mit <code>growpart</code> und <code>resize2fs</code> (bzw. <code>xfs_growfs</code>), unter Windows in der Datenträgerverwaltung („Volume erweitern“).
       </Message>

@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -84,4 +86,77 @@ func TestVMDiskResizeRejects(t *testing.T) {
 	if f.Called("qemu-img resize") {
 		t.Fatal("kein Resize erwartet")
 	}
+}
+
+func TestVMDiskAdd(t *testing.T) {
+	d, f := diskEnv(t, "shut off")
+	f.Responses[v+"snapshot-list homeassistant"] = sysexec.Result{Stdout: []byte("")}
+	file, err := VMDiskAdd(context.Background(), d, "homeassistant", vm.DiskAdd{SizeGiB: 50})
+	if err != nil || file != "/srv/vms/disks/homeassistant-2.qcow2" {
+		t.Fatalf("%q %v", file, err)
+	}
+	assertOrder(t, f, "qemu-img create -f qcow2 "+file+" 50G", v+"define /dev/stdin")
+	i := f.Index(v + "define /dev/stdin")
+	if x := string(f.Stdins[i]); !strings.Contains(x, "<source file='"+file+"'/>") || !strings.Contains(x, "<target dev='vdb' bus='virtio'/>") {
+		t.Fatal(x)
+	}
+}
+
+func TestVMDiskAddSnapshotsAndRejects(t *testing.T) {
+	d, f := diskEnv(t, "shut off")
+	f.Responses[v+"snapshot-list homeassistant"] = sysexec.Result{Stdout: []byte(snapTable)}
+	_, err := VMDiskAdd(context.Background(), d, "homeassistant", vm.DiskAdd{SizeGiB: 10})
+	if code(err) != apierr.Conflict || !strings.Contains(err.Error(), "s1") {
+		t.Fatalf("%v", err)
+	}
+	if f.Called(v+"define") || f.Called(v+"snapshot-delete") {
+		t.Fatal("ohne Bestätigung darf nichts verändert werden")
+	}
+	if _, err := VMDiskAdd(context.Background(), d, "homeassistant", vm.DiskAdd{SizeGiB: 10, DeleteSnapshots: true}); err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, f, v+"snapshot-delete homeassistant s1", v+"define /dev/stdin")
+	d, _ = diskEnv(t, "running")
+	if _, err := VMDiskAdd(context.Background(), d, "homeassistant", vm.DiskAdd{SizeGiB: 10}); code(err) != apierr.Conflict {
+		t.Fatal("laufende VM")
+	}
+}
+
+func TestVMDiskRemove(t *testing.T) {
+	d, f, root := configEnv(t, "shut off")
+	extra := "/srv/vms/disks/homeassistant-2.qcow2"
+	writeFile(t, root, extra)
+	x, _ := vm.AddDiskXML(string(mustRead(t, "../vm/testdata/haos.xml")), extra, "vdb", "virtio")
+	f.Responses[v+"dumpxml --inactive homeassistant"] = sysexec.Result{Stdout: []byte(x)}
+	f.Responses[v+"snapshot-list homeassistant"] = sysexec.Result{Stdout: []byte("")}
+	if err := VMDiskRemove(context.Background(), d, "homeassistant", vm.DiskRemove{Path: extra}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, extra)); err != nil {
+		t.Fatal("Datei darf ohne deleteFile bleiben")
+	}
+	if i := f.Index(v + "define /dev/stdin"); i < 0 || strings.Contains(string(f.Stdins[i]), "homeassistant-2") {
+		t.Fatal("Disk nicht entfernt")
+	}
+	if err := VMDiskRemove(context.Background(), d, "homeassistant", vm.DiskRemove{Path: extra, DeleteFile: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, extra)); !os.IsNotExist(err) {
+		t.Fatal("Datei muss gelöscht sein")
+	}
+	// Systemfestplatte und fremde Dateien werden abgelehnt.
+	for _, p := range []string{haosDisk, "/srv/vms/disks/fremd.qcow2"} {
+		if code(VMDiskRemove(context.Background(), d, "homeassistant", vm.DiskRemove{Path: p})) != apierr.InvalidParams {
+			t.Errorf("%s", p)
+		}
+	}
+}
+
+func mustRead(t *testing.T, p string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
