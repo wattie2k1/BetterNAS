@@ -194,7 +194,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
         <ul class="alert-list">
           <li v-for="a in notifications.alerts.slice(0, 4)" :key="a.key" :class="a.level">{{ a.title }}</li>
         </ul>
-        <RouterLink to="/system/benachrichtigungen" class="soft">Details ansehen</RouterLink>
+        <RouterLink to="/einstellungen/benachrichtigungen" class="soft">Details ansehen</RouterLink>
       </div>
 
       <div v-else-if="id === 'storage'" class="storage-body">

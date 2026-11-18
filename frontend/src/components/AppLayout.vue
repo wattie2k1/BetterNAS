@@ -42,9 +42,7 @@ const nav = [
   { label: 'Docker-Ressourcen', icon: 'pi pi-sliders-h', to: '/docker/ressourcen', color: ['#7c3aed', '#a78bfa'] },
   { label: 'Virtuelle Maschinen', icon: 'pi pi-desktop', to: '/vms', color: ['#f97316', '#fb923c'] },
   { label: 'Benutzer & Gruppen', icon: 'pi pi-users', to: '/benutzer', color: ['#ec4899', '#f472b6'] },
-  { label: 'Benachrichtigungen', icon: 'pi pi-bell', to: '/system/benachrichtigungen', color: ['#eab308', '#facc15'] },
-  { label: 'Sicherung', icon: 'pi pi-history', to: '/system/sicherung', color: ['#14b8a6', '#2dd4bf'] },
-  { label: 'Updates', icon: 'pi pi-download', to: '/system/updates', color: ['#ef4444', '#fb7185'] },
+  { label: 'Einstellungen', icon: 'pi pi-cog', to: '/einstellungen', color: ['#64748b', '#94a3b8'] },
 ]
 const gradient = (c: string[]) => `linear-gradient(135deg, ${c[0]}, ${c[1]})`
 const initial = computed(() => (auth.user ?? '?').slice(0, 1).toUpperCase())
