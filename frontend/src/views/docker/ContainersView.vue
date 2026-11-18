@@ -85,7 +85,10 @@ async function act(c: ContainerInfo, action: ContainerAction) {
         <tr v-for="c in store.containers" :key="c.id" :data-test="`container-${c.name}`">
           <td>
             <div class="who">
-              <span class="avatar-sm" aria-hidden="true">{{ c.name.slice(0, 1).toUpperCase() }}</span>
+              <span class="avatar-sm" :class="{ img: !!store.iconUrlFor(c) }" aria-hidden="true">
+                <img v-if="store.iconUrlFor(c)" :src="store.iconUrlFor(c)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                <template v-else>{{ c.name.slice(0, 1).toUpperCase() }}</template>
+              </span>
               <div>
                 <strong>{{ c.name }}</strong>
                 <div v-if="c.stack" class="sub">Stack {{ c.stack }}</div>

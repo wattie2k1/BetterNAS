@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   dockerApi,
+  stackIconUrl,
   type ContainerAction,
   type ContainerInfo,
   type ContainerStats,
@@ -119,6 +120,30 @@ export const useDockerStore = defineStore('docker', () => {
     }
   }
 
+  /** Icon-Adresse eines Stacks (null = keins gesetzt). */
+  function iconUrlOf(stack: string): string | null {
+    const v = stacks.value.find((s) => s.name === stack)?.icon
+    return v ? stackIconUrl(stack, v) : null
+  }
+
+  /** Icon-Adresse für einen Container: Container erben das Icon ihres Stacks. */
+  function iconUrlFor(c: ContainerInfo): string | null {
+    return c.stack ? iconUrlOf(c.stack) : null
+  }
+
+  /** Wendet die im Dialog gewählte Icon-Änderung an, nachdem der Stack gespeichert wurde. */
+  async function applyIcon(s: StackFiles) {
+    const ch = s.icon
+    if (!ch) return
+    try {
+      if (ch.kind === 'file') await dockerApi.setIconFile(s.name, ch.file)
+      else if (ch.kind === 'url') await dockerApi.setIconUrl(s.name, ch.url)
+      else await dockerApi.removeIcon(s.name)
+    } catch (e) {
+      throw new Error(`Der Stack wurde gespeichert, das Icon aber nicht: ${message(e)}`)
+    }
+  }
+
   async function guarded<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn()
@@ -161,8 +186,10 @@ export const useDockerStore = defineStore('docker', () => {
     },
     handleEvent,
     run,
-    create: (s: StackFiles) => guarded(() => dockerApi.create(s)),
-    update: (s: StackFiles) => guarded(() => dockerApi.update(s)),
+    create: (s: StackFiles) => guarded(async () => { await dockerApi.create(s); await applyIcon(s) }),
+    update: (s: StackFiles) => guarded(async () => { await dockerApi.update(s); await applyIcon(s) }),
+    iconUrlOf,
+    iconUrlFor,
     remove: (name: string) => guarded(() => dockerApi.remove(name)),
     validate: (name: string) => dockerApi.validate(name),
     load: (name: string) => dockerApi.stack(name),

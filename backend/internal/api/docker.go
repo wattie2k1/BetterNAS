@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
@@ -79,6 +81,43 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("DELETE /api/v1/stacks/{name}", func(w http.ResponseWriter, r *http.Request) {
 		noContent(w, m.DeleteStack(r.Context(), actor(r), r.PathValue("name")))
+	})
+	mux.HandleFunc("GET /api/v1/stacks/{name}/icon", func(w http.ResponseWriter, r *http.Request) {
+		ic, err := m.GetIcon(r.Context(), r.PathValue("name"))
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		h := w.Header()
+		h.Set("Content-Type", ic.ContentType)
+		// SVG darf nie Skripte ausführen, auch wenn jemand die Adresse direkt öffnet.
+		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+		h.Set("Cache-Control", "private, max-age=86400")
+		h.Set("ETag", `"`+ic.Version+`"`)
+		_, _ = w.Write(ic.Data)
+	})
+	mux.HandleFunc("PUT /api/v1/stacks/{name}/icon", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			var in struct {
+				URL string `json:"url"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&in); err != nil {
+				apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+				return
+			}
+			noContent(w, m.SetIconFromURL(r.Context(), actor(r), name, in.URL))
+			return
+		}
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, docker.MaxIconBytes+1))
+		if err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Das Icon ist zu groß (höchstens 512 KiB)"))
+			return
+		}
+		noContent(w, m.SetIcon(r.Context(), actor(r), name, data))
+	})
+	mux.HandleFunc("DELETE /api/v1/stacks/{name}/icon", func(w http.ResponseWriter, r *http.Request) {
+		noContent(w, m.DeleteIcon(r.Context(), actor(r), r.PathValue("name")))
 	})
 	mux.HandleFunc("POST /api/v1/stacks/{name}/validate", func(w http.ResponseWriter, r *http.Request) {
 		c, err := m.ValidateStack(r.Context(), r.PathValue("name"))

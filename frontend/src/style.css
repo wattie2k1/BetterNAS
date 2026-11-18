@@ -273,6 +273,17 @@ html .table-wrap td.actions {
 html .table-wrap td.actions > * {
   margin-left: 0.2rem;
 }
+.avatar-sm.img {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border-soft);
+  overflow: hidden;
+}
+.avatar-sm img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
 .avatar-sm {
   width: 36px;
   height: 36px;

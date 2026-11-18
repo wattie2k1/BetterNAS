@@ -51,6 +51,8 @@ type StackInfo struct {
 	Name    string `json:"name"`
 	Running int    `json:"running"`
 	Total   int    `json:"total"`
+	// Icon ist die Version des Stack-Icons (leer: keins gesetzt); sie dient als Cache-Schlüssel für die Icon-Adresse.
+	Icon string `json:"icon,omitempty"`
 }
 
 // RunState ist der Zustand eines Stack-Laufs.

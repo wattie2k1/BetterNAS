@@ -76,8 +76,15 @@ func (m *Manager) Status(ctx context.Context) (Status, error) {
 // ListStacks liefert alle Stacks mit Laufzustand.
 func (m *Manager) ListStacks(ctx context.Context) ([]StackInfo, error) {
 	list := []StackInfo{}
-	err := m.agent.Call(ctx, "stack.list", nil, &list)
-	return list, err
+	if err := m.agent.Call(ctx, "stack.list", nil, &list); err != nil {
+		return list, err
+	}
+	if icons, err := m.iconVersions(ctx); err == nil {
+		for i := range list {
+			list[i].Icon = icons[list[i].Name]
+		}
+	}
+	return list, nil
 }
 
 // GetStack liefert compose.yaml und .env.
@@ -129,6 +136,9 @@ func (m *Manager) DeleteStack(ctx context.Context, actor, name string) error {
 		return err
 	}
 	err := m.agent.Call(ctx, "stack.delete", map[string]string{"name": name}, nil)
+	if err == nil {
+		_, _ = m.db.ExecContext(ctx, `DELETE FROM stack_icons WHERE stack = ?`, name)
+	}
 	m.record(ctx, actor, "stack.delete", name, err)
 	return err
 }

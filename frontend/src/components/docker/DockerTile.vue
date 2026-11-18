@@ -98,7 +98,10 @@ const initial = (c: ContainerInfo) => c.name.slice(0, 1).toUpperCase()
     <p v-else-if="!sorted.length" class="soft">Keine Container vorhanden.</p>
     <ul v-else class="list">
       <li v-for="c in sorted" :key="c.id" :data-test="`dock-${c.name}`">
-        <span class="ico" :class="{ on: c.state === 'running' }">{{ initial(c) }}</span>
+        <span class="ico" :class="{ on: c.state === 'running', img: !!store.iconUrlFor(c) }" :data-test="`dock-icon-${c.name}`">
+          <img v-if="store.iconUrlFor(c)" :src="store.iconUrlFor(c)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+          <template v-else>{{ initial(c) }}</template>
+        </span>
         <span class="txt">
           <strong>{{ c.name }}</strong>
           <small>
@@ -144,6 +147,21 @@ li {
 }
 .ico.on {
   background: linear-gradient(135deg, #2563eb, #60a5fa);
+}
+.ico.img {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border-soft);
+  overflow: hidden;
+}
+.ico img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
+.ico.img:not(.on) img {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 .txt {
   flex: 1;

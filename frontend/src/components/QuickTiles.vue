@@ -191,7 +191,10 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
             :rel="containerUrl(e.item) ? 'noopener noreferrer' : undefined"
             :data-test="`quick-container-open-${e.item.name}`"
           >
-            <span class="app-icon" :class="{ off: e.item.state !== 'running' }" :style="e.item.state === 'running' ? { background: 'linear-gradient(135deg, #2563eb, #60a5fa)' } : {}"><i class="pi pi-box" /></span>
+            <span class="app-icon" :class="{ off: e.item.state !== 'running', img: !!docker.iconUrlFor(e.item) }" :style="e.item.state === 'running' && !docker.iconUrlFor(e.item) ? { background: 'linear-gradient(135deg, #2563eb, #60a5fa)' } : {}" :data-test="`quick-container-icon-${e.item.name}`">
+              <img v-if="docker.iconUrlFor(e.item)" :src="docker.iconUrlFor(e.item)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+              <i v-else class="pi pi-box" />
+            </span>
             <span class="app-text">
               <strong>{{ e.item.name }}</strong>
               <small>{{ e.item.state === 'running' ? 'running' : 'stopped' }}<template v-if="e.item.status"> · {{ e.item.status }}</template></small>
@@ -361,6 +364,21 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   font-size: 1.3rem;
   background: #64748b;
   box-shadow: 0 8px 20px -8px rgb(0 0 0 / 50%);
+}
+.app-icon.img {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border-soft);
+  overflow: hidden;
+}
+.app-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 7px;
+}
+.app-icon.img.off img {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 .app-text {
   display: flex;
