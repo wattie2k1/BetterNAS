@@ -38,6 +38,7 @@ libvirt-daemon-system
 libvirt-daemon-config-network
 libvirt-clients
 virtinst
+virtiofsd
 qemu-system-x86
 qemu-utils
 ovmf

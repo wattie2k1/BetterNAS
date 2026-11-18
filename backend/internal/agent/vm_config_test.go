@@ -113,3 +113,39 @@ func TestVMConfigureTuning(t *testing.T) {
 		t.Fatal("nichts darf definiert werden")
 	}
 }
+
+func TestVMConfigureSharedDirs(t *testing.T) {
+	ctx := context.Background()
+	d, f, root := configEnv(t, "shut off")
+	list := []vm.SharedDir{{Path: "/srv/pools/test/Medien", Tag: "medien"}}
+	u := vm.ConfigUpdate{VCPUs: 2, MemoryMiB: 4096, SecureBoot: true, Network: "default", TuningUpdate: vm.TuningUpdate{SharedDirs: &list}}
+	// ohne virtiofsd
+	if code(VMConfigure(ctx, d, "homeassistant", u)) != apierr.Conflict {
+		t.Fatal("virtiofsd fehlt")
+	}
+	writeFile(t, root, vm.Virtiofsd)
+	// Ordner fehlt
+	if code(VMConfigure(ctx, d, "homeassistant", u)) != apierr.NotFound {
+		t.Fatal("Ordner fehlt")
+	}
+	if f.Called(v + "define") {
+		t.Fatal("nichts darf definiert werden")
+	}
+	if err := os.MkdirAll(filepath.Join(root, "/srv/pools/test/Medien"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := VMConfigure(ctx, d, "homeassistant", u); err != nil {
+		t.Fatal(err)
+	}
+	i := f.Index(v + "define /dev/stdin")
+	if x := string(f.Stdins[i]); !strings.Contains(x, "<source dir='/srv/pools/test/Medien'/>") || !strings.Contains(x, "<memoryBacking>") {
+		t.Fatal(x)
+	}
+	// Entfernen braucht weder virtiofsd noch den Ordner.
+	d2, _, _ := configEnv(t, "shut off")
+	none := []vm.SharedDir{}
+	u.SharedDirs = &none
+	if err := VMConfigure(ctx, d2, "homeassistant", u); err != nil {
+		t.Fatal(err)
+	}
+}

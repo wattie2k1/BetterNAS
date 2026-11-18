@@ -63,6 +63,14 @@ export interface VmConfig {
   clock: 'utc' | 'localtime' | 'other'
   extraNics: VmNic[]
   diskOpts: VmDiskOpt[]
+  sharedDirs: VmSharedDir[]
+}
+
+/** Host-Ordner (unterhalb von /srv/pools/), den die VM per virtiofs unter dem Namen `tag` einbinden kann. */
+export interface VmSharedDir {
+  path: string
+  tag: string
+  readOnly: boolean
 }
 
 export interface VmNic {
@@ -107,6 +115,7 @@ export interface VmConfigUpdate {
   clock?: 'utc' | 'localtime'
   extraNics?: VmNic[]
   diskOpts?: VmDiskOpt[]
+  sharedDirs?: VmSharedDir[]
 }
 
 export interface VmDisk {
@@ -153,6 +162,9 @@ export interface VmSnapshot {
   created: string
   state: string
 }
+
+/** Wie `vm.tagRe` im Backend (Name eines geteilten Ordners im Gast). */
+export const SHARED_TAG_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,35}$/
 
 /** Wie `vm.NameRe` im Backend. */
 export const VM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/

@@ -390,3 +390,24 @@ func TestLiveRoute(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedDirsRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	body := `{"vcpus":2,"memoryMiB":2048,"network":"default","sharedDirs":[{"path":"/srv/pools/test/Medien","tag":"medien","readOnly":true}]}`
+	if w := s.do("POST", "/api/v1/vms/debian/config", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	p, _ := stub.calls["vm.configure"].(map[string]any)
+	l, _ := p["sharedDirs"].([]any)
+	if len(l) != 1 || l[0].(map[string]any)["tag"] != "medien" || l[0].(map[string]any)["readOnly"] != true {
+		t.Fatalf("%v", p)
+	}
+	for _, bad := range []string{
+		`{"vcpus":2,"memoryMiB":2048,"network":"default","sharedDirs":[{"path":"/etc","tag":"x"}]}`,
+		`{"vcpus":2,"memoryMiB":2048,"network":"default","sharedDirs":[{"path":"/srv/pools/t/a","tag":"bad tag"}]}`,
+	} {
+		if w := s.do("POST", "/api/v1/vms/debian/config", bad); w.Code != 400 {
+			t.Fatalf("%q: %d", bad, w.Code)
+		}
+	}
+}

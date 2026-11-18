@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -616,5 +617,87 @@ func TestVMLiveLibvirt(t *testing.T) {
 	}
 	if disks, _ := VMDisks(ctx, d, name); len(disks) != 1 || disks[0].SizeGiB != 2 {
 		t.Fatalf("%+v", disks)
+	}
+}
+
+// TestVMSharedDirsLibvirt gibt einen Pool-Ordner per virtiofs an eine VM (echtes libvirt/virtiofsd) und prüft,
+// dass die VM startet und virtiofsd läuft. Das Einbinden im Gast wird nicht geprüft (kein Gastsystem).
+func TestVMSharedDirsLibvirt(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img", "pgrep"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	if _, err := os.Stat(vm.Virtiofsd); err != nil {
+		t.Skip("virtiofsd ist nicht installiert")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active || !st.KVM {
+		t.Skip("libvirt/KVM nicht verfügbar")
+	}
+	pools, _ := os.ReadDir("/srv/pools")
+	dir := ""
+	for _, p := range pools {
+		if p.IsDir() {
+			dir = "/srv/pools/" + p.Name() + "/bnas-it-vfs"
+			break
+		}
+	}
+	if dir == "" {
+		t.Skip("kein Pool unter /srv/pools")
+	}
+	const name = "bnas-it-vfs"
+	t.Cleanup(func() {
+		_ = VMAction(ctx, d, name, "destroy")
+		_ = VMDelete(ctx, d, name, true)
+		_ = os.RemoveAll(dir)
+	})
+	_ = VMAction(ctx, d, name, "destroy")
+	_ = VMDelete(ctx, d, name, true)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/hallo.txt", []byte("hallo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec := vm.Spec{Name: name, OS: "linux", Firmware: "bios", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := VMConfig(ctx, d, name)
+	list := []vm.SharedDir{{Path: dir, Tag: "daten", ReadOnly: true}}
+	u := vm.ConfigUpdate{VCPUs: 1, MemoryMiB: 256, SecureBoot: c.SecureBoot, Network: "default", GuestAgent: true, TuningUpdate: vm.TuningUpdate{SharedDirs: &list}}
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatalf("libvirt lehnt die Konfiguration ab: %v", err)
+	}
+	if c, _ = VMConfig(ctx, d, name); len(c.SharedDirs) != 1 || c.SharedDirs[0] != list[0] {
+		t.Fatalf("%+v", c.SharedDirs)
+	}
+	if err := VMAction(ctx, d, name, "start"); err != nil {
+		t.Fatalf("Start mit geteiltem Ordner: %v", err)
+	}
+	time.Sleep(time.Second)
+	if out, _ := exec.Command("pgrep", "-af", "virtiofsd.*"+dir).CombinedOutput(); !strings.Contains(string(out), "--readonly") {
+		t.Fatalf("virtiofsd läuft nicht schreibgeschützt: %q", out)
+	}
+	if err := VMAction(ctx, d, name, "destroy"); err != nil {
+		t.Fatal(err)
+	}
+	// Zurückbauen
+	none := []vm.SharedDir{}
+	u.SharedDirs = &none
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := virsh(ctx, d, nil, "dumpxml", "--inactive", name)
+	if x := string(res.Stdout); strings.Contains(x, "filesystem") || strings.Contains(x, "memoryBacking") {
+		t.Fatalf("Zurückbauen unvollständig:\n%s", x)
+	}
+	if err := VMAction(ctx, d, name, "start"); err != nil {
+		t.Fatalf("Start nach Zurückbauen: %v", err)
 	}
 }

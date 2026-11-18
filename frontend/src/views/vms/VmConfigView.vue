@@ -16,6 +16,7 @@ import DiskRemoveDialog from '@/components/vms/DiskRemoveDialog.vue'
 import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
 import RenameDialog from '@/components/vms/RenameDialog.vue'
 import VmAdvanced, { type AdvancedState } from '@/components/vms/VmAdvanced.vue'
+import VmSharedDirs, { type SharedState } from '@/components/vms/VmSharedDirs.vue'
 import { useVmsStore } from '@/stores/vms'
 
 const route = useRoute()
@@ -64,6 +65,7 @@ const usbChanged = computed(() => {
 })
 const usbStorageSel = computed(() => usbOptions.value.some((d) => d.storage && usbSel.value.includes(usbKey(d))))
 const adv = ref<AdvancedState>({ dirty: false, valid: true, update: {} })
+const shared = ref<SharedState>({ dirty: false, valid: true, update: {} })
 const resetKey = ref(0)
 const disks = ref<VmDisk[]>([])
 const resizeDisk = ref<VmDisk | null>(null)
@@ -102,7 +104,7 @@ const effMaxRam = computed(() => (headroom.value ? (maxRam.value ?? 0) : (ramMiB
 const vcpusMax = computed(() => (live.value ? (cfg.value?.maxVcpus ?? 64) : 64))
 const ramMax = computed(() => (live.value ? (cfg.value?.maxMemoryMiB ?? 262144) : 262144))
 const headroomValid = computed(() => !headroom.value || (inRange(maxVcpus.value, vcpus.value ?? 1, 64) && inRange(maxRam.value, ramMiB.value ?? 256, 262144)))
-const valid = computed(() => inRange(vcpus.value, 1, vcpusMax.value) && inRange(ramMiB.value, 256, ramMax.value) && headroomValid.value && macValid.value && adv.value.valid)
+const valid = computed(() => inRange(vcpus.value, 1, vcpusMax.value) && inRange(ramMiB.value, 256, ramMax.value) && headroomValid.value && macValid.value && adv.value.valid && shared.value.valid)
 const dirty = computed(
   () =>
     !!cfg.value &&
@@ -116,7 +118,8 @@ const dirty = computed(
       mac.value.toLowerCase() !== (cfg.value.mac ?? '').toLowerCase() ||
       usbChanged.value ||
       (!live.value && (effMaxCpus.value !== (cfg.value.maxVcpus ?? cfg.value.vcpus) || effMaxRam.value !== (cfg.value.maxMemoryMiB ?? cfg.value.memoryMiB))) ||
-      adv.value.dirty),
+      adv.value.dirty ||
+      shared.value.dirty),
 )
 const secureBootChanged = computed(() => !!cfg.value && secureBoot.value !== cfg.value.secureBoot)
 
@@ -193,7 +196,7 @@ async function save() {
     if (c.boot !== 'custom' && bootFirst.value !== (c.boot ?? 'hd')) upd.bootFirst = bootFirst.value
     if (mac.value.toLowerCase() !== (c.mac ?? '').toLowerCase()) upd.mac = mac.value.toLowerCase()
     if (usbChanged.value) upd.usb = usbOptions.value.filter((d) => usbSel.value.includes(usbKey(d))).map(({ vendor, product }) => ({ vendor, product }))
-    await vmsApi.configure(name, { ...upd, ...adv.value.update })
+    await vmsApi.configure(name, { ...upd, ...adv.value.update, ...shared.value.update })
     toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', detail: name, life: 4000 })
     await load()
     void store.refresh()
@@ -352,6 +355,7 @@ const back = () => router?.push('/vms')
     <DiskAddDialog v-model:visible="addOpen" :vm="name" @added="load" />
     <DiskRemoveDialog v-model:visible="removeOpen" :vm="name" :disk="removeDisk" @removed="load" />
 
+    <VmSharedDirs :cfg="cfg" :editable="editable" :reset="resetKey" @change="shared = $event" />
     <VmAdvanced :cfg="cfg" :vcpus="effMaxCpus || vcpus" :editable="editable" :net-options="netOptions" :reset="resetKey" @change="adv = $event" />
 
     <dl class="info">

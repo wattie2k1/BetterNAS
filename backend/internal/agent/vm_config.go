@@ -68,6 +68,20 @@ func VMConfigure(ctx context.Context, d Deps, name string, u vm.ConfigUpdate) er
 				return err
 			}
 		}
+		if u.SharedDirs != nil && len(*u.SharedDirs) > 0 {
+			if !d.FS.Exists(vm.Virtiofsd) {
+				return apierr.New(apierr.Conflict, "Geteilte Ordner brauchen das Paket virtiofsd, das auf diesem NAS nicht installiert ist")
+			}
+			have := map[vm.SharedDir]bool{}
+			for _, s := range cur.SharedDirs {
+				have[s] = true
+			}
+			for _, s := range *u.SharedDirs {
+				if !have[s] && !d.FS.Exists(s.Path) {
+					return apierr.New(apierr.NotFound, "Ordner nicht gefunden: "+s.Path)
+				}
+			}
+		}
 		if u.ExtraNICs != nil {
 			known := map[string]string{}
 			for _, n := range cur.ExtraNICs {

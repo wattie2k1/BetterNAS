@@ -42,16 +42,19 @@ type Tuning struct {
 	Clock     string    `json:"clock"` // utc | localtime | other
 	ExtraNICs []NIC     `json:"extraNics"`
 	DiskOpts  []DiskOpt `json:"diskOpts"`
+	// SharedDirs sind Host-Ordner, die der VM per virtiofs bereitstehen.
+	SharedDirs []SharedDir `json:"sharedDirs"`
 }
 
 // TuningUpdate sind die erweiterten Werte; fehlt ein Feld, bleibt der Wert unverändert.
 type TuningUpdate struct {
-	CPUMode   string     `json:"cpuMode"`
-	Topology  *Topology  `json:"topology"`
-	Hyperv    *bool      `json:"hyperv"`
-	Clock     string     `json:"clock"`
-	ExtraNICs *[]NIC     `json:"extraNics"`
-	DiskOpts  *[]DiskOpt `json:"diskOpts"`
+	CPUMode    string       `json:"cpuMode"`
+	Topology   *Topology    `json:"topology"`
+	Hyperv     *bool        `json:"hyperv"`
+	Clock      string       `json:"clock"`
+	ExtraNICs  *[]NIC       `json:"extraNics"`
+	DiskOpts   *[]DiskOpt   `json:"diskOpts"`
+	SharedDirs *[]SharedDir `json:"sharedDirs"`
 }
 
 var nicModels = map[string]bool{"virtio": true, "e1000e": true, "rtl8139": true}
@@ -93,6 +96,9 @@ func (u ConfigUpdate) validateTuning() error {
 			}
 		}
 	}
+	if u.SharedDirs != nil && !validSharedDirs(*u.SharedDirs) {
+		return invalid("Ungültige Ordnerliste (höchstens 8, Ordner unterhalb von /srv/pools/, Name aus Buchstaben, Ziffern, - und _, keine Doppelten)")
+	}
 	if u.DiskOpts != nil {
 		for _, d := range *u.DiskOpts {
 			if d.Path == "" {
@@ -121,6 +127,18 @@ type tuningXML struct {
 		Offset string `xml:"offset,attr"`
 	} `xml:"clock"`
 	Devices struct {
+		Filesystems []struct {
+			Driver struct {
+				Type string `xml:"type,attr"`
+			} `xml:"driver"`
+			Source struct {
+				Dir string `xml:"dir,attr"`
+			} `xml:"source"`
+			Target struct {
+				Dir string `xml:"dir,attr"`
+			} `xml:"target"`
+			ReadOnly *struct{} `xml:"readonly"`
+		} `xml:"filesystem"`
 		Disks []struct {
 			Device string `xml:"device,attr"`
 			Source struct {
@@ -149,7 +167,7 @@ type tuningXML struct {
 }
 
 func parseTuning(data []byte) Tuning {
-	t := Tuning{CPUMode: "other", Clock: "other", ExtraNICs: []NIC{}, DiskOpts: []DiskOpt{}}
+	t := Tuning{CPUMode: "other", Clock: "other", ExtraNICs: []NIC{}, DiskOpts: []DiskOpt{}, SharedDirs: []SharedDir{}}
 	var x tuningXML
 	if err := xml.NewDecoder(bytes.NewReader(data)).Decode(&x); err != nil {
 		return t
@@ -163,6 +181,11 @@ func parseTuning(data []byte) Tuning {
 	t.Hyperv = x.Features.Hyperv != nil
 	if x.Clock.Offset == "utc" || x.Clock.Offset == "localtime" {
 		t.Clock = x.Clock.Offset
+	}
+	for _, f := range x.Devices.Filesystems {
+		if f.Driver.Type == "virtiofs" {
+			t.SharedDirs = append(t.SharedDirs, SharedDir{Path: f.Source.Dir, Tag: f.Target.Dir, ReadOnly: f.ReadOnly != nil})
+		}
 	}
 	for _, d := range x.Devices.Disks {
 		if d.Device != "disk" || d.Source.File == "" {
@@ -296,6 +319,12 @@ func applyTuning(out string, cur Config, u ConfigUpdate) (string, error) {
 		out = reClock.ReplaceAllLiteralString(out, "<clock offset='"+u.Clock+"'")
 	}
 
+	if u.SharedDirs != nil && !sameSharedDirs(*u.SharedDirs, cur.SharedDirs) {
+		out, err = applySharedDirs(out, *u.SharedDirs)
+		if err != nil {
+			return "", err
+		}
+	}
 	if u.DiskOpts != nil {
 		want := map[string]DiskOpt{}
 		for _, d := range *u.DiskOpts {
