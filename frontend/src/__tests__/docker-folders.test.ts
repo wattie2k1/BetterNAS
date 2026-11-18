@@ -119,3 +119,74 @@ describe('Ordner in Vorlagen und Editor', () => {
     expect(w.find('[data-test="stack-insert-hint"]').text()).toContain('pfad-im-container')
   })
 })
+
+describe('Neuer Ordner im Picker', () => {
+  const created = { path: '/srv/pools/tank/Fotos', parent: '/srv/pools/tank', dirs: [] as { name: string; path: string }[] }
+
+  function stubCreate(post: () => Response) {
+    const fn = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return Promise.resolve(post())
+      const p = decodeURIComponent(new URL(url, 'http://x').searchParams.get('path') ?? '')
+      const v = p === '/srv/pools/tank/Fotos' ? created : tree[p]
+      return Promise.resolve(v ? new Response(JSON.stringify(v), { status: 200 }) : new Response(JSON.stringify({ error: { code: 'not_found', message: 'weg' } }), { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fn)
+    return fn
+  }
+  const mountAt = async (start: string) => {
+    const w = mount(FolderPicker, { props: { visible: true, start }, global: { plugins: plugins() } })
+    await flushPromises()
+    return w
+  }
+
+  it('ist in der Übersicht und direkt unter /srv/pools gesperrt, in einem Pool möglich', async () => {
+    stubCreate(() => new Response('{}', { status: 201 }))
+    expect((await mountAt('')).find('button[data-test="folder-new"]').attributes('disabled')).toBeDefined()
+    expect((await mountAt('/srv/pools')).find('button[data-test="folder-new"]').attributes('disabled')).toBeDefined()
+    expect((await mountAt('/srv/pools/tank')).find('button[data-test="folder-new"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('legt den Ordner an und wechselt hinein', async () => {
+    const fn = stubCreate(() => new Response(JSON.stringify({ name: 'Fotos', path: '/srv/pools/tank/Fotos' }), { status: 201 }))
+    const w = await mountAt('/srv/pools/tank')
+    await w.find('button[data-test="folder-new"]').trigger('click')
+    await w.find('input[data-test="folder-name"]').setValue('Fotos')
+    await w.find('button[data-test="folder-create-submit"]').trigger('click')
+    await flushPromises()
+    expect(fn).toHaveBeenCalledWith('/api/v1/docker/folders', expect.objectContaining({ method: 'POST', body: JSON.stringify({ path: '/srv/pools/tank', name: 'Fotos' }) }))
+    expect(w.find('[data-test="folder-current"]').text()).toBe('/srv/pools/tank/Fotos')
+    expect(w.find('[data-test="folder-create"]').exists()).toBe(false)
+    await w.find('button[data-test="folder-select"]').trigger('click')
+    expect(w.emitted('select')).toEqual([['/srv/pools/tank/Fotos']])
+  })
+
+  it('prüft den Namen vor dem Absenden', async () => {
+    const fn = stubCreate(() => new Response('{}', { status: 201 }))
+    const w = await mountAt('/srv/pools/tank')
+    await w.find('button[data-test="folder-new"]').trigger('click')
+    const submit = () => w.find('button[data-test="folder-create-submit"]').attributes('disabled')
+    expect(submit()).toBeDefined()
+    for (const bad of ['mit Leerzeichen', 'Über', '.versteckt', 'a/b', 'lost+found', 'x'.repeat(65)]) {
+      await w.find('input[data-test="folder-name"]').setValue(bad)
+      expect(w.find('[data-test="folder-name-error"]').exists(), bad).toBe(true)
+      expect(submit(), bad).toBeDefined()
+    }
+    await w.find('input[data-test="folder-name"]').setValue('Medien') // gibt es schon (siehe tree)
+    expect(w.find('[data-test="folder-name-error"]').text()).toContain('schon')
+    await w.find('input[data-test="folder-name"]').setValue('Neu-1.0')
+    expect(w.find('[data-test="folder-name-error"]').exists()).toBe(false)
+    expect(submit()).toBeUndefined()
+    expect(fn).not.toHaveBeenCalledWith('/api/v1/docker/folders', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('zeigt Fehler des Servers und bleibt im Ordner', async () => {
+    stubCreate(() => new Response(JSON.stringify({ error: { code: 'conflict', message: 'Ein Ordner mit diesem Namen existiert bereits.' } }), { status: 409 }))
+    const w = await mountAt('/srv/pools/tank')
+    await w.find('button[data-test="folder-new"]').trigger('click')
+    await w.find('input[data-test="folder-name"]').setValue('Fotos')
+    await w.find('button[data-test="folder-create-submit"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="folder-create-error"]').text()).toContain('existiert bereits')
+    expect(w.find('[data-test="folder-current"]').text()).toBe('/srv/pools/tank')
+  })
+})

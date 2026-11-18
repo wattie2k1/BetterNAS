@@ -94,3 +94,100 @@ func TestListFoldersRejectsEscapes(t *testing.T) {
 		}
 	}
 }
+
+func TestListFoldersHidesLostAndFound(t *testing.T) {
+	d, _ := folderEnv(t, map[string]string{"/srv/pools/tank": "/srv/pools/tank"}, map[string]string{"/srv/pools/tank": "lost+found\x00Medien\x00"})
+	l, err := ListFolders(context.Background(), d, "/srv/pools/tank")
+	if err != nil || len(l.Dirs) != 1 || l.Dirs[0].Name != "Medien" {
+		t.Fatalf("%+v %v", l, err)
+	}
+}
+
+func mkdirEnv(t *testing.T, real map[string]string) (Deps, *sysexec.FakeRunner) {
+	t.Helper()
+	return folderEnv(t, real, nil)
+}
+
+func TestCreateFolder(t *testing.T) {
+	d, f := mkdirEnv(t, map[string]string{"/srv/pools/tank/Medien": "/srv/pools/tank/Medien", "/srv/appdata": "/srv/appdata"})
+	ctx := context.Background()
+	got, err := CreateFolder(ctx, d, "/srv/pools/tank/Medien", "Filme-2024")
+	if err != nil || got.Name != "Filme-2024" || got.Path != "/srv/pools/tank/Medien/Filme-2024" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if !f.Called("mkdir -m 755 -- /srv/pools/tank/Medien/Filme-2024") {
+		t.Fatalf("%v", f.Calls)
+	}
+	// In /srv/appdata selbst darf angelegt werden.
+	if _, err := CreateFolder(ctx, d, "/srv/appdata", "jellyfin"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateFolderRejectsBadNames(t *testing.T) {
+	d, f := mkdirEnv(t, map[string]string{"/srv/pools/tank": "/srv/pools/tank"})
+	long := strings.Repeat("a", 65)
+	for _, bad := range []string{"", ".", "..", "a/b", "../x", ".versteckt", " vorn", "hinten ", "a\x00b", "a'b", "lost+found", "mit\nZeilenumbruch", "Ü-Umlaut", "mit Leerzeichen", "a;b", "a$b", long} {
+		if _, err := CreateFolder(context.Background(), d, "/srv/pools/tank", bad); code(err) != apierr.InvalidParams {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+	for _, c := range f.Calls {
+		if strings.HasPrefix(c, "mkdir") {
+			t.Fatalf("mkdir trotz ungültigem Namen: %v", f.Calls)
+		}
+	}
+}
+
+func TestCreateFolderRejectsWrongPlaces(t *testing.T) {
+	d, f := mkdirEnv(t, map[string]string{
+		"/srv/pools":              "/srv/pools",
+		"/srv/pools/link":         "/etc",
+		"/srv/pools/tank":         "/srv/pools/tank",
+		"/srv/appdata/stacks":     "/srv/appdata/stacks",
+		"/srv/appdata/stacks/x":   "/srv/appdata/stacks/x",
+		"/srv/appdata/docker":     "/srv/appdata/docker",
+		"/srv/appdata/backups":    "/srv/appdata/backups",
+		"/srv/appdata/alias":      "/srv/appdata/docker", // Link auf einen gesperrten Bereich
+		"/srv/appdata/ueber-pool": "/srv/pools",
+	})
+	ctx := context.Background()
+	for _, tc := range []struct{ parent, name string }{
+		{"", "x"},                        // Übersicht der Wurzeln
+		{"/srv/pools", "neuerpool"},      // Pools werden nicht über Ordner angelegt
+		{"/etc", "x"},                    // außerhalb
+		{"/srv/pools/../../etc", "x"},    // ..
+		{"/srv/pools/link", "x"},         // Link nach außen
+		{"/srv/appdata/stacks", "x"},     // BetterNAS-Bereiche
+		{"/srv/appdata/stacks/x", "y"},   //
+		{"/srv/appdata/docker", "x"},     //
+		{"/srv/appdata/backups", "x"},    //
+		{"/srv/appdata/alias", "x"},      // Link auf Gesperrtes
+		{"/srv/appdata/ueber-pool", "x"}, // Link auf die Pool-Wurzel
+		{"/srv/appdata", "stacks"},       // reservierter Name
+		{"/srv/appdata", "docker"},       //
+		{"/srv/appdata", "backups"},      //
+	} {
+		if _, err := CreateFolder(ctx, d, tc.parent, tc.name); err == nil {
+			t.Errorf("%q + %q wurde akzeptiert", tc.parent, tc.name)
+		}
+	}
+	if _, err := CreateFolder(ctx, d, "/srv/pools/fehlt", "x"); code(err) != apierr.NotFound {
+		t.Errorf("fehlender Elternordner: %v", err)
+	}
+	for _, c := range f.Calls {
+		if strings.HasPrefix(c, "mkdir") {
+			t.Fatalf("mkdir am falschen Ort: %v", f.Calls)
+		}
+	}
+}
+
+func TestCreateFolderConflictWhenExists(t *testing.T) {
+	d, _ := mkdirEnv(t, map[string]string{"/srv/pools/tank": "/srv/pools/tank"})
+	if err := d.FS.MkdirAll("/srv/pools/tank/da", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateFolder(context.Background(), d, "/srv/pools/tank", "da"); code(err) != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+}

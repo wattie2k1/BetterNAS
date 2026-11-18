@@ -61,6 +61,21 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		l, err := m.Folders(r.Context(), r.URL.Query().Get("path"))
 		reply(w, l, err)
 	})
+	mux.HandleFunc("POST /api/v1/docker/folders", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		f, err := m.CreateFolder(r.Context(), actor(r), in.Path, in.Name)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, f)
+	})
 	mux.HandleFunc("GET /api/v1/docker/devices", func(w http.ResponseWriter, r *http.Request) {
 		l, err := m.HostDevices(r.Context())
 		reply(w, l, err)

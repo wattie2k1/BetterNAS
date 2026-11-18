@@ -653,3 +653,74 @@ func runningImageOf(t *testing.T, project string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// TestDockerCreateFolder prüft das Anlegen von Ordnern mit echtem realpath/mkdir (App-Daten und Pool).
+func TestDockerCreateFolder(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if st, err := os.Stat("/srv/appdata"); err != nil || !st.IsDir() {
+		t.Skip("/srv/appdata fehlt")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	base := "/srv/appdata/bnasit-create"
+	_ = os.RemoveAll(base)
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+
+	f, err := CreateFolder(ctx, d, "/srv/appdata", "bnasit-create")
+	if err != nil || f.Path != base {
+		t.Fatalf("%+v %v", f, err)
+	}
+	st, err := os.Stat(base)
+	if err != nil || !st.IsDir() || st.Mode().Perm() != 0o755 {
+		t.Fatalf("%v %v", st, err)
+	}
+	if _, err := CreateFolder(ctx, d, base, "Medien-1.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(base + "/Medien-1.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateFolder(ctx, d, base, "Medien-1.0"); err == nil {
+		t.Fatal("Doppelter Ordner darf nicht angelegt werden")
+	}
+	// Ein Link aus dem Bereich heraus führt nicht zu Ordnern außerhalb.
+	if err := os.Symlink("/etc", base+"/hinaus"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateFolder(ctx, d, base+"/hinaus", "boese"); err == nil {
+		t.Fatal("Ordner über Symlink nach /etc angelegt")
+	}
+	if _, err := os.Stat("/etc/boese"); err == nil {
+		t.Fatal("/etc/boese existiert")
+	}
+	// BetterNAS-Bereiche und die Pool-Übersicht sind tabu.
+	for _, tc := range [][2]string{{"/srv/appdata", "stacks"}, {"/srv/appdata/stacks", "x"}, {"/srv/appdata/docker", "x"}, {"/srv/pools", "x"}} {
+		if _, err := CreateFolder(ctx, d, tc[0], tc[1]); err == nil {
+			t.Errorf("%v wurde akzeptiert", tc)
+		}
+	}
+	// In einem echten Pool (falls vorhanden) geht es, und der Ordner erscheint in der Liste.
+	if pools, _ := os.ReadDir("/srv/pools"); len(pools) > 0 {
+		pool := "/srv/pools/" + pools[0].Name()
+		if _, err := CreateFolder(ctx, d, pool, "bnasit-pool-test"); err != nil {
+			t.Fatalf("im Pool %s: %v", pool, err)
+		}
+		t.Cleanup(func() { _ = os.Remove(pool + "/bnasit-pool-test") })
+		l, err := ListFolders(ctx, d, pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, x := range l.Dirs {
+			found = found || x.Name == "bnasit-pool-test"
+			if x.Name == "lost+found" {
+				t.Fatal("lost+found sichtbar")
+			}
+		}
+		if !found {
+			t.Fatalf("neuer Ordner fehlt in der Liste: %+v", l)
+		}
+	}
+}

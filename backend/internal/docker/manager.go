@@ -273,6 +273,18 @@ func (m *Manager) HostDevices(ctx context.Context) ([]HostDevice, error) {
 	return list, err
 }
 
+// CreateFolder legt in der Ordnerauswahl einen neuen Ordner unterhalb von parent an.
+func (m *Manager) CreateFolder(ctx context.Context, actor, parent, name string) (Folder, error) {
+	p, err := CleanFolder(parent)
+	if err != nil {
+		return Folder{}, err
+	}
+	var out Folder
+	err = m.agent.Call(ctx, "folder.create", map[string]string{"path": p, "name": name}, &out)
+	m.record(ctx, actor, "folder.create", p+"/"+name, err)
+	return out, err
+}
+
 // ListContainers liefert alle Container.
 func (m *Manager) ListContainers(ctx context.Context) ([]Container, error) {
 	list := []Container{}

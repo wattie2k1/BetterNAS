@@ -192,6 +192,7 @@ export const dockerApi = {
   updates: () => api.get<UpdateReport>('/api/v1/docker/updates'),
   checkUpdates: () => api.post<{ jobId: string }>('/api/v1/docker/updates/check'),
   folders: (path: string) => api.get<FolderList>(`/api/v1/docker/folders?path=${enc(path)}`),
+  createFolder: (path: string, name: string) => api.post<{ name: string; path: string }>('/api/v1/docker/folders', { path, name }),
   devices: () => api.get<HostDevice[]>('/api/v1/docker/devices'),
   autoUpdate: () => api.get<AutoUpdateConfig>('/api/v1/docker/autoupdate'),
   setAutoUpdate: (c: AutoUpdateConfig) => api.put<AutoUpdateConfig>('/api/v1/docker/autoupdate', c),

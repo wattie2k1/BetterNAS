@@ -50,6 +50,8 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = docker.BackupPlan{Sources: []docker.BackupSource{{Kind: "bind", Name: "/srv/appdata/media/c", Path: "/srv/appdata/media/c", Bytes: 1234}}, TotalBytes: 1234, FreeBytes: 99999, Possible: true}
 	case "device.list":
 		out = []docker.HostDevice{{Kind: "gpu", Path: "/dev/dri/renderD128", Name: "Intel HD", GID: 991, Group: "render"}}
+	case "folder.create":
+		out = docker.Folder{Name: "Filme", Path: "/srv/pools/tank/Filme"}
 	case "folder.list":
 		out = docker.FolderList{Path: "/srv/pools", Dirs: []docker.Folder{{Name: "tank", Path: "/srv/pools/tank"}}}
 	case "docker.status":
@@ -267,5 +269,18 @@ func TestDockerBackupRoutes(t *testing.T) {
 	}
 	if w := s.do("POST", "/api/v1/stacks/media/update", `{kaputt`); w.Code != 400 {
 		t.Fatalf("kaputt %d %s", w.Code, w.Body)
+	}
+}
+
+func TestDockerCreateFolderRoute(t *testing.T) {
+	s := newDockerAPI(t)
+	w := s.do("POST", "/api/v1/docker/folders", `{"path":"/srv/pools/tank","name":"Filme"}`)
+	if w.Code != 201 || !strings.Contains(w.Body.String(), `"/srv/pools/tank/Filme"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	for _, bad := range []string{`{"path":"/etc","name":"x"}`, `{"path":"/srv/pools/../../etc","name":"x"}`, `{kaputt`} {
+		if w := s.do("POST", "/api/v1/docker/folders", bad); w.Code != 400 {
+			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
+		}
 	}
 }

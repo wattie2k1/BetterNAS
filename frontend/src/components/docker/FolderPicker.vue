@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import { dockerApi, type FolderList } from '@/api/docker'
 
@@ -11,6 +12,10 @@ const emit = defineEmits<{ 'update:visible': [boolean]; select: [path: string] }
 const list = ref<FolderList | null>(null)
 const loading = ref(false)
 const error = ref('')
+const creating = ref(false)
+const newName = ref('')
+const createError = ref('')
+const saving = ref(false)
 
 const ROOT_LABEL: Record<string, string> = { pools: 'Speicherpools', appdata: 'App-Daten' }
 
@@ -31,6 +36,7 @@ watch(
   async (v) => {
     if (!v) return
     list.value = null
+    creating.value = false
     const s = (props.start ?? '').replace(/\/+$/, '')
     const inRoots = s === '/srv/pools' || s.startsWith('/srv/pools/') || s === '/srv/appdata' || s.startsWith('/srv/appdata/')
     await load(inRoots ? s : '')
@@ -41,6 +47,39 @@ watch(
 )
 
 const current = computed(() => list.value?.path ?? '')
+
+// --- Neuer Ordner ---
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.+@-]{0,63}$/
+/** Direkt in der Pool-Übersicht und in der Bereichs-Übersicht lassen sich keine Ordner anlegen. */
+const canCreate = computed(() => current.value !== '' && current.value !== '/srv/pools')
+const nameProblem = computed(() => {
+  const n = newName.value
+  if (!n) return ''
+  if (n === 'lost+found' || !NAME_RE.test(n)) return 'Erlaubt: Buchstaben ohne Umlaute, Ziffern und _ . + @ - (höchstens 64 Zeichen).'
+  if (list.value?.dirs.some((d) => d.name === n)) return 'Diesen Ordner gibt es hier schon.'
+  return ''
+})
+
+function startCreate() {
+  creating.value = true
+  newName.value = ''
+  createError.value = ''
+}
+
+async function create() {
+  if (!newName.value || nameProblem.value || saving.value) return
+  saving.value = true
+  createError.value = ''
+  try {
+    const f = await dockerApi.createFolder(current.value, newName.value)
+    creating.value = false
+    await load(f.path) // direkt in den neuen Ordner wechseln
+  } catch (e) {
+    createError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    saving.value = false
+  }
+}
 const label = (name: string, path: string) => (current.value === '' ? `${ROOT_LABEL[name] ?? name} (${path})` : name)
 const choose = () => {
   emit('select', current.value)
@@ -69,6 +108,24 @@ const choose = () => {
         @click="load(list?.parent ?? '')"
       />
       <code data-test="folder-current">{{ current || 'Bereich wählen' }}</code>
+      <Button
+        data-test="folder-new"
+        icon="pi pi-folder-plus"
+        label="Neuer Ordner"
+        size="small"
+        severity="secondary"
+        text
+        :disabled="loading || !canCreate"
+        :title="canCreate ? 'Legt in diesem Ordner einen neuen Ordner an' : 'Öffne zuerst einen Pool oder die App-Daten'"
+        @click="startCreate"
+      />
+    </div>
+    <div v-if="creating" class="create" data-test="folder-create">
+      <InputText v-model="newName" placeholder="Name des neuen Ordners" autocomplete="off" spellcheck="false" data-test="folder-name" :invalid="!!nameProblem" @keydown.enter.prevent="create" />
+      <Button data-test="folder-create-submit" label="Anlegen" size="small" :disabled="!newName || !!nameProblem" :loading="saving" @click="create" />
+      <Button label="Abbrechen" size="small" text @click="creating = false" />
+      <small v-if="nameProblem" class="err" data-test="folder-name-error">{{ nameProblem }}</small>
+      <small v-else-if="createError" class="err" data-test="folder-create-error">{{ createError }}</small>
     </div>
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <ul v-else class="dirs" data-test="folder-list">
@@ -95,7 +152,23 @@ const choose = () => {
   margin-bottom: 0.5rem;
 }
 .bar code {
+  flex: 1;
   overflow-wrap: anywhere;
+}
+.create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.create input {
+  flex: 1;
+  min-width: 12rem;
+}
+.err {
+  flex-basis: 100%;
+  color: var(--bn-danger);
 }
 .dirs {
   list-style: none;
