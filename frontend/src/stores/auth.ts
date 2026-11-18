@@ -7,6 +7,7 @@ interface Me {
   username: string
   csrfToken: string
   totp?: boolean
+  totpRequired?: boolean
 }
 
 interface MfaRequired {
@@ -16,9 +17,12 @@ interface MfaRequired {
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<string | null>(null)
+  /** Die Anmelde-Einstellungen verlangen 2FA, der Benutzer hat sie noch nicht eingerichtet. */
+  const totpRequired = ref(false)
 
   function apply(me: Me) {
     user.value = me.username
+    totpRequired.value = !!me.totpRequired
     setCsrfToken(me.csrfToken)
   }
 
@@ -49,10 +53,11 @@ export const useAuthStore = defineStore('auth', () => {
       await api.post('/api/v1/auth/logout')
     } finally {
       user.value = null
+      totpRequired.value = false
       setCsrfToken('')
       useSetupStore().reset()
     }
   }
 
-  return { user, login, loginTotp, fetchMe, logout }
+  return { user, totpRequired, login, loginTotp, fetchMe, logout }
 })

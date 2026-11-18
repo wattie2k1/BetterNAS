@@ -17,6 +17,9 @@ import PowerSettings from '@/views/settings/PowerSettings.vue'
 import ServicesSettings from '@/views/settings/ServicesSettings.vue'
 import FileServicesSettings from '@/views/settings/FileServicesSettings.vue'
 import DockerSettings from '@/views/settings/DockerSettings.vue'
+import SecuritySettings from '@/views/settings/SecuritySettings.vue'
+import LogsSettings from '@/views/settings/LogsSettings.vue'
+import AboutSettings from '@/views/settings/AboutSettings.vue'
 import NetworkSettings from '@/views/settings/NetworkSettings.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
@@ -59,6 +62,9 @@ export const router = createRouter({
             { path: 'dienste', name: 'settings-services', component: ServicesSettings, meta: { title: 'Einstellungen · Dienste' } },
             { path: 'dateidienste', name: 'settings-fileservices', component: FileServicesSettings, meta: { title: 'Einstellungen · Dateidienste' } },
             { path: 'docker', name: 'settings-docker', component: DockerSettings, meta: { title: 'Einstellungen · Docker' } },
+            { path: 'anmeldung', name: 'settings-security', component: SecuritySettings, meta: { title: 'Einstellungen · Anmeldung' } },
+            { path: 'protokolle', name: 'settings-logs', component: LogsSettings, meta: { title: 'Einstellungen · Protokolle' } },
+            { path: 'ueber', name: 'settings-about', component: AboutSettings, meta: { title: 'Einstellungen · Über' } },
             { path: 'benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Einstellungen · Benachrichtigungen' } },
             { path: 'sicherung', name: 'backup', component: BackupView, meta: { title: 'Einstellungen · Sicherung' } },
             { path: 'updates', name: 'updates', component: UpdatesView, meta: { title: 'Einstellungen · Updates' } },
@@ -79,7 +85,10 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
   const auth = useAuthStore()
-  if (auth.user || (await auth.fetchMe())) return (await useSetupStore().firstRunRedirect(to.path)) ?? true
+  if (auth.user || (await auth.fetchMe())) {
+    if (auth.totpRequired && to.name !== 'profile') return { name: 'profile', query: { mfa: 'pflicht' } }
+    return (await useSetupStore().firstRunRedirect(to.path)) ?? true
+  }
   return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} }
 })
 

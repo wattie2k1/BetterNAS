@@ -62,7 +62,10 @@ async function changePassword() {
       </dl>
     </section>
 
-    <TotpCard />
+    <Message v-if="auth.totpRequired" severity="warn" :closable="false" data-test="profile-mfa-required">
+      Für dieses NAS ist die Zwei-Faktor-Anmeldung Pflicht. Richte sie unten ein, danach stehen dir alle Bereiche wieder zur Verfügung.
+    </Message>
+    <TotpCard @changed="auth.fetchMe()" />
 
     <section class="card glass">
       <h2>Passwort ändern</h2>

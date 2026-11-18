@@ -5,6 +5,8 @@ import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { totpApi, type TotpSetup } from '@/api/totp'
 
+const emit = defineEmits<{ changed: [] }>()
+
 type Mode = 'off' | 'setup' | 'codes' | 'on' | 'disable'
 
 const mode = ref<Mode>('off')
@@ -53,6 +55,7 @@ async function enable() {
     recovery.value = (await totpApi.enable(code.value)).recoveryCodes
     code.value = ''
     mode.value = 'codes'
+    emit('changed')
   } catch (e) {
     error.value = msg(e)
   } finally {
