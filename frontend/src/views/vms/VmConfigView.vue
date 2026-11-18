@@ -10,7 +10,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
-import { vmsApi, type VmConfig, type VmConfigUpdate, type VmDisk, type VmUsbDevice } from '@/api/vms'
+import { vmsApi, type VmConfig, type VmConfigUpdate, type VmDisk, type VmLiveUpdate, type VmUsbDevice } from '@/api/vms'
 import DiskAddDialog from '@/components/vms/DiskAddDialog.vue'
 import DiskRemoveDialog from '@/components/vms/DiskRemoveDialog.vue'
 import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
@@ -30,6 +30,10 @@ const saving = ref(false)
 const error = ref('')
 const vcpus = ref<number | null>(2)
 const ramMiB = ref<number | null>(2048)
+// Hot-Plug-Spielraum: Obergrenzen, bis zu denen sich RAM und vCPUs im Betrieb ändern lassen.
+const headroom = ref(false)
+const maxVcpus = ref<number | null>(4)
+const maxRam = ref<number | null>(4096)
 const secureBoot = ref(false)
 const guestAgent = ref(false)
 const network = ref('default')
@@ -89,8 +93,16 @@ async function loadDisks() {
 }
 
 const editable = computed(() => cfg.value?.state === 'shutoff')
+/** Läuft die VM, wirken RAM, vCPUs, USB, CD-Medium und Festplattengröße sofort (bis zu den Maxima). */
+const live = computed(() => cfg.value?.state === 'running' || cfg.value?.state === 'paused')
+const liveEditable = computed(() => editable.value || live.value)
 const inRange = (n: number | null, lo: number, hi: number) => n !== null && Number.isInteger(n) && n >= lo && n <= hi
-const valid = computed(() => inRange(vcpus.value, 1, 64) && inRange(ramMiB.value, 256, 262144) && macValid.value && adv.value.valid)
+const effMaxCpus = computed(() => (headroom.value ? (maxVcpus.value ?? 0) : (vcpus.value ?? 0)))
+const effMaxRam = computed(() => (headroom.value ? (maxRam.value ?? 0) : (ramMiB.value ?? 0)))
+const vcpusMax = computed(() => (live.value ? (cfg.value?.maxVcpus ?? 64) : 64))
+const ramMax = computed(() => (live.value ? (cfg.value?.maxMemoryMiB ?? 262144) : 262144))
+const headroomValid = computed(() => !headroom.value || (inRange(maxVcpus.value, vcpus.value ?? 1, 64) && inRange(maxRam.value, ramMiB.value ?? 256, 262144)))
+const valid = computed(() => inRange(vcpus.value, 1, vcpusMax.value) && inRange(ramMiB.value, 256, ramMax.value) && headroomValid.value && macValid.value && adv.value.valid)
 const dirty = computed(
   () =>
     !!cfg.value &&
@@ -103,6 +115,7 @@ const dirty = computed(
       (cfg.value.boot !== 'custom' && bootFirst.value !== (cfg.value.boot ?? 'hd')) ||
       mac.value.toLowerCase() !== (cfg.value.mac ?? '').toLowerCase() ||
       usbChanged.value ||
+      (!live.value && (effMaxCpus.value !== (cfg.value.maxVcpus ?? cfg.value.vcpus) || effMaxRam.value !== (cfg.value.maxMemoryMiB ?? cfg.value.memoryMiB))) ||
       adv.value.dirty),
 )
 const secureBootChanged = computed(() => !!cfg.value && secureBoot.value !== cfg.value.secureBoot)
@@ -125,6 +138,11 @@ function apply(c: VmConfig) {
   cfg.value = c
   vcpus.value = c.vcpus
   ramMiB.value = c.memoryMiB
+  const mv = c.maxVcpus ?? c.vcpus
+  const mr = c.maxMemoryMiB ?? c.memoryMiB
+  headroom.value = mv > c.vcpus || mr > c.memoryMiB
+  maxVcpus.value = headroom.value ? mv : Math.min(64, c.vcpus * 2)
+  maxRam.value = headroom.value ? mr : Math.min(262144, c.memoryMiB * 2)
   secureBoot.value = c.secureBoot
   guestAgent.value = c.guestAgent
   network.value = c.network
@@ -157,7 +175,21 @@ async function save() {
   saving.value = true
   try {
     const c = cfg.value
+    if (live.value) {
+      const u: VmLiveUpdate = {}
+      if (vcpus.value !== c.vcpus) u.vcpus = vcpus.value!
+      if (ramMiB.value !== c.memoryMiB) u.memoryMiB = ramMiB.value!
+      if (media.value !== c.media) u.media = media.value
+      if (usbChanged.value) u.usb = usbOptions.value.filter((d) => usbSel.value.includes(usbKey(d))).map(({ vendor, product }) => ({ vendor, product }))
+      await vmsApi.live(name, u)
+      toast.add({ severity: 'success', summary: 'Änderungen übernommen', detail: `${name} – wirken sofort`, life: 4000 })
+      await load()
+      void store.refresh()
+      return
+    }
     const upd: VmConfigUpdate = { vcpus: vcpus.value!, memoryMiB: ramMiB.value!, secureBoot: secureBoot.value, network: network.value, media: media.value, guestAgent: guestAgent.value }
+    if (effMaxCpus.value > vcpus.value!) upd.maxVcpus = effMaxCpus.value
+    if (effMaxRam.value > ramMiB.value!) upd.maxMemoryMiB = effMaxRam.value
     if (c.boot !== 'custom' && bootFirst.value !== (c.boot ?? 'hd')) upd.bootFirst = bootFirst.value
     if (mac.value.toLowerCase() !== (c.mac ?? '').toLowerCase()) upd.mac = mac.value.toLowerCase()
     if (usbChanged.value) upd.usb = usbOptions.value.filter((d) => usbSel.value.includes(usbKey(d))).map(({ vendor, product }) => ({ vendor, product }))
@@ -199,16 +231,37 @@ const back = () => router?.push('/vms')
       </h2>
       <Tag :value="stateLabel[cfg.state] ?? cfg.state" :severity="cfg.state === 'running' ? 'success' : cfg.state === 'shutoff' ? 'secondary' : 'warn'" />
     </header>
-    <Message v-if="!editable" severity="info" :closable="false" data-test="cfg-locked">Zum Ändern der Einstellungen muss die VM ausgeschaltet sein. Nur der Autostart lässt sich jederzeit ändern.</Message>
+    <Message v-if="live" severity="info" :closable="false" data-test="cfg-locked">Die VM läuft. Arbeitsspeicher und vCPUs (bis zu den Maxima), USB-Geräte, das CD-Medium und die Festplattengröße wirken sofort („Live übernehmen“). Alles andere lässt sich nur bei ausgeschalteter VM ändern; der Autostart immer.</Message>
+    <Message v-else-if="!editable" severity="info" :closable="false" data-test="cfg-locked">Zum Ändern der Einstellungen muss die VM ausgeschaltet sein. Nur der Autostart lässt sich jederzeit ändern.</Message>
 
     <div class="field">
       <label for="cfg-vcpus">vCPUs</label>
-      <InputNumber v-model="vcpus" input-id="cfg-vcpus" :min="1" :max="64" show-buttons :disabled="!editable" data-test="cfg-vcpus" />
+      <InputNumber v-model="vcpus" input-id="cfg-vcpus" :min="1" :max="vcpusMax" show-buttons :disabled="!liveEditable" data-test="cfg-vcpus" />
+      <small v-if="live" class="hint" data-test="cfg-live-cpu">Wirkt sofort, bis höchstens {{ cfg.maxVcpus }}. Mehr geht nur bei ausgeschalteter VM (Maximum erhöhen).</small>
     </div>
     <div class="field">
       <label for="cfg-ram">Arbeitsspeicher (MiB)</label>
-      <InputNumber v-model="ramMiB" input-id="cfg-ram" :min="256" :max="262144" :step="256" show-buttons :disabled="!editable" data-test="cfg-ram" />
+      <InputNumber v-model="ramMiB" input-id="cfg-ram" :min="256" :max="ramMax" :step="256" show-buttons :disabled="!liveEditable" data-test="cfg-ram" />
+      <small v-if="live" class="hint" data-test="cfg-live-ram">Wirkt sofort, bis höchstens {{ cfg.maxMemoryMiB }} MiB. Der Gast braucht dafür den Balloon-Treiber (Linux: eingebaut, Windows: virtio-win).</small>
       <small class="hint">{{ ramMiB ? (ramMiB / 1024).toFixed(2).replace(/\.?0+$/, '') : '–' }} GiB</small>
+    </div>
+    <div v-if="!live" class="field">
+      <label class="row">
+        <ToggleSwitch v-model="headroom" :disabled="!editable" aria-label="Hot-Plug" data-test="cfg-headroom" />
+        <span>RAM und vCPUs im Betrieb änderbar machen (Hot-Plug)</span>
+      </label>
+      <small class="hint">Legt Obergrenzen fest, bis zu denen sich Arbeitsspeicher und vCPUs bei laufender VM ändern lassen. Die VM startet mit den Werten oben. Ohne Spielraum geht das nur bei ausgeschalteter VM.</small>
+      <div v-if="headroom" class="two">
+        <div class="field">
+          <label for="cfg-maxcpu">Maximale vCPUs</label>
+          <InputNumber v-model="maxVcpus" input-id="cfg-maxcpu" :min="vcpus ?? 1" :max="64" show-buttons :disabled="!editable" data-test="cfg-maxcpu" />
+        </div>
+        <div class="field">
+          <label for="cfg-maxram">Maximaler Arbeitsspeicher (MiB)</label>
+          <InputNumber v-model="maxRam" input-id="cfg-maxram" :min="ramMiB ?? 256" :max="262144" :step="256" show-buttons :disabled="!editable" data-test="cfg-maxram" />
+        </div>
+      </div>
+      <small v-if="!headroomValid" class="hint bad" data-test="cfg-headroom-bad">Die Maxima müssen mindestens so groß sein wie die Werte oben.</small>
     </div>
     <div class="field">
       <label for="cfg-net">Netzwerk</label>
@@ -223,7 +276,7 @@ const back = () => router?.push('/vms')
     </div>
     <div class="field">
       <label for="cfg-media">CD-/DVD-Laufwerk</label>
-      <Select v-model="media" input-id="cfg-media" :options="mediaOptions" option-label="label" option-value="value" :disabled="!editable" data-test="cfg-media" />
+      <Select v-model="media" input-id="cfg-media" :options="mediaOptions" option-label="label" option-value="value" :disabled="!liveEditable || (live && !cfg.hasCdrom)" data-test="cfg-media" />
       <small class="hint">{{ cfg.hasCdrom ? 'Das Medium wird beim nächsten Start vor der Festplatte gebootet.' : 'Die VM hat noch kein Laufwerk; es wird beim Speichern hinzugefügt.' }}</small>
     </div>
     <div class="field">
@@ -244,7 +297,7 @@ const back = () => router?.push('/vms')
       <ul v-if="usbOptions.length" class="usb" data-test="cfg-usb">
         <li v-for="d in usbOptions" :key="usbKey(d)">
           <label class="row">
-            <Checkbox v-model="usbSel" :value="usbKey(d)" :disabled="!editable" :input-id="`usb-${usbKey(d)}`" :data-test="`cfg-usb-${usbKey(d)}`" />
+            <Checkbox v-model="usbSel" :value="usbKey(d)" :disabled="!liveEditable" :input-id="`usb-${usbKey(d)}`" :data-test="`cfg-usb-${usbKey(d)}`" />
             <span>{{ d.name || usbKey(d) }} <small class="hint">{{ usbKey(d) }}</small></span>
           </label>
         </li>
@@ -284,7 +337,7 @@ const back = () => router?.push('/vms')
             <small class="hint">{{ d.sizeGiB ? `${d.sizeGiB} GiB, belegt ${fmtGiB(d.usedBytes)} GiB` : 'Größe unbekannt' }}</small>
           </div>
           <div class="disk-actions">
-            <Button label="Vergrößern" icon="pi pi-arrows-v" size="small" severity="secondary" :disabled="!editable || !d.sizeGiB || !d.path.startsWith('/srv/vms/disks/')" data-test="cfg-disk-resize" @click="openResize(d)" />
+            <Button label="Vergrößern" icon="pi pi-arrows-v" size="small" severity="secondary" :disabled="!liveEditable || !d.sizeGiB || !d.path.startsWith('/srv/vms/disks/')" data-test="cfg-disk-resize" @click="openResize(d)" />
             <Button v-if="i > 0" icon="pi pi-trash" size="small" severity="danger" text aria-label="Festplatte entfernen" :disabled="!editable" data-test="cfg-disk-remove" @click="openRemove(d)" />
           </div>
         </li>
@@ -294,12 +347,12 @@ const back = () => router?.push('/vms')
         <Button label="Festplatte hinzufügen" icon="pi pi-plus" size="small" severity="secondary" :disabled="!editable || !disks.length" data-test="cfg-disk-add" @click="addOpen = true" />
       </div>
     </div>
-    <DiskResizeDialog v-model:visible="resizeOpen" :vm="name" :disk="resizeDisk" @resized="load" />
+    <DiskResizeDialog v-model:visible="resizeOpen" :vm="name" :disk="resizeDisk" :live="live" @resized="load" />
     <RenameDialog v-model:visible="renameOpen" :vm="name" @renamed="renamed" />
     <DiskAddDialog v-model:visible="addOpen" :vm="name" @added="load" />
     <DiskRemoveDialog v-model:visible="removeOpen" :vm="name" :disk="removeDisk" @removed="load" />
 
-    <VmAdvanced :cfg="cfg" :vcpus="vcpus" :editable="editable" :net-options="netOptions" :reset="resetKey" @change="adv = $event" />
+    <VmAdvanced :cfg="cfg" :vcpus="effMaxCpus || vcpus" :editable="editable" :net-options="netOptions" :reset="resetKey" @change="adv = $event" />
 
     <dl class="info">
       <dt>Firmware</dt>
@@ -308,7 +361,7 @@ const back = () => router?.push('/vms')
 
     <footer>
       <Button label="Zurücksetzen" text :disabled="!dirty || saving" data-test="cfg-reset" @click="cfg && apply(cfg)" />
-      <Button label="Speichern" icon="pi pi-check" :loading="saving" :disabled="!editable || !dirty || !valid" data-test="cfg-save" @click="save" />
+      <Button :label="live ? 'Live übernehmen' : 'Speichern'" :icon="live ? 'pi pi-bolt' : 'pi pi-check'" :loading="saving" :disabled="!liveEditable || !dirty || !valid" data-test="cfg-save" @click="save" />
     </footer>
   </section>
   <p v-else-if="!loading && !error" class="empty">VM nicht gefunden.</p>
@@ -350,6 +403,14 @@ const back = () => router?.push('/vms')
 .empty {
   color: var(--bn-text-soft);
   font-size: 0.8rem;
+}
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.hint.bad {
+  color: var(--bn-danger);
 }
 .usb {
   list-style: none;

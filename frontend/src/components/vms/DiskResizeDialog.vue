@@ -9,7 +9,7 @@ import { vmsApi, type VmDisk } from '@/api/vms'
 import SnapshotConfirm from './SnapshotConfirm.vue'
 import { useSnapshotGuard } from './useSnapshotGuard'
 
-const props = defineProps<{ vm: string; disk: VmDisk | null }>()
+const props = defineProps<{ vm: string; disk: VmDisk | null; live?: boolean }>()
 const open = defineModel<boolean>('visible', { required: true })
 const emit = defineEmits<{ resized: [] }>()
 const toast = useToast()
@@ -51,6 +51,7 @@ async function submit() {
         <InputNumber v-model="sizeGiB" input-id="dr-size" :min="minGiB" :max="65536" show-buttons data-test="dr-size" />
       </div>
       <SnapshotConfirm v-model="guard.confirmDelete.value" :snapshots="guard.snapshots.value" prefix="dr" action="Festplatte vergrößern" />
+      <Message v-if="live" severity="info" :closable="false" data-test="dr-live">Die VM läuft: Die neue Größe gilt sofort und der Gast sieht sie ohne Neustart.</Message>
       <Message severity="info" :closable="false">
         Verkleinern ist nicht möglich. Danach muss das System in der VM den neuen Platz nutzen: unter Linux z. B. mit <code>growpart</code> und <code>resize2fs</code> (bzw. <code>xfs_growfs</code>), unter Windows in der Datenträgerverwaltung („Volume erweitern“).
       </Message>

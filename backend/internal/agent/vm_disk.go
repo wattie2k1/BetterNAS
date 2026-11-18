@@ -64,7 +64,7 @@ func clearSnapshots(ctx context.Context, d Deps, name string, allow bool, purpos
 	return nil
 }
 
-// VMDiskResize vergrößert eine Festplatte der ausgeschalteten VM. Interne qcow2-Snapshots verhindern das
+// VMDiskResize vergrößert eine Festplatte, bei ausgeschalteter VM per qemu-img, bei laufender per blockresize. Interne qcow2-Snapshots verhindern das
 // Vergrößern; sie werden nur mit DeleteSnapshots gelöscht, sonst meldet der Agent einen Konflikt.
 func VMDiskResize(ctx context.Context, d Deps, name string, req vm.DiskResize) error {
 	if err := checkDomain(name); err != nil {
@@ -82,8 +82,9 @@ func VMDiskResize(ctx context.Context, d Deps, name string, req vm.DiskResize) e
 	if !exists {
 		return apierr.New(apierr.NotFound, "VM nicht gefunden")
 	}
-	if info.State != "shutoff" {
-		return apierr.New(apierr.Conflict, "Die VM muss zum Vergrößern der Festplatte ausgeschaltet sein")
+	live := info.State == "running" || info.State == "paused"
+	if !live && info.State != "shutoff" {
+		return apierr.New(apierr.Conflict, "Die VM muss zum Vergrößern der Festplatte laufen oder ausgeschaltet sein")
 	}
 	owned := false
 	for _, f := range domainDisks(ctx, d, name) {
@@ -102,6 +103,11 @@ func VMDiskResize(ctx context.Context, d Deps, name string, req vm.DiskResize) e
 		return apierr.New(apierr.InvalidParams, "Die neue Größe muss über der aktuellen liegen (Verkleinern ist nicht möglich)")
 	}
 	if err := clearSnapshots(ctx, d, name, req.DeleteSnapshots, "zum Vergrößern"); err != nil {
+		return err
+	}
+	if live {
+		// Laufende VM: QEMU vergrößert das Image im Betrieb, der Gast sieht die neue Größe sofort.
+		_, err := virshOK(ctx, d, nil, "Die Festplatte konnte nicht vergrößert werden", "blockresize", name, req.Path, strconv.Itoa(req.SizeGiB)+"G")
 		return err
 	}
 	if _, err := run(ctx, d.Runner, nil, "qemu-img", "resize", req.Path, strconv.Itoa(req.SizeGiB)+"G"); err != nil {

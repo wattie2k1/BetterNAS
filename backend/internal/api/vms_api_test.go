@@ -373,3 +373,20 @@ func TestRenameRoute(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func TestLiveRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	body := `{"memoryMiB":6144,"vcpus":3,"usb":[{"vendor":"1a86","product":"7523"}],"media":"a.iso"}`
+	if w := s.do("POST", "/api/v1/vms/debian/live", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	p, _ := stub.calls["vm.live"].(map[string]any)
+	if p["name"] != "debian" || p["memoryMiB"] != float64(6144) || p["vcpus"] != float64(3) || p["media"] != "a.iso" || len(p["usb"].([]any)) != 1 {
+		t.Fatalf("%v", p)
+	}
+	for _, bad := range []string{`{"memoryMiB":10}`, `{"vcpus":100}`, `{"media":"../x.iso"}`, `{"usb":[{"vendor":"x","product":"y"}]}`, `kaputt`} {
+		if w := s.do("POST", "/api/v1/vms/debian/live", bad); w.Code != 400 {
+			t.Fatalf("%q: %d", bad, w.Code)
+		}
+	}
+}

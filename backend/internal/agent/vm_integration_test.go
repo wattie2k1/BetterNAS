@@ -527,3 +527,94 @@ func TestVMRenameLibvirt(t *testing.T) {
 		t.Fatalf("Start nach Umbenennen: %v", err)
 	}
 }
+
+// TestVMLiveLibvirt ändert eine laufende VM im Betrieb (echtes libvirt/QEMU): RAM, vCPUs, Medium, Festplattengröße.
+// USB-Durchreichen wird bewusst nicht gegen echte Hardware getestet.
+func TestVMLiveLibvirt(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	st, _ := VMStatus(ctx, d)
+	if !st.Active || !st.KVM {
+		t.Skip("libvirt/KVM nicht verfügbar")
+	}
+	const name = "bnas-it-live"
+	isoA, isoB := "bnas-it-live-a.iso", "bnas-it-live-b.iso"
+	t.Cleanup(func() {
+		_ = VMAction(ctx, d, name, "destroy")
+		_ = VMDelete(ctx, d, name, true)
+		_ = os.Remove(vm.ISOPath(isoA))
+		_ = os.Remove(vm.ISOPath(isoB))
+	})
+	_ = VMAction(ctx, d, name, "destroy")
+	_ = VMDelete(ctx, d, name, true)
+	_ = os.MkdirAll(vm.ISODir, 0o755)
+	for _, f := range []string{isoA, isoB} {
+		if out, err := exec.Command("qemu-img", "create", "-f", "raw", vm.ISOPath(f), "1M").CombinedOutput(); err != nil {
+			t.Fatalf("%s: %v", out, err)
+		}
+	}
+
+	spec := vm.Spec{Name: name, OS: "linux", Firmware: "bios", Network: "default", ISO: isoA, VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	c, err := VMConfig(ctx, d, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Spielraum festlegen (VM ausgeschaltet), dann starten.
+	u := vm.ConfigUpdate{VCPUs: 1, MaxVCPUs: 2, MemoryMiB: 256, MaxMemoryMiB: 512, SecureBoot: c.SecureBoot, Network: "default", Media: isoA, GuestAgent: true}
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatalf("Spielraum: %v", err)
+	}
+	if c, _ = VMConfig(ctx, d, name); c.MaxVCPUs != 2 || c.MaxMemoryMiB != 512 || c.VCPUs != 1 || c.MemoryMiB != 256 {
+		t.Fatalf("%+v", c)
+	}
+	if err := VMAction(ctx, d, name, "start"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+
+	// Über dem Maximum wird abgelehnt.
+	mem, cpus := 1024, 4
+	if code(VMLive(ctx, d, name, vm.LiveUpdate{MemoryMiB: &mem})) != apierr.InvalidParams || code(VMLive(ctx, d, name, vm.LiveUpdate{VCPUs: &cpus})) != apierr.InvalidParams {
+		t.Fatal("Maximum muss durchgesetzt werden")
+	}
+	mem, cpus = 384, 2
+	media := isoB
+	if err := VMLive(ctx, d, name, vm.LiveUpdate{MemoryMiB: &mem, VCPUs: &cpus, Media: &media}); err != nil {
+		t.Fatalf("Live-Änderung: %v", err)
+	}
+	c, err = VMConfig(ctx, d, name) // gespeicherte Konfiguration
+	if err != nil || c.MemoryMiB != 384 || c.VCPUs != 2 || c.Media != isoB {
+		t.Fatalf("gespeichert: %+v %v", c, err)
+	}
+	res, _ := virsh(ctx, d, nil, "dumpxml", name) // laufende Konfiguration
+	live, _ := vm.ParseConfig(res.Stdout)
+	if live.VCPUs != 2 || live.Media != isoB {
+		t.Fatalf("laufend: %+v", live)
+	}
+	// Auswerfen
+	empty := ""
+	if err := VMLive(ctx, d, name, vm.LiveUpdate{Media: &empty}); err != nil {
+		t.Fatalf("Auswerfen: %v", err)
+	}
+	if c, _ = VMConfig(ctx, d, name); c.Media != "" || !c.HasCDROM {
+		t.Fatalf("%+v", c)
+	}
+	// Festplatte im Betrieb vergrößern
+	if err := VMDiskResize(ctx, d, name, vm.DiskResize{Path: vm.DiskPath(name), SizeGiB: 2}); err != nil {
+		t.Fatalf("blockresize: %v", err)
+	}
+	if disks, _ := VMDisks(ctx, d, name); len(disks) != 1 || disks[0].SizeGiB != 2 {
+		t.Fatalf("%+v", disks)
+	}
+}

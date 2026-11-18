@@ -38,7 +38,11 @@ export interface VmConfig {
   name: string
   state: VmState
   vcpus: number
+  /** Obergrenze der vCPUs für Hot-Plug im Betrieb (gleich `vcpus` = kein Spielraum). */
+  maxVcpus: number
   memoryMiB: number
+  /** Obergrenze des Arbeitsspeichers für Hot-Plug im Betrieb. */
+  maxMemoryMiB: number
   autostart: boolean
   firmware: 'uefi' | 'bios'
   secureBoot: boolean
@@ -90,6 +94,9 @@ export interface VmConfigUpdate {
   network: string
   media: string
   guestAgent: boolean
+  /** 0 oder fehlend = wie der aktuelle Wert (kein Spielraum für Hot-Plug). */
+  maxVcpus?: number
+  maxMemoryMiB?: number
   /** Optional: fehlt ein Feld, bleibt der Wert unverändert. */
   bootFirst?: 'hd' | 'cdrom'
   mac?: string
@@ -113,6 +120,15 @@ export interface VmDiskResize {
   path: string
   sizeGiB: number
   deleteSnapshots: boolean
+}
+
+/** Änderungen an einer laufenden VM; fehlende Felder bleiben unverändert. */
+export interface VmLiveUpdate {
+  memoryMiB?: number
+  vcpus?: number
+  usb?: VmUsbDevice[]
+  /** Leer = Medium auswerfen. */
+  media?: string
 }
 
 export interface VmDiskAdd {
@@ -188,6 +204,7 @@ export const vmsApi = {
   configure: (name: string, u: VmConfigUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/config`, u),
   usb: () => api.get<VmUsbDevice[]>('/api/v1/vms/usb'),
   disks: (name: string) => api.get<VmDisk[]>(`/api/v1/vms/${enc(name)}/disks`),
+  live: (name: string, u: VmLiveUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/live`, u),
   rename: (name: string, r: VmRename) => api.post<void>(`/api/v1/vms/${enc(name)}/rename`, r),
   diskAdd: (name: string, a: VmDiskAdd) => api.post<{ path: string }>(`/api/v1/vms/${enc(name)}/disks`, a),
   diskRemove: (name: string, r: VmDiskRemove) => api.post<void>(`/api/v1/vms/${enc(name)}/disks/remove`, r),

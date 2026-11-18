@@ -19,22 +19,24 @@ const NvramDir = "/var/lib/libvirt/qemu/nvram/"
 
 // Config ist die änderbare Konfiguration einer VM (aus der inaktiven Domain-XML gelesen).
 type Config struct {
-	Name       string      `json:"name"`
-	State      string      `json:"state"`
-	VCPUs      int         `json:"vcpus"`
-	MemoryMiB  int         `json:"memoryMiB"`
-	Autostart  bool        `json:"autostart"`
-	Firmware   string      `json:"firmware"` // uefi | bios
-	SecureBoot bool        `json:"secureBoot"`
-	TPM        bool        `json:"tpm"`
-	GuestAgent bool        `json:"guestAgent"` // Kanal für den QEMU-Guest-Agent (Herunterfahren, IP-Anzeige)
-	Network    string      `json:"network"`    // „default“, „direct:eno1“ oder „bridge:br0“
-	HasCDROM   bool        `json:"hasCdrom"`   // mindestens ein CD-Laufwerk
-	Media      string      `json:"media"`      // Dateiname der eingelegten ISO ("" = leer)
-	Disks      []string    `json:"disks"`
-	Boot       string      `json:"boot"` // hd | cdrom (zuerst) | custom (Reihenfolge pro Gerät, nicht änderbar)
-	MAC        string      `json:"mac"`  // MAC-Adresse der ersten Netzwerkkarte
-	USB        []USBDevice `json:"usb"`  // durchgereichte USB-Geräte
+	Name         string      `json:"name"`
+	State        string      `json:"state"`
+	VCPUs        int         `json:"vcpus"`        // aktuell aktive vCPUs
+	MaxVCPUs     int         `json:"maxVcpus"`     // Obergrenze für das Hinzuschalten im Betrieb
+	MemoryMiB    int         `json:"memoryMiB"`    // aktueller Arbeitsspeicher
+	MaxMemoryMiB int         `json:"maxMemoryMiB"` // Obergrenze für das Erhöhen im Betrieb
+	Autostart    bool        `json:"autostart"`
+	Firmware     string      `json:"firmware"` // uefi | bios
+	SecureBoot   bool        `json:"secureBoot"`
+	TPM          bool        `json:"tpm"`
+	GuestAgent   bool        `json:"guestAgent"` // Kanal für den QEMU-Guest-Agent (Herunterfahren, IP-Anzeige)
+	Network      string      `json:"network"`    // „default“, „direct:eno1“ oder „bridge:br0“
+	HasCDROM     bool        `json:"hasCdrom"`   // mindestens ein CD-Laufwerk
+	Media        string      `json:"media"`      // Dateiname der eingelegten ISO ("" = leer)
+	Disks        []string    `json:"disks"`
+	Boot         string      `json:"boot"` // hd | cdrom (zuerst) | custom (Reihenfolge pro Gerät, nicht änderbar)
+	MAC          string      `json:"mac"`  // MAC-Adresse der ersten Netzwerkkarte
+	USB          []USBDevice `json:"usb"`  // durchgereichte USB-Geräte
 	Tuning
 }
 
@@ -61,11 +63,22 @@ type ConfigUpdate struct {
 	Network    string `json:"network"`
 	Media      string `json:"media"` // "" = Laufwerk leer
 	GuestAgent bool   `json:"guestAgent"`
+	// Obergrenzen für Hot-Plug im Betrieb; 0 = wie der aktuelle Wert (kein Spielraum).
+	MaxVCPUs     int `json:"maxVcpus"`
+	MaxMemoryMiB int `json:"maxMemoryMiB"`
 	// Die folgenden Felder lassen den Wert unverändert, wenn sie fehlen („“ bzw. null).
 	BootFirst string       `json:"bootFirst"` // hd | cdrom
 	MAC       string       `json:"mac"`
 	USB       *[]USBDevice `json:"usb"`
 	TuningUpdate
+}
+
+// totalVCPUs ist die Obergrenze der vCPUs (Summe aus Sockets × Kerne × Threads).
+func (u ConfigUpdate) totalVCPUs() int {
+	if u.MaxVCPUs > u.VCPUs {
+		return u.MaxVCPUs
+	}
+	return u.VCPUs
 }
 
 // Validate prüft alle Felder gegen die festen Grenzen.
@@ -79,6 +92,10 @@ func (u ConfigUpdate) Validate() error {
 		return invalid("Ungültige USB-Geräteliste (höchstens 8 Geräte, keine Doppelten)")
 	case u.VCPUs < MinVCPUs || u.VCPUs > MaxVCPUs:
 		return invalid("vCPUs: 1 bis 64")
+	case u.MaxVCPUs != 0 && (u.MaxVCPUs < u.VCPUs || u.MaxVCPUs > MaxVCPUs):
+		return invalid("Maximale vCPUs: mindestens die aktuelle Zahl, höchstens 64")
+	case u.MaxMemoryMiB != 0 && (u.MaxMemoryMiB < u.MemoryMiB || u.MaxMemoryMiB > MaxMemoryMiB):
+		return invalid("Maximaler Arbeitsspeicher: mindestens der aktuelle Wert, höchstens 256 GiB")
 	case u.MemoryMiB < MinMemoryMiB || u.MemoryMiB > MaxMemoryMiB:
 		return invalid("Arbeitsspeicher: 256 MiB bis 256 GiB")
 	case !ValidNetwork(u.Network):
@@ -95,8 +112,15 @@ type domXML struct {
 		Unit string `xml:"unit,attr"`
 		V    int    `xml:",chardata"`
 	} `xml:"memory"`
-	VCPU int `xml:"vcpu"`
-	OS   struct {
+	VCPU struct {
+		Current int `xml:"current,attr"`
+		V       int `xml:",chardata"`
+	} `xml:"vcpu"`
+	CurMemory struct {
+		Unit string `xml:"unit,attr"`
+		V    int    `xml:",chardata"`
+	} `xml:"currentMemory"`
+	OS struct {
 		Firmware string `xml:"firmware,attr"`
 		FW       struct {
 			Features []struct {
@@ -160,8 +184,15 @@ func ParseConfig(xmlData []byte) (Config, error) {
 	if err := xml.NewDecoder(bytes.NewReader(xmlData)).Decode(&d); err != nil {
 		return Config{}, err
 	}
-	c := Config{Name: d.Name, VCPUs: d.VCPU, Firmware: "bios", Disks: []string{}, Tuning: parseTuning(xmlData)}
-	c.MemoryMiB = int(float64(d.Memory.V)*mibPerUnit[d.Memory.Unit] + 0.5)
+	c := Config{Name: d.Name, VCPUs: d.VCPU.V, MaxVCPUs: d.VCPU.V, Firmware: "bios", Disks: []string{}, Tuning: parseTuning(xmlData)}
+	if d.VCPU.Current > 0 {
+		c.VCPUs = d.VCPU.Current
+	}
+	c.MaxMemoryMiB = int(float64(d.Memory.V)*mibPerUnit[d.Memory.Unit] + 0.5)
+	c.MemoryMiB = c.MaxMemoryMiB
+	if d.CurMemory.V > 0 {
+		c.MemoryMiB = int(float64(d.CurMemory.V)*mibPerUnit[d.CurMemory.Unit] + 0.5)
+	}
 	if d.OS.Firmware == "efi" || d.OS.Loader.Type == "pflash" {
 		c.Firmware = "uefi"
 	}
@@ -235,6 +266,7 @@ var (
 	reMemory     = regexp.MustCompile(`<memory\b[^>]*>\d+</memory>`)
 	reCurMemory  = regexp.MustCompile(`<currentMemory\b[^>]*>\d+</currentMemory>`)
 	reVCPU       = regexp.MustCompile(`<vcpu\b([^>]*)>\d+</vcpu>`)
+	reVCPUCur    = regexp.MustCompile(` current='[^']*'`)
 	reFirmware   = regexp.MustCompile(`(?s)[ \t]*<firmware>.*?</firmware>\n?`)
 	reLoader     = regexp.MustCompile(`[ \t]*(?:<loader\b[^>]*/>|<loader\b[^>]*>[^<]*</loader>)\n?`)
 	reNvram      = regexp.MustCompile(`[ \t]*(?:<nvram\b[^>]*/>|<nvram\b[^>]*>[^<]*</nvram>)\n?`)
@@ -327,9 +359,25 @@ func ApplyConfig(xmlStr string, u ConfigUpdate) (string, string, error) {
 	out := xmlStr
 	nvram := ""
 
-	out = reMemory.ReplaceAllString(out, fmt.Sprintf("<memory unit='KiB'>%d</memory>", u.MemoryMiB*1024))
-	out = reCurMemory.ReplaceAllString(out, fmt.Sprintf("<currentMemory unit='KiB'>%d</currentMemory>", u.MemoryMiB*1024))
-	out = reVCPU.ReplaceAllString(out, fmt.Sprintf("<vcpu${1}>%d</vcpu>", u.VCPUs))
+	maxMem := u.MaxMemoryMiB
+	if maxMem == 0 {
+		maxMem = u.MemoryMiB
+	}
+	out = reMemory.ReplaceAllString(out, fmt.Sprintf("<memory unit='KiB'>%d</memory>", maxMem*1024))
+	curMem := fmt.Sprintf("<currentMemory unit='KiB'>%d</currentMemory>", u.MemoryMiB*1024)
+	if reCurMemory.MatchString(out) {
+		out = reCurMemory.ReplaceAllString(out, curMem)
+	} else if maxMem != u.MemoryMiB {
+		out = reMemory.ReplaceAllStringFunc(out, func(m string) string { return m + "\n  " + curMem })
+	}
+	out = reVCPU.ReplaceAllStringFunc(out, func(m string) string {
+		attrs := reVCPU.FindStringSubmatch(m)[1]
+		attrs = reVCPUCur.ReplaceAllString(attrs, "")
+		if mx := u.totalVCPUs(); mx != u.VCPUs {
+			attrs += fmt.Sprintf(" current='%d'", u.VCPUs)
+		}
+		return fmt.Sprintf("<vcpu%s>%d</vcpu>", attrs, u.totalVCPUs())
+	})
 
 	if u.SecureBoot != cur.SecureBoot {
 		if cur.Firmware != "uefi" || !reOSFirmware.MatchString(out) {

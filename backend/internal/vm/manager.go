@@ -312,6 +312,23 @@ func (m *Manager) ResizeDisk(ctx context.Context, actor, name string, r DiskResi
 	return err
 }
 
+// Live ändert eine laufende VM im Betrieb (Arbeitsspeicher, vCPUs, USB, Medium).
+func (m *Manager) Live(ctx context.Context, actor, name string, u LiveUpdate) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if err := u.Validate(); err != nil {
+		return err
+	}
+	params := struct {
+		Name string `json:"name"`
+		LiveUpdate
+	}{name, u}
+	err := m.agent.Call(ctx, "vm.live", params, nil)
+	m.record(ctx, actor, "vm.live", name, err)
+	return err
+}
+
 // Rename benennt eine ausgeschaltete VM um.
 func (m *Manager) Rename(ctx context.Context, actor, name string, r Rename) error {
 	if err := checkName(name); err != nil {

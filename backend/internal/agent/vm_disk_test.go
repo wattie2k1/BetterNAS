@@ -62,10 +62,10 @@ func TestVMDiskResizeSnapshots(t *testing.T) {
 }
 
 func TestVMDiskResizeRejects(t *testing.T) {
-	d, f := diskEnv(t, "running")
+	d, f := diskEnv(t, "crashed")
 	req := vm.DiskResize{Path: haosDisk, SizeGiB: 64}
 	if code(VMDiskResize(context.Background(), d, "homeassistant", req)) != apierr.Conflict {
-		t.Fatal("laufende VM")
+		t.Fatal("abgestürzte VM")
 	}
 	d, f = diskEnv(t, "shut off")
 	req.SizeGiB = 32
@@ -159,4 +159,15 @@ func mustRead(t *testing.T, p string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestVMDiskResizeLive(t *testing.T) {
+	d, f := diskEnv(t, "running")
+	f.Responses[v+"snapshot-list homeassistant"] = sysexec.Result{Stdout: []byte("")}
+	if err := VMDiskResize(context.Background(), d, "homeassistant", vm.DiskResize{Path: haosDisk, SizeGiB: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called(v+"blockresize homeassistant "+haosDisk+" 64G") || f.Called("qemu-img resize") {
+		t.Fatal(f.Calls)
+	}
 }

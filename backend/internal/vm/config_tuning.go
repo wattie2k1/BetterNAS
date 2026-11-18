@@ -68,7 +68,7 @@ func (u ConfigUpdate) validateTuning() error {
 		if t.Sockets < 1 || t.Sockets > MaxVCPUs || t.Threads < 1 || t.Threads > 8 {
 			return invalid("Ungültige CPU-Topologie")
 		}
-		if u.VCPUs%(t.Sockets*t.Threads) != 0 {
+		if u.totalVCPUs()%(t.Sockets*t.Threads) != 0 {
 			return invalid("Die vCPUs müssen durch Sockets × Threads teilbar sein")
 		}
 	}
@@ -231,8 +231,8 @@ func (c Config) topologyAfter(u ConfigUpdate) (*Topology, error) {
 	switch {
 	case u.Topology != nil:
 		return u.Topology, nil
-	case c.Sockets > 0 && u.VCPUs != c.VCPUs:
-		if u.VCPUs%(c.Sockets*c.Threads) != 0 {
+	case c.Sockets > 0 && u.totalVCPUs() != c.MaxVCPUs:
+		if u.totalVCPUs()%(c.Sockets*c.Threads) != 0 {
 			return nil, invalid("Die neue vCPU-Zahl passt nicht zur CPU-Topologie (Sockets × Threads) – Topologie mit anpassen")
 		}
 		return &Topology{Sockets: c.Sockets, Threads: c.Threads}, nil
@@ -267,7 +267,7 @@ func applyTuning(out string, cur Config, u ConfigUpdate) (string, error) {
 		}
 		if topo != nil {
 			body = reTopology.ReplaceAllString(body, "")
-			body = fmt.Sprintf("\n    <topology sockets='%d' dies='1' cores='%d' threads='%d'/>", topo.Sockets, u.VCPUs/(topo.Sockets*topo.Threads), topo.Threads) + strings.TrimRight(body, " \t")
+			body = fmt.Sprintf("\n    <topology sockets='%d' dies='1' cores='%d' threads='%d'/>", topo.Sockets, u.totalVCPUs()/(topo.Sockets*topo.Threads), topo.Threads) + strings.TrimRight(body, " \t")
 			if !strings.HasSuffix(body, "\n  ") {
 				body += "\n  "
 			}

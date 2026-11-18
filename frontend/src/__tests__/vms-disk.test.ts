@@ -48,10 +48,18 @@ afterEach(() => {
 })
 
 describe('Festplatte vergrößern', () => {
-  it('zeigt Größe und sperrt den Knopf bei laufender VM', async () => {
+  it('zeigt Größe; Vergrößern geht bei laufender VM live, bei abgestürzter nicht', async () => {
     route('running')
-    const w = await mountView()
+    let w = await mountView()
     expect(w.find('[data-test="cfg-disks"]').text()).toContain('32 GiB, belegt 2 GiB')
+    expect(w.find('button[data-test="cfg-disk-resize"]').attributes('disabled')).toBeUndefined()
+    await w.find('button[data-test="cfg-disk-resize"]').trigger('click')
+    await flushPromises()
+    expect(q('[data-test="dr-live"]')).not.toBeNull()
+    w.unmount()
+    document.body.innerHTML = ''
+    route('crashed')
+    w = await mountView()
     expect(w.find('button[data-test="cfg-disk-resize"]').attributes('disabled')).toBeDefined()
     w.unmount()
   })
