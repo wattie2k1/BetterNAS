@@ -62,6 +62,13 @@ export interface UpdateInfo {
   errors: string[]
 }
 
+/** Einstellungen der automatischen Updates (Uhrzeit HH:MM, Ortszeit des Geräts). */
+export interface AutoUpdateConfig {
+  enabled: boolean
+  time: string
+  stacks: string[]
+}
+
 export interface UpdateReport {
   checkedAt: string
   stacks: Record<string, UpdateInfo>
@@ -137,6 +144,9 @@ export const dockerApi = {
   stats: () => api.get<ContainerStats[]>('/api/v1/containers/stats'),
   updates: () => api.get<UpdateReport>('/api/v1/docker/updates'),
   checkUpdates: () => api.post<{ jobId: string }>('/api/v1/docker/updates/check'),
+  autoUpdate: () => api.get<AutoUpdateConfig>('/api/v1/docker/autoupdate'),
+  setAutoUpdate: (c: AutoUpdateConfig) => api.put<AutoUpdateConfig>('/api/v1/docker/autoupdate', c),
+  runAutoUpdate: () => api.post<{ jobId: string }>('/api/v1/docker/autoupdate/run'),
   images: () => api.get<ImageInfo[]>('/api/v1/docker/images'),
   networks: () => api.get<NetworkInfo[]>('/api/v1/docker/networks'),
   volumes: () => api.get<VolumeInfo[]>('/api/v1/docker/volumes'),

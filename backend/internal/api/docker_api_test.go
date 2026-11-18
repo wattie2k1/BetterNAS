@@ -195,3 +195,25 @@ func TestDockerResourceRoutes(t *testing.T) {
 		t.Fatalf("prune ohne Body %d %s", w.Code, w.Body)
 	}
 }
+
+func TestDockerAutoUpdateRoutes(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/docker/autoupdate", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":false`) || !strings.Contains(w.Body.String(), `"stacks":[]`) {
+		t.Fatalf("Standard %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/docker/autoupdate/run", ""); w.Code != 400 {
+		t.Fatalf("ohne Stacks %d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/docker/autoupdate", `{"enabled":true,"time":"25:00","stacks":[]}`); w.Code != 400 {
+		t.Fatalf("ungültige Zeit %d %s", w.Code, w.Body)
+	}
+	w := s.do("PUT", "/api/v1/docker/autoupdate", `{"enabled":true,"time":"03:30","stacks":["gone"]}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"time":"03:30"`) || !strings.Contains(w.Body.String(), `"stacks":["gone"]`) {
+		t.Fatalf("speichern %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/docker/autoupdate/run", ""); w.Code != 202 {
+		t.Fatalf("run %d %s", w.Code, w.Body)
+	} else {
+		s.waitJob(t, w.Body.Bytes())
+	}
+}

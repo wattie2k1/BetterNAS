@@ -34,11 +34,19 @@ type Manager struct {
 	jobs      *jobs.Manager
 	hub       *events.Hub
 	pollEvery time.Duration
+
+	// Auto-Update: Planer und Gesundheitsprüfung (in Tests verkürzt).
+	now           func() time.Time
+	after         func(time.Duration) <-chan time.Time
+	wake          chan struct{}
+	healthSettle  time.Duration // so lange müssen alle Container ununterbrochen gesund sein
+	healthTimeout time.Duration // so lange wird auf einen gesunden Stack gewartet
 }
 
 // NewManager erzeugt den Manager.
 func NewManager(d *sql.DB, a Agent, j *jobs.Manager, hub *events.Hub) *Manager {
-	return &Manager{db: d, agent: a, jobs: j, hub: hub, pollEvery: 2 * time.Second}
+	return &Manager{db: d, agent: a, jobs: j, hub: hub, pollEvery: 2 * time.Second,
+		now: time.Now, after: time.After, wake: make(chan struct{}, 1), healthSettle: time.Minute, healthTimeout: 10 * time.Minute}
 }
 
 const (
@@ -143,8 +151,9 @@ func (m *Manager) DeleteStack(ctx context.Context, actor, name string) error {
 	return err
 }
 
-// RunStack startet eine Stack-Aktion und begleitet sie als Job, bis die Unit des Agents fertig ist.
-func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (string, error) {
+// startStack startet eine Stack-Aktion beim Agent und liefert den Namen der Lauf-Unit.
+// Der Agent prüft Existenz, Gültigkeit und laufende Vorgänge synchron; Fehler gehen direkt an den Aufrufer.
+func (m *Manager) startStack(ctx context.Context, actor, name, action string) (string, error) {
 	if err := checkName(name); err != nil {
 		return "", err
 	}
@@ -154,52 +163,66 @@ func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (str
 	var res struct {
 		Unit string `json:"unit"`
 	}
-	// Der Agent prüft Existenz, Gültigkeit und laufende Vorgänge synchron; Fehler gehen direkt an den Aufrufer.
 	err := m.agent.Call(ctx, "stack.run", map[string]string{"name": name, "action": action}, &res)
 	m.record(ctx, actor, "stack."+action, name, err)
 	if err != nil {
 		return "", err
 	}
-	return m.jobs.Start("stack."+action, name, actor, func(ctx context.Context, log jobs.Logger) error {
-		defer m.hub.Publish(events.Message{Type: changedEvent})
-		log.Printf("Stack %s: %s …", name, action)
-		deadline, shown, errs := time.Now().Add(maxRunTime), "", 0
-		for {
-			time.Sleep(m.pollEvery)
-			var st RunState
-			if err := m.agent.Call(ctx, "stack.runstatus", map[string]string{"unit": res.Unit}, &st); err != nil {
-				if errs++; errs >= maxPollErrors {
-					return err
-				}
-				continue
+	return res.Unit, nil
+}
+
+// waitStack begleitet einen gestarteten Lauf, bis die Unit des Agents fertig ist, und führt danach die
+// Nacharbeiten der Aktion aus (Update-Merker, Rollback-Stand).
+func (m *Manager) waitStack(ctx context.Context, log jobs.Logger, name, action, unit string) error {
+	defer m.hub.Publish(events.Message{Type: changedEvent})
+	log.Printf("Stack %s: %s …", name, action)
+	deadline, shown, errs := time.Now().Add(maxRunTime), "", 0
+	for {
+		time.Sleep(m.pollEvery)
+		var st RunState
+		if err := m.agent.Call(ctx, "stack.runstatus", map[string]string{"unit": unit}, &st); err != nil {
+			if errs++; errs >= maxPollErrors {
+				return err
 			}
-			errs = 0
-			if st.Log != shown {
-				if rest, ok := strings.CutPrefix(st.Log, shown); ok {
-					log.Printf("%s", strings.TrimLeft(rest, "\n"))
-				} else {
-					log.Printf("%s", st.Log)
-				}
-				shown = st.Log
-			}
-			switch st.State {
-			case "succeeded":
-				switch action {
-				case "update":
-					m.forgetUpdate(ctx, name)
-					// Hat das Update Images verändert, wird der vorherige Stand zum Rollback-Stand.
-					_ = m.agent.Call(ctx, "stack.rollback.commit", map[string]string{"name": name}, nil)
-				case "rollback":
-					_ = m.agent.Call(ctx, "stack.rollback.clear", map[string]string{"name": name}, nil)
-				}
-				return nil
-			case "failed":
-				return apierr.New(apierr.Conflict, "Der Vorgang ist fehlgeschlagen (Protokoll siehe oben).")
-			}
-			if time.Now().After(deadline) {
-				return apierr.New(apierr.Internal, "Der Vorgang dauert zu lange.")
-			}
+			continue
 		}
+		errs = 0
+		if st.Log != shown {
+			if rest, ok := strings.CutPrefix(st.Log, shown); ok {
+				log.Printf("%s", strings.TrimLeft(rest, "\n"))
+			} else {
+				log.Printf("%s", st.Log)
+			}
+			shown = st.Log
+		}
+		switch st.State {
+		case "succeeded":
+			switch action {
+			case "update":
+				m.forgetUpdate(ctx, name)
+				// Hat das Update Images verändert, wird der vorherige Stand zum Rollback-Stand.
+				_ = m.agent.Call(ctx, "stack.rollback.commit", map[string]string{"name": name}, nil)
+			case "rollback":
+				_ = m.agent.Call(ctx, "stack.rollback.clear", map[string]string{"name": name}, nil)
+			}
+			return nil
+		case "failed":
+			return apierr.New(apierr.Conflict, "Der Vorgang ist fehlgeschlagen (Protokoll siehe oben).")
+		}
+		if time.Now().After(deadline) {
+			return apierr.New(apierr.Internal, "Der Vorgang dauert zu lange.")
+		}
+	}
+}
+
+// RunStack startet eine Stack-Aktion und begleitet sie als Job.
+func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (string, error) {
+	unit, err := m.startStack(ctx, actor, name, action)
+	if err != nil {
+		return "", err
+	}
+	return m.jobs.Start("stack."+action, name, actor, func(ctx context.Context, log jobs.Logger) error {
+		return m.waitStack(ctx, log, name, action, unit)
 	}), nil
 }
 
@@ -292,48 +315,53 @@ func (m *Manager) forgetUpdate(ctx context.Context, name string) {
 	}
 }
 
+// runCheck vergleicht die Image-Digests aller Stacks mit den Registries und speichert das Ergebnis.
+func (m *Manager) runCheck(ctx context.Context, log jobs.Logger) error {
+	stacks, err := m.ListStacks(ctx)
+	if err != nil {
+		return err
+	}
+	rep := UpdateReport{CheckedAt: time.Now().UTC().Format(time.RFC3339), Stacks: map[string]UpdateInfo{}}
+	for i, s := range stacks {
+		log.Printf("Prüfe Stack %s …", s.Name)
+		info := UpdateInfo{Outdated: []string{}, Errors: []string{}}
+		var images []string
+		if err := m.agent.Call(ctx, "stack.images", map[string]string{"name": s.Name}, &images); err != nil {
+			info.Errors = append(info.Errors, apierr.From(err).Message)
+		} else if len(images) > 0 {
+			var sts []ImageStatus
+			if err := m.agent.Call(ctx, "image.digests", map[string]any{"images": images}, &sts); err != nil {
+				info.Errors = append(info.Errors, apierr.From(err).Message)
+			}
+			for _, st := range sts {
+				switch {
+				case st.Outdated:
+					info.Outdated = append(info.Outdated, st.Image)
+				case st.Error != "":
+					info.Errors = append(info.Errors, st.Image+": "+st.Error)
+				}
+			}
+		}
+		rep.Stacks[s.Name] = info
+		if len(info.Outdated) > 0 {
+			log.Printf("  Updates verfügbar für: %s", strings.Join(info.Outdated, ", "))
+		}
+		log.SetProgress((i + 1) * 100 / len(stacks))
+	}
+	if err := m.saveReport(ctx, rep); err != nil {
+		return err
+	}
+	log.Printf("Prüfung abgeschlossen.")
+	return nil
+}
+
 // CheckUpdates vergleicht als Job die Image-Digests aller Stacks mit den Registries.
 func (m *Manager) CheckUpdates(ctx context.Context, actor string) (string, error) {
 	return m.jobs.Start("docker.updatecheck", "docker", actor, func(ctx context.Context, log jobs.Logger) (err error) {
 		defer func() {
 			m.record(ctx, actor, "docker.updatecheck", "docker", err)
 		}()
-		stacks, err := m.ListStacks(ctx)
-		if err != nil {
-			return err
-		}
-		rep := UpdateReport{CheckedAt: time.Now().UTC().Format(time.RFC3339), Stacks: map[string]UpdateInfo{}}
-		for i, s := range stacks {
-			log.Printf("Prüfe Stack %s …", s.Name)
-			info := UpdateInfo{Outdated: []string{}, Errors: []string{}}
-			var images []string
-			if err := m.agent.Call(ctx, "stack.images", map[string]string{"name": s.Name}, &images); err != nil {
-				info.Errors = append(info.Errors, apierr.From(err).Message)
-			} else if len(images) > 0 {
-				var sts []ImageStatus
-				if err := m.agent.Call(ctx, "image.digests", map[string]any{"images": images}, &sts); err != nil {
-					info.Errors = append(info.Errors, apierr.From(err).Message)
-				}
-				for _, st := range sts {
-					switch {
-					case st.Outdated:
-						info.Outdated = append(info.Outdated, st.Image)
-					case st.Error != "":
-						info.Errors = append(info.Errors, st.Image+": "+st.Error)
-					}
-				}
-			}
-			rep.Stacks[s.Name] = info
-			if len(info.Outdated) > 0 {
-				log.Printf("  Updates verfügbar für: %s", strings.Join(info.Outdated, ", "))
-			}
-			log.SetProgress((i + 1) * 100 / len(stacks))
-		}
-		if err := m.saveReport(ctx, rep); err != nil {
-			return err
-		}
-		log.Printf("Prüfung abgeschlossen.")
-		return nil
+		return m.runCheck(ctx, log)
 	}), nil
 }
 

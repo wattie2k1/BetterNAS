@@ -138,6 +138,8 @@ func main() {
 	go mon.Run(ctx)
 	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)
 	go bm.Run(ctx, ns)
+	dm := docker.NewManager(d, agent, jm, hub)
+	go dm.RunAutoUpdate(ctx, ns)
 	var certs *api.CertStore
 	if !cfg.Dev {
 		host, _ := os.Hostname()
@@ -146,7 +148,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: dm, VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

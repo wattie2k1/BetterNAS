@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import StackDialog from '@/components/docker/StackDialog.vue'
+import AutoUpdateDialog from '@/components/docker/AutoUpdateDialog.vue'
 import StacksView from '@/views/docker/StacksView.vue'
 import ContainersView from '@/views/docker/ContainersView.vue'
 import { STACK_TEMPLATE } from '@/api/docker'
@@ -67,12 +68,38 @@ describe('StackDialog', () => {
   })
 })
 
+describe('AutoUpdateDialog', () => {
+  const config = { enabled: true, time: '03:30', stacks: ['media', 'gone'] }
+  const mountAuto = (props = {}) =>
+    mount(AutoUpdateDialog, { props: { visible: true, config, stacks: ['media', 'wiki'], ...props }, global: { plugins: plugins() } })
+
+  it('übernimmt die Einstellungen, lässt gelöschte Stacks weg und sendet Änderungen', async () => {
+    const w = mountAuto()
+    await flushPromises()
+    expect((w.find('input[data-test="au-time"]').element as HTMLInputElement).value).toBe('03:30')
+    expect((w.find('input[data-test="au-stack-media"]').element as HTMLInputElement).checked).toBe(true)
+    expect((w.find('input[data-test="au-stack-wiki"]').element as HTMLInputElement).checked).toBe(false)
+    await w.find('input[data-test="au-stack-wiki"]').setValue(true)
+    await w.find('input[data-test="au-time"]').setValue('05:15')
+    await w.find('button[data-test="au-save"]').trigger('click')
+    expect(w.emitted('save')).toEqual([[{ enabled: true, time: '05:15', stacks: ['media', 'wiki'] }]])
+  })
+
+  it('sperrt Speichern bei ungültiger Uhrzeit und „Jetzt ausführen“ ohne gespeicherte Stacks', async () => {
+    const w = mountAuto({ config: { enabled: false, time: '04:00', stacks: [] } })
+    await flushPromises()
+    expect(w.find('button[data-test="au-run"]').attributes('disabled')).toBeDefined()
+    await w.find('input[data-test="au-time"]').setValue('')
+    expect(w.find('button[data-test="au-save"]').attributes('disabled')).toBeDefined()
+  })
+})
+
 function stubApi(routes: Record<string, unknown>) {
   const fn = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     const key = `${init?.method ?? 'GET'} ${url}`
     const v = routes[key]
     if (v === undefined) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'not_found', message: key } }), { status: 404 }))
-    return Promise.resolve(new Response(JSON.stringify(v), { status: key.startsWith('POST') && url.match(/\/(up|stop|restart|update|rollback)$/) ? 202 : 200 }))
+    return Promise.resolve(new Response(JSON.stringify(v), { status: key.startsWith('POST') && url.match(/\/(up|stop|restart|update|rollback|run)$/) ? 202 : 200 }))
   })
   vi.stubGlobal('fetch', fn)
   return fn
@@ -113,6 +140,31 @@ describe('StacksView', () => {
     expect(document.body.textContent).toContain('Daten in Volumes und Ordnern bleiben erhalten')
     ;(document.querySelector('[data-test="confirm-submit"]') as HTMLElement).click()
     await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/stacks/media/rollback', expect.objectContaining({ method: 'POST' })))
+    w.unmount()
+  })
+
+  it('speichert Auto-Update-Einstellungen und markiert aktivierte Stacks', async () => {
+    const fn = stubApi({
+      'GET /api/v1/docker/status': active,
+      'GET /api/v1/stacks': [{ name: 'media', running: 1, total: 1 }, { name: 'wiki', running: 1, total: 1 }],
+      'GET /api/v1/containers': [],
+      'GET /api/v1/docker/autoupdate': { enabled: true, time: '04:00', stacks: ['media'] },
+      'PUT /api/v1/docker/autoupdate': { enabled: true, time: '04:00', stacks: ['media', 'wiki'] },
+    })
+    const w = mount(StacksView, { global: { plugins: plugins() }, attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-test="stack-media"] [data-test="auto-tag"]').exists()).toBe(true)
+    expect(w.find('[data-test="stack-wiki"] [data-test="auto-tag"]').exists()).toBe(false)
+    await w.find('button[data-test="auto-update"]').trigger('click')
+    await flushPromises()
+    ;(document.querySelector('input[data-test="au-stack-wiki"]') as HTMLInputElement).click()
+    ;(document.querySelector('button[data-test="au-save"]') as HTMLElement).click()
+    await vi.waitFor(() =>
+      expect(fn).toHaveBeenCalledWith(
+        '/api/v1/docker/autoupdate',
+        expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: true, time: '04:00', stacks: ['media', 'wiki'] }) }),
+      ),
+    )
     w.unmount()
   })
 

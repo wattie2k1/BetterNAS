@@ -9,6 +9,7 @@ import {
   type ImageInfo,
   type NetworkInfo,
   type ResourceKind,
+  type AutoUpdateConfig,
   type UpdateReport,
   type VolumeInfo,
   type DockerStatus,
@@ -32,6 +33,7 @@ export const useDockerStore = defineStore('docker', () => {
   const error = ref('')
   const stats = ref<Record<string, ContainerStats>>({})
   const updates = ref<UpdateReport>({ checkedAt: '', stacks: {} })
+  const autoUpdate = ref<AutoUpdateConfig>({ enabled: false, time: '04:00', stacks: [] })
   const images = ref<ImageInfo[]>([])
   const networks = ref<NetworkInfo[]>([])
   const volumes = ref<VolumeInfo[]>([])
@@ -91,6 +93,28 @@ export const useDockerStore = defineStore('docker', () => {
       await useJobsStore().track(jobId)
     } finally {
       await loadUpdates()
+    }
+  }
+
+  async function loadAutoUpdate() {
+    try {
+      autoUpdate.value = await dockerApi.autoUpdate()
+    } catch {
+      /* ohne Einstellungen bleibt der Standard (aus) */
+    }
+  }
+
+  async function saveAutoUpdate(c: AutoUpdateConfig) {
+    autoUpdate.value = await dockerApi.setAutoUpdate(c)
+  }
+
+  /** Führt die automatischen Updates sofort aus und wartet auf den Auftrag. */
+  async function runAutoUpdate() {
+    const { jobId } = await dockerApi.runAutoUpdate()
+    try {
+      await useJobsStore().track(jobId)
+    } finally {
+      await Promise.all([refresh(), loadUpdates()])
     }
   }
 
@@ -161,6 +185,10 @@ export const useDockerStore = defineStore('docker', () => {
     refresh,
     stats,
     updates,
+    autoUpdate,
+    loadAutoUpdate,
+    saveAutoUpdate,
+    runAutoUpdate,
     images,
     networks,
     volumes,

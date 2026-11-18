@@ -52,6 +52,30 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		id, err := m.CheckUpdates(r.Context(), actor(r))
 		accepted(w, id, err)
 	})
+	mux.HandleFunc("GET /api/v1/docker/autoupdate", func(w http.ResponseWriter, r *http.Request) {
+		c, err := m.AutoUpdate(r.Context())
+		reply(w, c, err)
+	})
+	mux.HandleFunc("PUT /api/v1/docker/autoupdate", func(w http.ResponseWriter, r *http.Request) {
+		var in docker.AutoUpdateConfig
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetAutoUpdate(r.Context(), actor(r), in); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		c, err := m.AutoUpdate(r.Context())
+		reply(w, c, err)
+	})
+	mux.HandleFunc("POST /api/v1/docker/autoupdate/run", func(w http.ResponseWriter, r *http.Request) {
+		var n docker.Notifier // nil-Interface, wenn keine Benachrichtigungen eingerichtet sind
+		if s.deps.Notify != nil {
+			n = s.deps.Notify
+		}
+		id, err := m.StartAutoUpdate(r.Context(), actor(r), n)
+		accepted(w, id, err)
+	})
 	mux.HandleFunc("GET /api/v1/stacks", func(w http.ResponseWriter, r *http.Request) {
 		list, err := m.ListStacks(r.Context())
 		reply(w, list, err)

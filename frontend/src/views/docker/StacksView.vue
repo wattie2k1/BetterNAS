@@ -8,8 +8,9 @@ import { useToast } from 'primevue/usetoast'
 import TemplateDialog from '@/components/docker/TemplateDialog.vue'
 import StackDialog, { type SubmitMode } from '@/components/docker/StackDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AutoUpdateDialog from '@/components/docker/AutoUpdateDialog.vue'
 import { useDockerStore } from '@/stores/docker'
-import type { StackAction, StackCheck, StackFiles, StackInfo } from '@/api/docker'
+import type { AutoUpdateConfig, StackAction, StackCheck, StackFiles, StackInfo } from '@/api/docker'
 
 const store = useDockerStore()
 const toast = useToast()
@@ -25,7 +26,37 @@ const names = computed(() => store.stacks.map((s) => s.name))
 const dockerDown = computed(() => store.status && (!store.status.installed || !store.status.active))
 
 const checking = ref(false)
-onMounted(() => Promise.all([store.refresh(), store.loadUpdates()]))
+onMounted(() => Promise.all([store.refresh(), store.loadUpdates(), store.loadAutoUpdate()]))
+
+const showAuto = ref(false)
+const autoBusy = ref(false)
+const isAuto = (name: string) => store.autoUpdate.enabled && store.autoUpdate.stacks.includes(name)
+
+async function saveAuto(c: AutoUpdateConfig) {
+  autoBusy.value = true
+  try {
+    await store.saveAutoUpdate(c)
+    toast.add({ severity: 'success', summary: c.enabled ? 'Automatische Updates gespeichert' : 'Automatische Updates aus', life: 4000 })
+    showAuto.value = false
+  } catch (e) {
+    fail(e)
+  } finally {
+    autoBusy.value = false
+  }
+}
+
+async function runAuto() {
+  autoBusy.value = true
+  try {
+    await store.runAutoUpdate()
+    toast.add({ severity: 'success', summary: 'Automatische Updates ausgeführt', detail: 'Ergebnis siehe Benachrichtigungen', life: 5000 })
+    showAuto.value = false
+  } catch (e) {
+    fail(e)
+  } finally {
+    autoBusy.value = false
+  }
+}
 
 const outdated = (name: string) => store.updates.stacks[name]?.outdated ?? []
 const checkedAt = computed(() => (store.updates.checkedAt ? new Date(store.updates.checkedAt).toLocaleString('de-DE') : ''))
@@ -143,6 +174,7 @@ async function remove() {
   <div class="toolbar">
     <span v-if="checkedAt" class="sub" data-test="checked-at">Zuletzt auf Updates geprüft: {{ checkedAt }}</span>
     <Button data-test="check-updates" label="Auf Updates prüfen" icon="pi pi-sync" severity="secondary" :loading="checking" :disabled="!!dockerDown || !store.stacks.length" @click="checkUpdates" />
+    <Button data-test="auto-update" label="Auto-Update" icon="pi pi-clock" severity="secondary" :disabled="!!dockerDown" @click="showAuto = true" />
     <Button data-test="from-template" label="Aus Vorlage" icon="pi pi-th-large" severity="secondary" :disabled="!!dockerDown" @click="showTemplates = true" />
     <Button label="Neuer Stack" icon="pi pi-plus" :disabled="!!dockerDown" @click="openNew" />
   </div>
@@ -158,6 +190,7 @@ async function remove() {
       <template #title>
         <div class="title">
           <span><i class="pi pi-clone" /> {{ s.name }}</span>
+          <Tag v-if="isAuto(s.name)" data-test="auto-tag" value="Auto-Update" severity="secondary" :title="`Wird täglich um ${store.autoUpdate.time} aktualisiert`" />
           <Tag v-if="outdated(s.name).length" data-test="update-tag" value="Update verfügbar" severity="info" :title="`Neue Version für: ${outdated(s.name).join(', ')}`" />
           <Tag
             :value="s.total ? `${s.running} von ${s.total} laufen` : 'Nicht gestartet'"
@@ -189,6 +222,7 @@ async function remove() {
   </div>
   <TemplateDialog v-model:visible="showTemplates" :existing="names" @create="fromTemplate" />
   <StackDialog v-model:visible="showDialog" :stack="editing" :draft="draft" :existing="names" :busy="busy" :check="check" @submit="submit" />
+  <AutoUpdateDialog v-model:visible="showAuto" :config="store.autoUpdate" :stacks="names" :busy="autoBusy" @save="saveAuto" @run="runAuto" />
   <ConfirmDialog
     :visible="!!rollingBack"
     header="Update zurückrollen"
