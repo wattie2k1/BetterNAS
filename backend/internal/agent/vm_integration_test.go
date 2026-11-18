@@ -315,3 +315,70 @@ func TestVMConfigureLibvirt(t *testing.T) {
 		t.Fatal("laufende VM darf nicht geändert werden")
 	}
 }
+
+// TestVMTuningLibvirt prüft, dass echtes libvirt die erweiterten Einstellungen annimmt
+// (CPU-Typ/Topologie, Hyper-V, Uhr, Laufwerksoptionen, Zusatz-NIC, Boot, MAC, USB).
+func TestVMTuningLibvirt(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	const name = "bnas-it-tune"
+	t.Cleanup(func() {
+		_ = VMAction(ctx, d, name, "destroy")
+		_ = VMDelete(ctx, d, name, true)
+	})
+	_ = VMAction(ctx, d, name, "destroy")
+	_ = VMDelete(ctx, d, name, true)
+
+	spec := vm.Spec{Name: name, OS: "linux", Firmware: "uefi", Network: "default", VCPUs: 2, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	c, err := VMConfig(ctx, d, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	usb := []vm.USBDevice{{Vendor: "1a86", Product: "7523"}}
+	nics := []vm.NIC{{Network: "default", Model: "e1000e"}}
+	opts := []vm.DiskOpt{{Path: vm.DiskPath(name), Cache: "none", Discard: "unmap"}}
+	u := vm.ConfigUpdate{VCPUs: 4, MemoryMiB: 256, SecureBoot: c.SecureBoot, Network: "default", GuestAgent: true, BootFirst: "hd", MAC: "52:54:00:aa:bb:cc", USB: &usb,
+		TuningUpdate: vm.TuningUpdate{CPUMode: "host-model", Topology: &vm.Topology{Sockets: 1, Threads: 2}, Hyperv: &on, Clock: "localtime", ExtraNICs: &nics, DiskOpts: &opts}}
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatalf("libvirt lehnt die Konfiguration ab: %v", err)
+	}
+	c, err = VMConfig(ctx, d, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.VCPUs != 4 || c.Sockets != 1 || c.Threads != 2 || c.CPUMode != "host-model" || !c.Hyperv || c.Clock != "localtime" || c.Boot != "hd" || c.MAC != "52:54:00:aa:bb:cc" || len(c.USB) != 1 {
+		t.Fatalf("%+v", c)
+	}
+	if len(c.ExtraNICs) != 1 || c.ExtraNICs[0].Model != "e1000e" || c.ExtraNICs[0].MAC == "" {
+		t.Fatalf("Zusatzkarte: %+v", c.ExtraNICs)
+	}
+	if len(c.DiskOpts) != 1 || c.DiskOpts[0].Cache != "none" || c.DiskOpts[0].Discard != "unmap" {
+		t.Fatalf("Laufwerk: %+v", c.DiskOpts)
+	}
+	// Zurückbauen: alles wieder entfernen, die Zusatzkarte behält vorher ihre MAC.
+	off := false
+	none, noUSB := []vm.NIC{}, []vm.USBDevice{}
+	u2 := vm.ConfigUpdate{VCPUs: 4, MemoryMiB: 256, SecureBoot: c.SecureBoot, Network: "default", GuestAgent: true, USB: &noUSB,
+		TuningUpdate: vm.TuningUpdate{Hyperv: &off, ExtraNICs: &none, Clock: "utc"}}
+	if err := VMConfigure(ctx, d, name, u2); err != nil {
+		t.Fatalf("Zurückbauen: %v", err)
+	}
+	if c, _ = VMConfig(ctx, d, name); c.Hyperv || len(c.ExtraNICs) != 0 || len(c.USB) != 0 || c.Clock != "utc" {
+		t.Fatalf("%+v", c)
+	}
+}
