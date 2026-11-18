@@ -19,6 +19,7 @@ const draft = ref<StackFiles | null>(null)
 const showTemplates = ref(false)
 const check = ref<StackCheck | null>(null)
 const deleting = ref<StackInfo | null>(null)
+const rollingBack = ref<StackInfo | null>(null)
 const busy = ref(false)
 const names = computed(() => store.stacks.map((s) => s.name))
 const dockerDown = computed(() => store.status && (!store.status.installed || !store.status.active))
@@ -53,6 +54,7 @@ const labels: Record<StackAction, string> = {
   restart: 'Stack neu gestartet',
   pull: 'Images geladen',
   update: 'Stack aktualisiert',
+  rollback: 'Stack zurückgerollt',
 }
 
 async function run(name: string, action: StackAction) {
@@ -65,6 +67,15 @@ async function run(name: string, action: StackAction) {
   } finally {
     busy.value = false
   }
+}
+
+const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
+
+async function rollback() {
+  const s = rollingBack.value
+  if (!s) return
+  await run(s.name, 'rollback')
+  rollingBack.value = null
 }
 
 function openNew() {
@@ -160,6 +171,16 @@ async function remove() {
           <Button icon="pi pi-stop" text rounded aria-label="Stoppen" title="Stoppen" :disabled="busy || !!dockerDown" @click="run(s.name, 'stop')" />
           <Button icon="pi pi-refresh" text rounded aria-label="Neu starten" title="Neu starten" :disabled="busy || !!dockerDown" @click="run(s.name, 'restart')" />
           <Button icon="pi pi-download" text rounded aria-label="Aktualisieren" title="Aktualisieren (neue Images laden und neu starten)" :disabled="busy || !!dockerDown" @click="run(s.name, 'update')" />
+          <Button
+            v-if="s.rollback"
+            icon="pi pi-undo"
+            text
+            rounded
+            aria-label="Zurückrollen"
+            :title="`Auf den Stand vor dem letzten Update zurücksetzen (${when(s.rollback)})`"
+            :disabled="busy || !!dockerDown"
+            @click="rollingBack = s"
+          />
           <Button icon="pi pi-pencil" text rounded aria-label="Bearbeiten" title="Bearbeiten" @click="openEdit(s)" />
           <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Löschen" title="Löschen" @click="deleting = s" />
         </div>
@@ -168,6 +189,16 @@ async function remove() {
   </div>
   <TemplateDialog v-model:visible="showTemplates" :existing="names" @create="fromTemplate" />
   <StackDialog v-model:visible="showDialog" :stack="editing" :draft="draft" :existing="names" :busy="busy" :check="check" @submit="submit" />
+  <ConfirmDialog
+    :visible="!!rollingBack"
+    header="Update zurückrollen"
+    :message="`Der Stack „${rollingBack?.name}“ wird mit den Images von vor dem letzten Update (Stand ${when(rollingBack?.rollback)}) neu erstellt. Daten in Volumes und Ordnern bleiben erhalten; war das Update mit einer Datenbank-Migration verbunden, kann die ältere Version damit eventuell nicht mehr umgehen.`"
+    confirm-label="Zurückrollen"
+    :busy="busy"
+    data-test="rollback-confirm"
+    @update:visible="(v) => !v && (rollingBack = null)"
+    @confirm="rollback"
+  />
   <ConfirmDialog
     :visible="!!deleting"
     header="Stack löschen"

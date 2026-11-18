@@ -184,8 +184,13 @@ func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (str
 			}
 			switch st.State {
 			case "succeeded":
-				if action == "update" {
+				switch action {
+				case "update":
 					m.forgetUpdate(ctx, name)
+					// Hat das Update Images verändert, wird der vorherige Stand zum Rollback-Stand.
+					_ = m.agent.Call(ctx, "stack.rollback.commit", map[string]string{"name": name}, nil)
+				case "rollback":
+					_ = m.agent.Call(ctx, "stack.rollback.clear", map[string]string{"name": name}, nil)
 				}
 				return nil
 			case "failed":

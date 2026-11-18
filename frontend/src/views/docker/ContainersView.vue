@@ -33,6 +33,8 @@ const mem = (id: string) => {
 }
 
 const severity = (state: string) => (state === 'running' ? 'success' : state === 'exited' || state === 'created' ? 'secondary' : 'warn')
+const healthLabel: Record<string, string> = { healthy: 'Gesund', unhealthy: 'Fehlerhaft', starting: 'Prüfung läuft' }
+
 const stateLabel: Record<string, string> = {
   running: 'Läuft',
   exited: 'Gestoppt',
@@ -98,6 +100,13 @@ async function act(c: ContainerInfo, action: ContainerAction) {
           <td>{{ c.image }}</td>
           <td>
             <Tag :value="stateLabel[c.state] ?? c.state" :severity="severity(c.state)" />
+            <Tag
+              v-if="c.health"
+              :data-test="`health-${c.health}`"
+              :value="healthLabel[c.health]"
+              :severity="c.health === 'healthy' ? 'success' : c.health === 'unhealthy' ? 'danger' : 'secondary'"
+              class="health"
+            />
             <div class="sub">{{ c.status }}</div>
           </td>
           <td data-test="usage">
@@ -137,6 +146,9 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 </template>
 
 <style scoped>
+.health {
+  margin-left: 0.4rem;
+}
 .who {
   display: flex;
   align-items: center;

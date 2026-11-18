@@ -72,7 +72,7 @@ function stubApi(routes: Record<string, unknown>) {
     const key = `${init?.method ?? 'GET'} ${url}`
     const v = routes[key]
     if (v === undefined) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'not_found', message: key } }), { status: 404 }))
-    return Promise.resolve(new Response(JSON.stringify(v), { status: key.startsWith('POST') && url.match(/\/(up|stop|restart|update)$/) ? 202 : 200 }))
+    return Promise.resolve(new Response(JSON.stringify(v), { status: key.startsWith('POST') && url.match(/\/(up|stop|restart|update|rollback)$/) ? 202 : 200 }))
   })
   vi.stubGlobal('fetch', fn)
   return fn
@@ -92,6 +92,28 @@ describe('StacksView', () => {
     expect(w.find('[data-test="stack-media"]').text()).toContain('1 von 2 laufen')
     await w.find('[data-test="stack-media"] button[aria-label="Starten"]').trigger('click')
     await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/stacks/media/up', expect.anything()))
+  })
+
+  it('bietet Zurückrollen nur mit Rollback-Stand an und fragt vorher nach', async () => {
+    const fn = stubApi({
+      'GET /api/v1/docker/status': active,
+      'GET /api/v1/stacks': [
+        { name: 'media', running: 1, total: 1, rollback: '2026-11-18T10:00:00Z' },
+        { name: 'neu', running: 0, total: 0 },
+      ],
+      'GET /api/v1/containers': [],
+      'POST /api/v1/stacks/media/rollback': { jobId: 'j2' },
+    })
+    const w = mount(StacksView, { global: { plugins: plugins() }, attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-test="stack-neu"] button[aria-label="Zurückrollen"]').exists()).toBe(false)
+    await w.find('[data-test="stack-media"] button[aria-label="Zurückrollen"]').trigger('click')
+    await flushPromises()
+    expect(fn).not.toHaveBeenCalledWith('/api/v1/stacks/media/rollback', expect.anything())
+    expect(document.body.textContent).toContain('Daten in Volumes und Ordnern bleiben erhalten')
+    ;(document.querySelector('[data-test="confirm-submit"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/stacks/media/rollback', expect.objectContaining({ method: 'POST' })))
+    w.unmount()
   })
 
   it('zeigt einen Hinweis und sperrt „Neuer Stack“, wenn Docker nicht läuft', async () => {
@@ -138,6 +160,18 @@ describe('ContainersView', () => {
     expect(w.find('[data-test="container-alone"] button[aria-label="Starten"]').exists()).toBe(true)
     await w.find('[data-test="container-web"] button[aria-label="Stoppen"]').trigger('click')
     await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/containers/0123456789ab/stop', expect.anything()))
+  })
+
+  it('zeigt den Healthcheck-Zustand', async () => {
+    stubApi({
+      'GET /api/v1/docker/status': active,
+      'GET /api/v1/stacks': [],
+      'GET /api/v1/containers': [{ ...c, health: 'unhealthy' }, { ...c, id: 'ba9876543210', name: 'plain' }],
+    })
+    const w = mount(ContainersView, { global: { plugins: plugins() } })
+    await flushPromises()
+    expect(w.find('[data-test="container-web"] [data-test="health-unhealthy"]').text()).toContain('Fehlerhaft')
+    expect(w.find('[data-test="container-plain"] [data-test^="health-"]').exists()).toBe(false)
   })
 
   it('meldet fehlendes Docker', async () => {

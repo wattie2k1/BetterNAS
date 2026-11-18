@@ -9,6 +9,20 @@ import (
 	"strings"
 )
 
+var healthRe = regexp.MustCompile(`\((healthy|unhealthy|health: starting)\)`)
+
+// ParseHealth liest den Healthcheck-Zustand aus dem Status-Text von `docker ps` („Up 3 hours (healthy)“).
+func ParseHealth(status string) string {
+	m := healthRe.FindStringSubmatch(status)
+	if m == nil {
+		return ""
+	}
+	if m[1] == "health: starting" {
+		return "starting"
+	}
+	return m[1]
+}
+
 // ParseContainers liest die Ausgabe von `docker ps -a --no-trunc --format '{{json .}}'` (je Zeile ein Objekt).
 func ParseContainers(out []byte) ([]Container, error) {
 	list := []Container{}
@@ -24,7 +38,7 @@ func ParseContainers(out []byte) ([]Container, error) {
 			return nil, err
 		}
 		c := Container{ID: r.ID, Name: strings.SplitN(r.Names, ",", 2)[0], Image: r.Image, State: r.State,
-			Status: r.Status, Created: r.CreatedAt, Ports: []string{}}
+			Status: r.Status, Health: ParseHealth(r.Status), Created: r.CreatedAt, Ports: []string{}}
 		if c.ID != "" && len(c.ID) > 12 {
 			c.ID = c.ID[:12]
 		}

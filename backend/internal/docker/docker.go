@@ -26,7 +26,7 @@ var (
 const RunUnitPrefix = "betternas-stack-"
 
 // StackActions sind die erlaubten Aktionen auf einem Stack.
-var StackActions = map[string]bool{"up": true, "down": true, "stop": true, "start": true, "restart": true, "pull": true, "update": true}
+var StackActions = map[string]bool{"up": true, "down": true, "stop": true, "start": true, "restart": true, "pull": true, "update": true, "rollback": true}
 
 // ContainerActions sind die erlaubten Aktionen auf einem Container.
 var ContainerActions = map[string]bool{"start": true, "stop": true, "restart": true, "remove": true}
@@ -36,11 +36,13 @@ func StackDir(name string) string { return StacksDir + "/" + name }
 
 // Container ist ein Docker-Container in der Liste.
 type Container struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Image   string   `json:"image"`
-	State   string   `json:"state"`
-	Status  string   `json:"status"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Image  string `json:"image"`
+	State  string `json:"state"`
+	Status string `json:"status"`
+	// Health ist der Healthcheck-Zustand: healthy | unhealthy | starting (leer: Container hat keinen Healthcheck).
+	Health  string   `json:"health,omitempty"`
 	Stack   string   `json:"stack"`
 	Ports   []string `json:"ports"`
 	Created string   `json:"created"`
@@ -53,6 +55,20 @@ type StackInfo struct {
 	Total   int    `json:"total"`
 	// Icon ist die Version des Stack-Icons (leer: keins gesetzt); sie dient als Cache-Schlüssel für die Icon-Adresse.
 	Icon string `json:"icon,omitempty"`
+	// Rollback ist der Zeitpunkt (RFC 3339) des Stands, auf den ein Rollback zurückgeht (leer: kein Rollback möglich).
+	Rollback string `json:"rollback,omitempty"`
+}
+
+// RollbackImage ist ein Image des Rollback-Stands: Referenz aus der Compose-Datei und die damalige lokale ID.
+type RollbackImage struct {
+	Ref string `json:"ref"`
+	ID  string `json:"id"`
+}
+
+// Rollback ist der Stand eines Stacks vor dem letzten Update, das Images verändert hat.
+type Rollback struct {
+	CreatedAt string          `json:"createdAt"`
+	Images    []RollbackImage `json:"images"`
 }
 
 // RunState ist der Zustand eines Stack-Laufs.

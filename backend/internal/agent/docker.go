@@ -63,6 +63,9 @@ func ListStacks(ctx context.Context, d Deps) ([]docker.StackInfo, error) {
 		}
 		si := state[name]
 		si.Name = name
+		if rb, ok := readRollback(d, name, rollbackFile); ok {
+			si.Rollback = rb.CreatedAt
+		}
 		list = append(list, si)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
@@ -154,6 +157,7 @@ func DeleteStack(ctx context.Context, d Deps, name string) error {
 	} else if res.ExitCode != 0 {
 		return apierr.New(apierr.Internal, "Der Stack konnte nicht gestoppt werden").With("stderr", strings.TrimSpace(string(res.Stderr)))
 	}
+	_ = StackRollbackClear(ctx, d, name)
 	dir := docker.StackDir(name)
 	rest, err := d.FS.Glob(path.Join(dir, "*"))
 	if err != nil {
@@ -234,7 +238,14 @@ func RunStack(ctx context.Context, d Deps, name, action string) (string, error) 
 	} else if running {
 		return "", errStackRunning
 	}
-	if action == "up" || action == "update" {
+	var rollbackCmd string
+	if action == "rollback" {
+		var err error
+		if rollbackCmd, err = rollbackCommand(d, name, func(a []string) string { return "'" + strings.Join(a, "' '") + "'" }); err != nil {
+			return "", err
+		}
+	}
+	if action == "up" || action == "update" || action == "rollback" {
 		chk, err := ValidateStack(ctx, d, name)
 		if err != nil {
 			return "", err
@@ -242,6 +253,9 @@ func RunStack(ctx context.Context, d Deps, name, action string) (string, error) 
 		if !chk.OK {
 			return "", apierr.New(apierr.InvalidParams, "Die Compose-Datei ist ungültig: "+chk.Message)
 		}
+	}
+	if action == "update" {
+		snapshotStack(ctx, d, name)
 	}
 	// Beendete Läufe dieses Stacks aufräumen.
 	if units, err := listRunUnits(ctx, d); err == nil {
@@ -270,6 +284,8 @@ func RunStack(ctx context.Context, d Deps, name, action string) (string, error) 
 		pull := quote(append([]string{"docker"}, composeArgs(name, "pull")...))
 		up := quote(append([]string{"docker"}, composeArgs(name, "up", "-d", "--remove-orphans")...))
 		args = append(args, "sh", "-c", pull+" && "+up)
+	case "rollback":
+		args = append(args, "sh", "-c", rollbackCmd)
 	default: // stop, start, restart, pull
 		args = append(args, "docker")
 		args = append(args, composeArgs(name, action)...)
@@ -369,6 +385,21 @@ func registerDocker(s *rpc.Server, d Deps) {
 		}
 		return map[string]string{"unit": unit}, nil
 	})
+	for method, fn := range map[string]func(context.Context, Deps, string) error{
+		"stack.rollback.commit": StackRollbackCommit,
+		"stack.rollback.clear":  StackRollbackClear,
+	} {
+		s.Handle(method, func(ctx context.Context, p json.RawMessage) (any, error) {
+			name, err := named(p)
+			if err != nil {
+				return nil, err
+			}
+			if err := fn(ctx, d, name); err != nil {
+				return nil, err
+			}
+			return map[string]bool{"ok": true}, nil
+		})
+	}
 	s.Handle("stack.runstatus", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var req struct{ Unit string }
 		if err := decode(p, &req); err != nil {

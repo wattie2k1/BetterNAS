@@ -12,6 +12,8 @@ export interface StackInfo {
   total: number
   /** Version des Stack-Icons (leer = keins); dient als Cache-Schlüssel der Icon-Adresse. */
   icon?: string
+  /** Zeitpunkt (RFC 3339) des Stands vor dem letzten Update; gesetzt = Zurückrollen möglich. */
+  rollback?: string
 }
 
 /** Änderung am Icon eines Stacks, die zusammen mit dem Speichern angewendet wird. */
@@ -39,6 +41,8 @@ export interface ContainerInfo {
   image: string
   state: string
   status: string
+  /** Healthcheck-Zustand; fehlt bei Containern ohne Healthcheck. */
+  health?: 'healthy' | 'unhealthy' | 'starting'
   stack: string
   ports: string[]
   created: string
@@ -89,7 +93,7 @@ export interface VolumeInfo {
 
 export type ResourceKind = 'images' | 'networks' | 'volumes'
 
-export type StackAction = 'up' | 'down' | 'stop' | 'start' | 'restart' | 'pull' | 'update'
+export type StackAction = 'up' | 'down' | 'stop' | 'start' | 'restart' | 'pull' | 'update' | 'rollback'
 export type ContainerAction = 'start' | 'stop' | 'restart' | 'remove'
 
 /** Identisch zu docker.StackNameRe im Backend. */

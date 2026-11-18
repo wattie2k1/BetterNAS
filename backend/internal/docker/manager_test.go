@@ -164,3 +164,41 @@ func TestUpdateStackSavesWithoutCreate(t *testing.T) {
 		t.Fatalf("%v", a.saved)
 	}
 }
+
+func hasCall(a *fakeAgent, method string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, c := range a.calls {
+		if c == method {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRollbackBookkeepingAfterRuns(t *testing.T) {
+	cases := []struct{ action, method string }{
+		{"update", "stack.rollback.commit"},
+		{"rollback", "stack.rollback.clear"},
+	}
+	for _, c := range cases {
+		a := &fakeAgent{states: []RunState{{State: "succeeded"}}}
+		m, jm := newTestManager(t, a)
+		id, err := m.RunStack(context.Background(), "anna", "media", c.action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitJob(t, jm, id)
+		if !hasCall(a, c.method) {
+			t.Errorf("%s: %s fehlt: %v", c.action, c.method, a.calls)
+		}
+	}
+	// Schlägt der Lauf fehl, bleibt der Rollback-Stand unangetastet.
+	a := &fakeAgent{states: []RunState{{State: "failed"}}}
+	m, jm := newTestManager(t, a)
+	id, _ := m.RunStack(context.Background(), "anna", "media", "rollback")
+	waitJob(t, jm, id)
+	if hasCall(a, "stack.rollback.clear") {
+		t.Error("clear nach fehlgeschlagenem Rollback")
+	}
+}
