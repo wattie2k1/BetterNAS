@@ -60,7 +60,7 @@ describe('DockerTile', () => {
 describe('QuickTiles', () => {
   it('zeigt je Container und VM eine Kachel', async () => {
     const { default: QuickTiles } = await import('@/components/QuickTiles.vue')
-    const containers = [{ id: 'a', name: 'web', image: 'nginx', state: 'running', status: 'Up 3 hours', stack: 'site', ports: [], created: '' }]
+    const containers = [{ id: 'a', name: 'web', image: 'nginx', state: 'running', status: 'Up 3 hours', stack: 'site', ports: ['0.0.0.0:8080->80/tcp'], created: '' }]
     const vms = [{ name: 'win11', uuid: 'u1', state: 'shutoff', vcpus: 2, memoryMiB: 4096, autostart: false, disks: [] }]
     vi.stubGlobal(
       'fetch',
@@ -83,5 +83,9 @@ describe('QuickTiles', () => {
     await flushPromises()
     expect(w.find('[data-test="quick-container-web"]').text()).toContain('running')
     expect(w.find('[data-test="quick-vm-win11"]').text()).toContain('aus')
+    const link = w.find('[data-test="quick-container-open-web"]')
+    expect(link.element.tagName).toBe('A')
+    expect(link.attributes('href')).toBe(`http://${window.location.hostname}:8080/`)
+    expect(w.find('[data-test="quick-container-menu-web"]').exists()).toBe(true)
   })
 })

@@ -78,6 +78,18 @@ async function submitYaml(files: StackFiles, mode: SubmitMode) {
   }
 }
 
+// Erreichbare URL aus den veröffentlichten Ports ("0.0.0.0:8080->80/tcp"), nur für laufende Container.
+function containerUrl(c: ContainerInfo): string | null {
+  if (c.state !== 'running') return null
+  for (const p of c.ports) {
+    const m = /:(\d+)->(\d+)\/tcp$/.exec(p)
+    if (!m) continue
+    const https = m[2] === '443' || m[2] === '8443' || m[2] === '9443'
+    return `${https ? 'https' : 'http'}://${window.location.hostname}:${m[1]}/`
+  }
+  return null
+}
+
 function openContainer(e: Event, c: ContainerInfo) {
   const running = c.state === 'running'
   items.value = [
@@ -113,21 +125,26 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   <template v-if="containers.length || machines.length">
     <h3 class="section">Container &amp; virtuelle Maschinen</h3>
     <div class="apps" data-test="quick-tiles">
-      <button
-        v-for="c in containers"
-        :key="`c-${c.id}`"
-        type="button"
-        class="app glass"
-        :data-test="`quick-container-${c.name}`"
-        :aria-label="`Container ${c.name}: Aktionen`"
-        @click="openContainer($event, c)"
-      >
-        <span class="app-icon" :class="{ off: c.state !== 'running' }" :style="c.state === 'running' ? { background: 'linear-gradient(135deg, #2563eb, #60a5fa)' } : {}"><i class="pi pi-box" /></span>
-        <span class="app-text">
-          <strong>{{ c.name }}</strong>
-          <small>{{ c.state === 'running' ? 'running' : 'stopped' }}<template v-if="c.status"> · {{ c.status }}</template></small>
-        </span>
-      </button>
+      <div v-for="c in containers" :key="`c-${c.id}`" class="app glass has-menu" :data-test="`quick-container-${c.name}`">
+        <component
+          :is="containerUrl(c) ? 'a' : 'div'"
+          class="app-main"
+          :class="{ link: containerUrl(c) }"
+          :href="containerUrl(c) ?? undefined"
+          :target="containerUrl(c) ? '_blank' : undefined"
+          :rel="containerUrl(c) ? 'noopener noreferrer' : undefined"
+          :data-test="`quick-container-open-${c.name}`"
+        >
+          <span class="app-icon" :class="{ off: c.state !== 'running' }" :style="c.state === 'running' ? { background: 'linear-gradient(135deg, #2563eb, #60a5fa)' } : {}"><i class="pi pi-box" /></span>
+          <span class="app-text">
+            <strong>{{ c.name }}</strong>
+            <small>{{ c.state === 'running' ? 'running' : 'stopped' }}<template v-if="c.status"> · {{ c.status }}</template></small>
+          </span>
+        </component>
+        <button type="button" class="dots" :data-test="`quick-container-menu-${c.name}`" :aria-label="`Container ${c.name}: Aktionen`" @click="openContainer($event, c)">
+          <i class="pi pi-ellipsis-h" />
+        </button>
+      </div>
       <button
         v-for="v in machines"
         :key="`v-${v.uuid}`"
@@ -174,6 +191,48 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   padding: 16px 18px;
   color: var(--p-text-color);
   transition: transform 0.18s ease, background 0.18s ease;
+}
+.app.has-menu {
+  position: relative;
+  padding: 0;
+}
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: inherit;
+}
+.app-main.link {
+  cursor: pointer;
+}
+.app-main:not(.link) {
+  cursor: default;
+}
+.dots {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--bn-text-soft);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.dots:hover,
+.dots:focus-visible {
+  background: var(--bn-tile-hover);
+  color: var(--p-text-color);
+  outline: none;
 }
 .app:hover {
   transform: translateY(-3px);
