@@ -30,6 +30,28 @@ func TestListImagesAndNetworks(t *testing.T) {
 	}
 }
 
+func TestListImagesAndNetworksMarkUnused(t *testing.T) {
+	d, f, _ := dockerEnv(t)
+	f.Responses["docker image ls"] = sysexec.Result{Stdout: []byte(`{"ID":"aaaaaaaaaaaa","Repository":"nginx","Tag":"stable","Size":"1MB","CreatedSince":"x"}` + "\n" + `{"ID":"bbbbbbbbbbbb","Repository":"old","Tag":"1","Size":"1MB","CreatedSince":"x"}` + "\n")}
+	f.Responses["docker container ls -aq"] = sysexec.Result{Stdout: []byte("c1\n")}
+	f.Responses["docker inspect --format {{.Image}} c1"] = sysexec.Result{Stdout: []byte("sha256:aaaaaaaaaaaa1234567890\n")}
+	f.Responses["docker network ls"] = sysexec.Result{Stdout: []byte(`{"ID":"111111111111","Name":"bridge","Driver":"bridge","Scope":"local"}` + "\n" + `{"ID":"222222222222","Name":"media_default","Driver":"bridge","Scope":"local"}` + "\n" + `{"ID":"333333333333","Name":"leer","Driver":"bridge","Scope":"local"}` + "\n")}
+	f.Responses["docker ps -a --format {{.Networks}}"] = sysexec.Result{Stdout: []byte("media_default,other\n")}
+	ims, err := ListImages(context.Background(), d)
+	if err != nil || len(ims) != 2 || ims[0].Unused || !ims[1].Unused {
+		t.Fatalf("%+v %v", ims, err)
+	}
+	nets, err := ListNetworks(context.Background(), d)
+	if err != nil || len(nets) != 3 {
+		t.Fatalf("%+v %v", nets, err)
+	}
+	for _, n := range nets {
+		if want := n.Name == "leer"; n.Unused != want {
+			t.Errorf("%s unused=%v", n.Name, n.Unused)
+		}
+	}
+}
+
 func TestRemoveResourceValidationAndArgs(t *testing.T) {
 	d, f, _ := dockerEnv(t)
 	ctx := context.Background()

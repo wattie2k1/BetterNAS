@@ -34,6 +34,7 @@ type ImageInfo struct {
 	SizeBytes  uint64 `json:"sizeBytes"`
 	Created    string `json:"created"`
 	Dangling   bool   `json:"dangling"`
+	Unused     bool   `json:"unused"` // kein Container (auch kein gestoppter) verwendet das Image
 }
 
 // NetworkInfo ist ein Netzwerk in der Liste.
@@ -43,6 +44,7 @@ type NetworkInfo struct {
 	Driver  string `json:"driver"`
 	Scope   string `json:"scope"`
 	Builtin bool   `json:"builtin"`
+	Unused  bool   `json:"unused"` // kein Container ist angebunden (eingebaute Netzwerke gelten nie als ungenutzt)
 }
 
 // VolumeInfo ist ein Volume in der Liste. Unused = kein Container verwendet es.

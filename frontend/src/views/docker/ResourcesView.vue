@@ -86,7 +86,7 @@ async function confirm() {
       <TabPanel value="images">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Image</th><th>Größe</th><th>Erstellt</th><th /></tr></thead>
+            <thead><tr><th>Image</th><th>Größe</th><th>Erstellt</th><th>Verwendung</th><th /></tr></thead>
             <tbody>
               <tr v-for="im in store.images" :key="im.id + im.ref" :data-test="`image-${im.ref}`">
                 <td>
@@ -96,6 +96,7 @@ async function confirm() {
                 </td>
                 <td>{{ formatBytes(im.sizeBytes) }}</td>
                 <td>{{ im.created }}</td>
+                <td><Tag :value="im.unused ? 'Ungenutzt' : 'In Benutzung'" :severity="im.unused ? 'warn' : 'success'" /></td>
                 <td class="actions">
                   <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Entfernen" title="Entfernen" @click="pending = { kind: 'images', ref: im.ref, label: im.ref }" />
                 </td>
@@ -108,7 +109,7 @@ async function confirm() {
       <TabPanel value="networks">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Treiber</th><th>Bereich</th><th /></tr></thead>
+            <thead><tr><th>Name</th><th>Treiber</th><th>Bereich</th><th>Verwendung</th><th /></tr></thead>
             <tbody>
               <tr v-for="n in store.networks" :key="n.id" :data-test="`network-${n.name}`">
                 <td>
@@ -118,6 +119,7 @@ async function confirm() {
                 </td>
                 <td>{{ n.driver }}</td>
                 <td>{{ n.scope }}</td>
+                <td><Tag :value="n.unused ? 'Ungenutzt' : 'In Benutzung'" :severity="n.unused ? 'warn' : 'success'" /></td>
                 <td class="actions">
                   <Button v-if="!n.builtin" icon="pi pi-trash" text rounded severity="danger" aria-label="Entfernen" title="Entfernen" @click="pending = { kind: 'networks', ref: n.id, label: n.name }" />
                 </td>

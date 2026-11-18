@@ -20,7 +20,53 @@ func ListImages(ctx context.Context, d Deps) ([]docker.ImageInfo, error) {
 	if err != nil {
 		return nil, dockerErr(err)
 	}
-	return docker.ParseImages(out)
+	list, err := docker.ParseImages(out)
+	if err != nil {
+		return nil, err
+	}
+	used := usedImageIDs(ctx, d)
+	if used == nil {
+		return list, nil
+	}
+	for i := range list {
+		list[i].Unused = !imageUsed(used, list[i].ID)
+	}
+	return list, nil
+}
+
+// usedImageIDs liefert die IDs aller Images, die ein Container (auch gestoppt) verwendet; nil, wenn das nicht ermittelbar ist.
+func usedImageIDs(ctx context.Context, d Deps) []string {
+	res, err := d.Runner.Run(ctx, nil, "docker", "container", "ls", "-aq", "--no-trunc")
+	if err != nil || res.ExitCode != 0 {
+		return nil
+	}
+	ids := strings.Fields(string(res.Stdout))
+	if len(ids) == 0 {
+		return []string{}
+	}
+	args := append([]string{"inspect", "--format", "{{.Image}}"}, ids...)
+	res, err = d.Runner.Run(ctx, nil, "docker", args...)
+	if err != nil || res.ExitCode != 0 {
+		return nil
+	}
+	used := []string{}
+	for _, id := range strings.Fields(string(res.Stdout)) {
+		used = append(used, strings.TrimPrefix(id, "sha256:"))
+	}
+	return used
+}
+
+// imageUsed prüft, ob die (ggf. gekürzte) Image-ID zu einer verwendeten ID gehört.
+func imageUsed(used []string, id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, u := range used {
+		if strings.HasPrefix(u, id) || strings.HasPrefix(id, u) {
+			return true
+		}
+	}
+	return false
 }
 
 // ListNetworks liefert alle Netzwerke.
@@ -29,7 +75,24 @@ func ListNetworks(ctx context.Context, d Deps) ([]docker.NetworkInfo, error) {
 	if err != nil {
 		return nil, dockerErr(err)
 	}
-	return docker.ParseNetworks(out)
+	list, err := docker.ParseNetworks(out)
+	if err != nil {
+		return nil, err
+	}
+	res, rerr := d.Runner.Run(ctx, nil, "docker", "ps", "-a", "--format", "{{.Networks}}")
+	if rerr != nil || res.ExitCode != 0 {
+		return list, nil
+	}
+	used := map[string]bool{}
+	for _, l := range strings.Fields(string(res.Stdout)) {
+		for _, n := range strings.Split(l, ",") {
+			used[n] = true
+		}
+	}
+	for i := range list {
+		list[i].Unused = !list[i].Builtin && !used[list[i].Name]
+	}
+	return list, nil
 }
 
 // ListVolumes liefert alle Volumes und markiert ungenutzte.

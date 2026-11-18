@@ -55,12 +55,12 @@ describe('ResourcesView', () => {
     'GET /api/v1/stacks': [],
     'GET /api/v1/containers': [],
     'GET /api/v1/docker/images': [
-      { id: 'aaaaaaaaaaaa', ref: 'ghcr.io/x/y:1', repository: 'ghcr.io/x/y', tag: '1', sizeBytes: 1000000, created: '2 weeks ago', dangling: false },
-      { id: 'bbbbbbbbbbbb', ref: 'bbbbbbbbbbbb', repository: '', tag: '', sizeBytes: 5, created: 'x', dangling: true },
+      { id: 'aaaaaaaaaaaa', ref: 'ghcr.io/x/y:1', repository: 'ghcr.io/x/y', tag: '1', sizeBytes: 1000000, created: '2 weeks ago', dangling: false, unused: false },
+      { id: 'bbbbbbbbbbbb', ref: 'bbbbbbbbbbbb', repository: '', tag: '', sizeBytes: 5, created: 'x', dangling: true, unused: true },
     ],
     'GET /api/v1/docker/networks': [
-      { id: '111111111111', name: 'bridge', driver: 'bridge', scope: 'local', builtin: true },
-      { id: '222222222222', name: 'media_default', driver: 'bridge', scope: 'local', builtin: false },
+      { id: '111111111111', name: 'bridge', driver: 'bridge', scope: 'local', builtin: true, unused: false },
+      { id: '222222222222', name: 'media_default', driver: 'bridge', scope: 'local', builtin: false, unused: true },
     ],
     'GET /api/v1/docker/volumes': [{ name: 'media_data', driver: 'local', unused: true }],
   }

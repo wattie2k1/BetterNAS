@@ -148,6 +148,7 @@ export interface ImageInfo {
   sizeBytes: number
   created: string
   dangling: boolean
+  unused: boolean
 }
 
 export interface NetworkInfo {
@@ -156,6 +157,7 @@ export interface NetworkInfo {
   driver: string
   scope: string
   builtin: boolean
+  unused: boolean
 }
 
 export interface VolumeInfo {
