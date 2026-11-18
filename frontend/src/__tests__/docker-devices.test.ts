@@ -65,8 +65,8 @@ describe('Vorlage mit Gerät', () => {
     // Der Block steht im Dienst jellyfin, hinter den volumes.
     expect(withGpu.compose.indexOf('/media:ro')).toBeLessThan(withGpu.compose.indexOf('devices:'))
   })
-  it('hat nur bei Jellyfin ein Gerät', () => {
-    expect(APP_TEMPLATES.filter((t) => t.device).map((t) => t.id)).toEqual(['jellyfin'])
+  it('bieten nur Medienserver und Tdarr ein GPU-Gerät an', () => {
+    expect(APP_TEMPLATES.filter((t) => t.device).map((t) => t.id)).toEqual(['jellyfin', 'plex', 'emby', 'tdarr'])
     for (const t of APP_TEMPLATES) expect(t.compose.includes('# @devices'), t.id).toBe(!!t.device)
   })
 })

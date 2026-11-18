@@ -690,6 +690,157 @@ volumes:
       - \${CONFIG_DIR}:/app/config
 `,
   },
+  {
+    id: 'plex',
+    title: 'Plex',
+    description: 'Medienserver für Filme, Serien und Musik mit Apps für fast jedes Gerät (im Host-Netz, Port 32400).',
+    icon: 'pi pi-play',
+    category: 'Medien',
+    stack: 'plex',
+    fields: [
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { ...dataField, label: 'Medienordner (nur lesen)' },
+      ...idFields,
+      {
+        key: 'PLEX_CLAIM',
+        label: 'Claim-Token (optional)',
+        kind: 'text',
+        optional: true,
+        def: () => '',
+        hint: 'Ordnet den Server deinem Plex-Konto zu. Das Token von plex.tv/claim gilt nur 4 Minuten. Leer lassen, wenn du den Server später verbindest.',
+      },
+    ],
+    device: {
+      kind: 'gpu',
+      label: 'Hardware-Transcoding (GPU)',
+      hint: 'Reicht die Grafikeinheit an Plex durch. Hardware-Transcoding braucht Plex Pass.',
+    },
+    compose: `services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+      VERSION: docker
+      PLEX_CLAIM: "\${PLEX_CLAIM}"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data:ro
+    # @devices
+`,
+  },
+  {
+    id: 'emby',
+    title: 'Emby',
+    description: 'Medienserver für Filme, Serien und Musik mit Apps für viele Geräte.',
+    icon: 'pi pi-play-circle',
+    category: 'Medien',
+    stack: 'emby',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8097' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { ...dataField, label: 'Medienordner (nur lesen)' },
+      ...idFields,
+    ],
+    device: {
+      kind: 'gpu',
+      label: 'Hardware-Transcoding (GPU)',
+      hint: 'Reicht die Grafikeinheit an Emby durch. Hardware-Transcoding braucht Emby Premiere.',
+    },
+    compose: `services:
+  emby:
+    image: lscr.io/linuxserver/emby:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8096"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data:ro
+    # @devices
+`,
+  },
+  {
+    id: 'audiobookshelf',
+    title: 'Audiobookshelf',
+    description: 'Server für Hörbücher und Podcasts mit Apps für Android und iOS.',
+    icon: 'pi pi-book',
+    category: 'Medien',
+    stack: 'audiobookshelf',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '13378' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'METADATA_DIR', label: 'Ordner für Metadaten', kind: 'path', def: appdata('metadata') },
+      { key: 'AUDIOBOOKS_DIR', label: 'Ordner für Hörbücher', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Hoerbuecher' },
+      { key: 'PODCASTS_DIR', label: 'Ordner für Podcasts', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Podcasts' },
+    ],
+    compose: `services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:80"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${METADATA_DIR}:/metadata
+      - \${AUDIOBOOKS_DIR}:/audiobooks
+      - \${PODCASTS_DIR}:/podcasts
+`,
+  },
+  {
+    id: 'tdarr',
+    title: 'Tdarr',
+    description: 'Wandelt Videos automatisch in platzsparende Formate um (Server mit eingebautem Knoten). Schreibt in die Medienordner.',
+    icon: 'pi pi-cog',
+    category: 'Medien-Werkzeug',
+    stack: 'tdarr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8265' },
+      { key: 'SERVER_PORT', label: 'Port für weitere Knoten', kind: 'port', def: () => '8266', hint: 'Über diesen Port melden sich zusätzliche Tdarr-Knoten am Server an.' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { ...dataField, label: 'Medienordner (wird verändert)', hint: 'Tdarr ersetzt Dateien in diesem Ordner. Vorher eine Sicherung bedenken.' },
+      { key: 'TRANSCODE_DIR', label: 'Ordner für Zwischendateien', kind: 'path', def: appdata('transcode'), hint: 'Auf einer lokalen, schnellen Platte, nicht auf dem Pool.' },
+      ...idFields,
+    ],
+    device: {
+      kind: 'gpu',
+      label: 'Hardware-Transcoding (GPU)',
+      hint: 'Reicht die Grafikeinheit an Tdarr durch. In Tdarr den Knoten für GPU-Arbeit freigeben.',
+    },
+    compose: `services:
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+      serverIP: 0.0.0.0
+      serverPort: "8266"
+      webUIPort: "8265"
+      internalNode: "true"
+      inContainer: "true"
+      nodeName: InternalNode
+    ports:
+      - "\${PORT}:8265"
+      - "\${SERVER_PORT}:8266"
+    volumes:
+      - \${CONFIG_DIR}/server:/app/server
+      - \${CONFIG_DIR}/configs:/app/configs
+      - \${CONFIG_DIR}/logs:/app/logs
+      - \${DATA_DIR}:/data
+      - \${TRANSCODE_DIR}:/temp
+    # @devices
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */

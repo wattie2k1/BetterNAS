@@ -235,3 +235,41 @@ describe('*arr-Vorlagen', () => {
     for (const id of ['prowlarr', 'radarr', 'sonarr', 'lidarr', 'bazarr']) expect(ids).toContain(id)
   })
 })
+
+describe('Medienserver-Vorlagen', () => {
+  it('Plex läuft im Host-Netz ohne Portfeld, der Claim ist optional', () => {
+    const { t, files, env } = tpl('plex')
+    expect(t.category).toBe('Medien')
+    expect(files.compose).toContain('network_mode: host')
+    expect(files.compose).not.toContain('ports:')
+    expect(t.fields.some((f) => f.kind === 'port')).toBe(false)
+    expect(t.fields.find((f) => f.key === 'PLEX_CLAIM')?.optional).toBe(true)
+    expect(env).toContain('PLEX_CLAIM=\n')
+    expect(files.compose).toContain('${DATA_DIR}:/data:ro')
+  })
+
+  it('Emby, Audiobookshelf und Tdarr rendern mit den Vorgabe-Ports', () => {
+    expect(tpl('emby').files.compose).toContain('${PORT}:8096')
+    expect(tpl('emby').env).toContain('PORT=8097\n')
+    expect(tpl('emby').files.compose).toContain('${DATA_DIR}:/data:ro')
+    const a = tpl('audiobookshelf')
+    expect(a.t.category).toBe('Medien')
+    expect(a.files.compose).toContain('${PORT}:80')
+    expect(a.env).toContain('PORT=13378\n')
+    for (const m of ['/config', '/metadata', '/audiobooks', '/podcasts']) expect(a.files.compose).toContain(m)
+    const d = tpl('tdarr')
+    expect(d.t.category).toBe('Medien-Werkzeug')
+    expect(d.env).toContain('PORT=8265\n')
+    expect(d.env).toContain('SERVER_PORT=8266\n')
+    expect(d.files.compose).toContain('internalNode')
+    expect(d.files.compose).toContain('${DATA_DIR}:/data')
+  })
+
+  it('Plex, Emby und Tdarr bieten das Durchreichen der GPU an', () => {
+    for (const id of ['plex', 'emby', 'tdarr']) {
+      const t = APP_TEMPLATES.find((x) => x.id === id)!
+      expect(t.device?.kind, id).toBe('gpu')
+      expect(t.compose, id).toMatch(/^[ \t]*# @devices\n/m)
+    }
+  })
+})
