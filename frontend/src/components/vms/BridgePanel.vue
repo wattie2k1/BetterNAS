@@ -48,6 +48,13 @@ onMounted(() => {
 })
 onBeforeUnmount(stopPolling)
 
+// Nach der Umstellung kann das NAS eine neue Adresse bekommen; dort muss die Bestätigung erfolgen.
+const links = computed(() => {
+  const s = status.value
+  const list = (s?.addresses ?? []).map((a) => `https://${a}`)
+  if (s?.hostname) list.push(`https://${s.hostname}.local`)
+  return list
+})
 const remaining = computed(() => Math.max(0, (status.value?.deadline ?? 0) - now.value))
 
 async function enable() {
@@ -111,6 +118,10 @@ async function disable() {
           Die Bridge ist eingerichtet. Funktioniert die Verbindung zum NAS weiterhin, bestätige die Änderung binnen
           <strong>{{ remaining }} s</strong>. Sonst wird die alte Netzwerkkonfiguration automatisch wiederhergestellt.
         </Message>
+        <p v-if="links.length" data-test="bridge-links">
+          Erreichbar unter:
+          <template v-for="(l, i) in links" :key="l"><template v-if="i">, </template><a :href="l">{{ l }}</a></template>
+        </p>
       </div>
       <div v-else-if="status.active" data-test="bridge-active">
         <Message severity="success" :closable="false">Die Bridge <strong>br0</strong> ist aktiv und hängt an <strong>{{ status.interface }}</strong>. In der VM-Erstellung steht jetzt „Bridge br0“ als Netz zur Verfügung.</Message>
@@ -121,6 +132,10 @@ async function disable() {
         </p>
         <Message severity="warn" :closable="false">
           Beim Einrichten wird die Netzwerkverbindung kurz unterbrochen. Bestätige die Änderung danach binnen 2 Minuten; ohne Bestätigung stellt das NAS die alte Konfiguration selbst wieder her.
+        </Message>
+        <Message severity="info" :closable="false" data-test="bridge-address-hint">
+          <strong>Die Adresse des NAS kann sich ändern.</strong> Die Bridge bekommt per DHCP unter Umständen eine andere IP-Adresse als bisher. Öffnet sich die Seite danach nicht mehr, rufe
+          <template v-if="status.hostname"><strong>https://{{ status.hostname }}.local</strong> oder </template>die neue Adresse aus der Geräteliste deines Routers auf und bestätige die Änderung dort. Hast du in der Zeit nicht bestätigt, wird alles nach 2 Minuten automatisch zurückgenommen und das NAS ist wieder unter der alten Adresse erreichbar.
         </Message>
         <div class="field">
           <label for="bridge-if">Netzwerkschnittstelle</label>

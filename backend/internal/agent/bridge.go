@@ -40,11 +40,17 @@ func BridgeStatus(ctx context.Context, d Deps) (netcfg.Status, error) {
 	if err != nil {
 		return netcfg.Status{}, err
 	}
-	st := netcfg.Status{Candidates: cands}
+	st := netcfg.Status{Candidates: cands, Addresses: []string{}}
+	if res, err := d.Runner.Run(ctx, nil, "hostname"); err == nil && res.ExitCode == 0 {
+		st.Hostname = strings.TrimSpace(string(res.Stdout))
+	}
 	state, ok := readBridgeState(d)
 	if ok && d.FS.Exists(netcfg.Dir+"/"+netcfg.NetdevFile) {
 		st.Active = true
 		st.Interface = state.Interface
+		if res, err := d.Runner.Run(ctx, nil, "ip", "-4", "-o", "addr", "show", "dev", netcfg.Name); err == nil && res.ExitCode == 0 {
+			st.Addresses = netcfg.ParseAddrs(res.Stdout)
+		}
 		st.Pending = state.Pending && timerActive(ctx, d)
 		if st.Pending {
 			st.Deadline = state.Deadline

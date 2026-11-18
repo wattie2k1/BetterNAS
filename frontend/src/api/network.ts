@@ -7,6 +7,9 @@ export interface BridgeStatus {
   pending: boolean
   /** Frist der Bestätigung (Unix-Sekunden). */
   deadline: number
+  /** IPv4-Adressen von br0, wenn die Bridge aktiv ist. */
+  addresses: string[]
+  hostname: string
   candidates: string[]
 }
 

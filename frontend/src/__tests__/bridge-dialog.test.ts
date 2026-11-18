@@ -7,7 +7,7 @@ import { networkApi, type BridgeStatus } from '@/api/network'
 
 vi.mock('@/api/network', () => ({ networkApi: { bridge: vi.fn(), enableBridge: vi.fn(), confirmBridge: vi.fn(), disableBridge: vi.fn() } }))
 
-const off: BridgeStatus = { active: false, interface: '', pending: false, deadline: 0, candidates: ['eno1'] }
+const off: BridgeStatus = { active: false, interface: '', pending: false, deadline: 0, addresses: [], hostname: 'betternas', candidates: ['eno1'] }
 const mountIt = () => mount(BridgeDialog, { props: { visible: true }, global: { plugins: [PrimeVue, ToastService] }, attachTo: document.body })
 const q = (s: string) => document.querySelector<HTMLElement>(`[data-test="${s}"]`)
 
@@ -23,6 +23,7 @@ describe('BridgeDialog', () => {
     const w = mountIt()
     await flushPromises()
     expect(q('bridge-off')).toBeTruthy()
+    expect(q('bridge-address-hint')?.textContent).toContain('betternas.local')
     q('bridge-enable')!.click()
     await flushPromises()
     expect(networkApi.enableBridge).toHaveBeenCalledWith('eno1')
@@ -30,11 +31,12 @@ describe('BridgeDialog', () => {
     w.unmount()
   })
 
-  it('bestätigt die Änderung', async () => {
-    vi.mocked(networkApi.bridge).mockResolvedValue({ ...off, active: true, pending: true, interface: 'eno1', deadline: Math.floor(Date.now() / 1000) + 100 })
+  it('bestätigt die Änderung und zeigt die neue Adresse', async () => {
+    vi.mocked(networkApi.bridge).mockResolvedValue({ ...off, active: true, pending: true, interface: 'eno1', addresses: ['192.168.1.65'], deadline: Math.floor(Date.now() / 1000) + 100 })
     vi.mocked(networkApi.confirmBridge).mockResolvedValue()
     const w = mountIt()
     await flushPromises()
+    expect(q('bridge-links')?.textContent).toContain('https://192.168.1.65')
     q('bridge-confirm')!.click()
     await flushPromises()
     expect(networkApi.confirmBridge).toHaveBeenCalled()
