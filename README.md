@@ -113,6 +113,11 @@ systemd; er läuft auch in einem privilegierten Container, z. B. mit Colima:
 Der Daten-Teil des e2e-Tests braucht `python3` und `smbclient` auf dem Rechner, der ihn ausführt (ohne `smbclient` entfallen
 die SMB-Prüfungen).
 
+## Lizenz
+
+BetterNAS steht unter der GNU General Public License, Version 3 oder neuer (GPL-3.0-or-later), siehe
+[LICENSE](LICENSE). Beiträge: siehe [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Release veröffentlichen (GitHub)
 
 APT-Repo über GitHub Pages, ISO als Release-Asset:
