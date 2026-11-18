@@ -18,9 +18,13 @@ import (
 	"github.com/betternas/betternas/internal/system"
 )
 
-type updatesAgent struct{ installErr error }
+type updatesAgent struct {
+	installErr error
+	channel    string
+	setCalls   []string
+}
 
-func (a *updatesAgent) Call(_ context.Context, method string, _, result any) error {
+func (a *updatesAgent) Call(_ context.Context, method string, params, result any) error {
 	var out any
 	switch method {
 	case "updates.check":
@@ -30,6 +34,14 @@ func (a *updatesAgent) Call(_ context.Context, method string, _, result any) err
 			return a.installErr
 		}
 		out = map[string]string{"unit": "betternas-update-1"}
+	case "updates.channel":
+		out = map[string]string{"channel": a.channel}
+	case "updates.setchannel":
+		b, _ := json.Marshal(params)
+		var p struct{ Channel string }
+		_ = json.Unmarshal(b, &p)
+		a.channel = p.Channel
+		a.setCalls = append(a.setCalls, p.Channel)
 	case "updates.status":
 		out = system.Run{State: "succeeded", Log: "fertig"}
 	}
@@ -93,5 +105,54 @@ func TestUpdatesRoutes(t *testing.T) {
 	ag.installErr = apierr.New(apierr.Conflict, "Ein Update läuft bereits.")
 	if w := do("POST", "/api/v1/updates/install"); w.Code != 409 {
 		t.Fatalf("Konflikt: %d", w.Code)
+	}
+}
+
+func TestUpdatesChannelRoute(t *testing.T) {
+	d, err := db.Open(filepath.Join(t.TempDir(), "b.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	hub := events.NewHub()
+	jm := jobs.NewManager(d, hub)
+	store := auth.NewStore(d, time.Hour)
+	token, csrf, _ := store.Create(context.Background(), "anna")
+	ag := &updatesAgent{channel: "stable"}
+	h := NewServer(Config{WebDir: t.TempDir(), Dev: true}, Deps{
+		DB: d, Jobs: jm, Hub: hub,
+		Auth:    auth.NewHandlers(d, store, nil, nil, false),
+		Updates: system.NewUpdates(d, ag, jm, hub),
+	})
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.RemoteAddr = "192.168.1.10:1"
+		r.AddCookie(&http.Cookie{Name: auth.CookieName, Value: token})
+		r.Header.Set("X-CSRF-Token", csrf)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	if w := do("GET", "/api/v1/updates", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"channel":"stable"`) {
+		t.Fatalf("GET: %d %s", w.Code, w.Body)
+	}
+	if w := do("PUT", "/api/v1/updates/channel", `{"channel":"testing"}`); w.Code != 204 {
+		t.Fatalf("PUT: %d %s", w.Code, w.Body)
+	}
+	if len(ag.setCalls) != 1 || ag.setCalls[0] != "testing" {
+		t.Fatalf("Agent-Aufrufe: %v", ag.setCalls)
+	}
+	if w := do("GET", "/api/v1/updates", ""); !strings.Contains(w.Body.String(), `"channel":"testing"`) {
+		t.Fatalf("nach Wechsel: %s", w.Body)
+	}
+	for _, body := range []string{`{"channel":"beta"}`, `{"channel":""}`, `kaputt`, `{}`} {
+		if w := do("PUT", "/api/v1/updates/channel", body); w.Code != 400 {
+			t.Errorf("%s: %d", body, w.Code)
+		}
+	}
+	if len(ag.setCalls) != 1 {
+		t.Fatalf("ungültige Kanäle dürfen den Agent nicht erreichen: %v", ag.setCalls)
 	}
 }

@@ -20,6 +20,9 @@ type fakeAgent struct {
 	calls      []string
 	installErr error
 	status     Run
+	channel    string
+	channelErr error
+	setErr     error
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -35,6 +38,19 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			return f.installErr
 		}
 		out = map[string]string{"unit": "betternas-update-1700000000"}
+	case "updates.channel":
+		if f.channelErr != nil {
+			return f.channelErr
+		}
+		out = map[string]string{"channel": f.channel}
+	case "updates.setchannel":
+		if f.setErr != nil {
+			return f.setErr
+		}
+		b, _ := json.Marshal(params)
+		var p struct{ Channel string }
+		_ = json.Unmarshal(b, &p)
+		f.channel = p.Channel
 	case "updates.status":
 		b, _ := json.Marshal(params)
 		var p struct{ Unit string }
@@ -133,5 +149,79 @@ func TestInstallConflictPassesThrough(t *testing.T) {
 	}
 	if l := entries(); len(l) == 0 || l[0].Result != "error" {
 		t.Fatalf("Audit: %+v", l)
+	}
+}
+
+func (f *fakeAgent) called(method string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if c == method {
+			return true
+		}
+	}
+	return false
+}
+
+func TestGetIncludesChannel(t *testing.T) {
+	e, _ := newEnv(t)
+	e.agent.channel = "testing"
+	o, err := e.u.Get(e.ctx)
+	if err != nil || o.Channel != "testing" {
+		t.Fatalf("%v %+v", err, o)
+	}
+}
+
+func TestGetSurvivesChannelError(t *testing.T) {
+	e, _ := newEnv(t)
+	e.agent.channelErr = apierr.New(apierr.Internal, "kaputt")
+	o, err := e.u.Get(e.ctx)
+	if err != nil || o.Channel != "" {
+		t.Fatalf("%v %+v", err, o)
+	}
+}
+
+func TestSetChannelAuditsAndClearsPackages(t *testing.T) {
+	e, entries := newEnv(t)
+	id, _ := e.u.Check(e.ctx, "anna")
+	e.wait(t, id)
+	if err := e.u.SetChannel(e.ctx, "anna", "testing"); err != nil {
+		t.Fatal(err)
+	}
+	o, _ := e.u.Get(e.ctx)
+	if o.Channel != "testing" || len(o.Packages) != 0 {
+		t.Fatalf("%+v", o)
+	}
+	if l := entries(); len(l) == 0 || l[0].Action != "updates.setchannel" || l[0].Target != "testing" || l[0].Result != "ok" {
+		t.Fatalf("Audit: %+v", l)
+	}
+}
+
+func TestSetChannelErrorIsAuditedAndKeepsPackages(t *testing.T) {
+	e, entries := newEnv(t)
+	id, _ := e.u.Check(e.ctx, "anna")
+	e.wait(t, id)
+	e.agent.setErr = apierr.New(apierr.Conflict, "Die BetterNAS-Paketquelle wurde manuell angepasst.")
+	if err := e.u.SetChannel(e.ctx, "anna", "testing"); apierr.From(err).Code != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+	o, _ := e.u.Get(e.ctx)
+	if len(o.Packages) != 1 {
+		t.Fatalf("Liste darf bei Fehler bleiben: %+v", o)
+	}
+	if l := entries(); len(l) == 0 || l[0].Result != "error" {
+		t.Fatalf("Audit: %+v", l)
+	}
+}
+
+func TestSetChannelRejectsInvalid(t *testing.T) {
+	e, _ := newEnv(t)
+	for _, ch := range []string{"", "beta", "stable\nx"} {
+		if err := e.u.SetChannel(e.ctx, "anna", ch); apierr.From(err).Code != apierr.InvalidParams {
+			t.Errorf("%q: %v", ch, err)
+		}
+	}
+	if e.agent.called("updates.setchannel") {
+		t.Fatal("Agent darf bei ungültigem Kanal nicht aufgerufen werden")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/audit"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
@@ -36,6 +37,8 @@ type Overview struct {
 	Packages  []Package `json:"packages"`
 	CheckedAt string    `json:"checkedAt"`
 	Run       Run       `json:"run"`
+	// Channel ist der Update-Kanal der BetterNAS-Paketquelle (stable | testing); leer = keine Quelle oder unbekannt.
+	Channel string `json:"channel"`
 }
 
 const (
@@ -75,6 +78,12 @@ func (u *Updates) set(ctx context.Context, key, value string) error {
 // Get liefert gespeicherte Paketliste, Zeitpunkt der Suche und Zustand des letzten Laufs.
 func (u *Updates) Get(ctx context.Context) (Overview, error) {
 	o := Overview{Packages: []Package{}, Run: Run{State: "none"}}
+	var ch struct {
+		Channel string `json:"channel"`
+	}
+	if err := u.agent.Call(ctx, "updates.channel", nil, &ch); err == nil {
+		o.Channel = ch.Channel
+	}
 	raw, err := u.get(ctx, keyPackages)
 	if err != nil {
 		return o, err
@@ -160,4 +169,24 @@ func (u *Updates) Install(ctx context.Context, actor string) (string, error) {
 	_ = u.set(ctx, keyPackages, "[]") // die Liste ist nach dem Update veraltet
 	u.hub.Publish(events.Message{Type: "updates.changed"})
 	return res.Unit, nil
+}
+
+// SetChannel stellt die BetterNAS-Paketquelle auf einen anderen Kanal um. Die gespeicherte Paketliste stammt
+// vom alten Kanal und wird verworfen; die nächste Suche füllt sie neu.
+func (u *Updates) SetChannel(ctx context.Context, actor, channel string) error {
+	if channel != "stable" && channel != "testing" {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Update-Kanal")
+	}
+	err := u.agent.Call(ctx, "updates.setchannel", map[string]string{"channel": channel}, nil)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	_ = audit.Record(ctx, u.db, audit.Entry{Actor: actor, Action: "updates.setchannel", Target: channel, Result: result})
+	if err != nil {
+		return err
+	}
+	_ = u.set(ctx, keyPackages, "[]")
+	u.hub.Publish(events.Message{Type: "updates.changed"})
+	return nil
 }
