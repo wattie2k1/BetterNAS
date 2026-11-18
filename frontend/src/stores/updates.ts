@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { updatesApi, type UpdateOverview } from '@/api/updates'
+import { updatesApi, type UpdateChannel, type UpdateOverview } from '@/api/updates'
 import { useJobsStore } from './jobs'
 
 export const POLL_INTERVAL_MS = 2000
@@ -8,7 +8,7 @@ export const POLL_INTERVAL_MS = 2000
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export const useUpdatesStore = defineStore('updates', () => {
-  const overview = ref<UpdateOverview>({ packages: [], checkedAt: '', run: { state: 'none', log: '' } })
+  const overview = ref<UpdateOverview>({ packages: [], checkedAt: '', run: { state: 'none', log: '' }, channel: '' })
   const loading = ref(false)
   const checking = ref(false)
   const installing = ref(false)
@@ -17,6 +17,7 @@ export const useUpdatesStore = defineStore('updates', () => {
   /** Nach einem Update mit neuer Version muss die Seite neu geladen werden. */
   const reloadNeeded = ref(false)
   const error = ref('')
+  const changingChannel = ref(false)
   let polling = false
   /** Version der laufenden Oberfläche; wird beim Start der Installation gemerkt. */
   let startVersion = ''
@@ -88,5 +89,16 @@ export const useUpdatesStore = defineStore('updates', () => {
     void pollUntilDone()
   }
 
-  return { overview, loading, checking, installing, restarting, reloadNeeded, error, load, check, install }
+  /** Stellt die Paketquelle auf einen anderen Kanal um und lädt die Übersicht neu. Fehler werden geworfen. */
+  async function setChannel(channel: UpdateChannel) {
+    changingChannel.value = true
+    try {
+      await updatesApi.setChannel(channel)
+    } finally {
+      changingChannel.value = false
+      await load()
+    }
+  }
+
+  return { overview, loading, checking, installing, restarting, reloadNeeded, error, changingChannel, load, check, install, setChannel }
 })

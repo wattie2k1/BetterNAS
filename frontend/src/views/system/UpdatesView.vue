@@ -2,10 +2,12 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
+import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useUpdatesStore } from '@/stores/updates'
+import type { UpdateChannel } from '@/api/updates'
 
 const store = useUpdatesStore()
 const toast = useToast()
@@ -33,6 +35,21 @@ async function install() {
     await store.install()
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Installation nicht gestartet', detail: e instanceof Error ? e.message : String(e), life: 10000 })
+  }
+}
+
+const channelOptions = [
+  { label: 'Stabil', value: 'stable' },
+  { label: 'Testing', value: 'testing' },
+]
+
+async function changeChannel(channel: UpdateChannel) {
+  if (channel === store.overview.channel) return
+  try {
+    await store.setChannel(channel)
+    toast.add({ severity: 'success', summary: 'Update-Kanal geändert', detail: 'Bitte jetzt erneut nach Updates suchen.', life: 6000 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Kanalwechsel fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   }
 }
 
@@ -75,6 +92,23 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
       :disabled="!store.overview.packages.length || store.installing"
       @click="confirm = true"
     />
+  </div>
+  <div v-if="store.overview.channel" class="channel">
+    <span class="channel-label">Update-Kanal</span>
+    <SelectButton
+      :model-value="store.overview.channel"
+      :options="channelOptions"
+      option-label="label"
+      option-value="value"
+      :allow-empty="false"
+      :disabled="store.installing || store.changingChannel"
+      data-test="updates-channel"
+      @update:model-value="changeChannel"
+    />
+    <p class="sub channel-hint">
+      Testing enthält Vorabversionen. Ein Wechsel zurück zu Stabil installiert keine ältere Version; das NAS bleibt auf
+      seiner Version, bis Stabil sie einholt.
+    </p>
   </div>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
 
@@ -144,6 +178,21 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
 }
 .sub {
   color: var(--p-text-muted-color);
+}
+.channel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+.channel-label {
+  font-weight: 650;
+}
+.channel-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
 }
 .ok {
   display: flex;

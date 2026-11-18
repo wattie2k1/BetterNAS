@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
+import Toast from 'primevue/toast'
 import UpdatesView from '@/views/system/UpdatesView.vue'
 import { POLL_INTERVAL_MS, useUpdatesStore } from '@/stores/updates'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
-const overview = (state: string, packages: unknown[] = [], log = '') => ({ packages, checkedAt: '2026-11-15T16:00:00Z', run: { state, log } })
+const overview = (state: string, packages: unknown[] = [], log = '', channel = 'stable') => ({ packages, checkedAt: '2026-11-15T16:00:00Z', run: { state, log }, channel })
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
@@ -137,5 +139,65 @@ describe('UpdatesView', () => {
     await flushPromises()
     await vi.advanceTimersByTimeAsync(10)
     expect(w.find('[data-test="updates-restarting"]').exists()).toBe(true)
+  })
+})
+
+describe('UpdatesView: Update-Kanal', () => {
+  const mountView = () => mount(UpdatesView, { global: { plugins: [createPinia(), PrimeVue, ToastService] } })
+  const putOk = () => new Response(null, { status: 204 })
+
+  it('zeigt den Umschalter mit dem aktuellen Kanal', async () => {
+    script({ '/api/v1/updates': [ok(overview('none', [], '', 'stable'))] })
+    const w = mountView()
+    await flushPromises()
+    const sel = w.find('[data-test="updates-channel"]')
+    expect(sel.exists()).toBe(true)
+    expect(sel.find('[aria-pressed="true"]').text()).toContain('Stabil')
+    expect(sel.text()).toContain('Testing')
+  })
+
+  it('blendet den Umschalter aus, wenn keine Quelle eingerichtet ist', async () => {
+    script({ '/api/v1/updates': [ok(overview('none', [], '', ''))] })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="updates-channel"]').exists()).toBe(false)
+  })
+
+  it('wechselt den Kanal per PUT und lädt neu', async () => {
+    const fn = script({ '/api/v1/updates': [ok(overview('none', [], '', 'stable')), ok(overview('none', [], '', 'testing'))], '/api/v1/updates/channel': [putOk] })
+    const w = mountView()
+    await flushPromises()
+    const buttons = w.findAll('[data-test="updates-channel"] [role="button"], [data-test="updates-channel"] button')
+    const testing = buttons.find((b) => b.text().includes('Testing'))!
+    await testing.trigger('click')
+    await flushPromises()
+    const put = fn.mock.calls.find((c) => c[0] === '/api/v1/updates/channel')
+    expect(put).toBeTruthy()
+    expect((put![1] as RequestInit).method).toBe('PUT')
+    expect(JSON.parse((put![1] as RequestInit).body as string)).toEqual({ channel: 'testing' })
+    expect(useUpdatesStore().overview.channel).toBe('testing')
+    expect(w.find('[data-test="updates-channel"] [aria-pressed="true"]').text()).toContain('Testing')
+  })
+
+  it('zeigt den Fehler als Toast und behält den Kanal, wenn der Wechsel scheitert', async () => {
+    script({
+      '/api/v1/updates': [ok(overview('none', [], '', 'stable'))],
+      '/api/v1/updates/channel': [() => new Response(JSON.stringify({ error: { code: 'conflict', message: 'Die BetterNAS-Paketquelle wurde manuell angepasst.' } }), { status: 409 })],
+    })
+    const Page = defineComponent({ render: () => [h(Toast), h(UpdatesView)] })
+    const w = mount(Page, { attachTo: document.body, global: { plugins: [createPinia(), PrimeVue, ToastService] } })
+    await flushPromises()
+    const buttons = w.findAll('[data-test="updates-channel"] [role="button"], [data-test="updates-channel"] button')
+    await buttons.find((b) => b.text().includes('Testing'))!.trigger('click')
+    await flushPromises()
+    expect(useUpdatesStore().overview.channel).toBe('stable')
+    expect(document.body.textContent).toContain('Kanalwechsel fehlgeschlagen')
+  })
+
+  it('sperrt den Umschalter während der Installation', async () => {
+    script({ '/api/v1/updates': [ok(overview('running', [], '', 'stable'))], '/api/v1/updates/run': [ok({ state: 'running', log: '' })], '/api/v1/system/info': [ok({ version: '1' })] })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="updates-channel"] [aria-pressed]').attributes('aria-disabled') ?? w.find('[data-test="updates-channel"] [aria-pressed]').attributes('disabled')).toBeDefined()
   })
 })
