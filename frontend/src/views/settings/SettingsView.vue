@@ -11,6 +11,14 @@ const groups = [
     ],
   },
   {
+    title: 'Dienste',
+    items: [
+      { label: 'Dienste', icon: 'pi pi-cog', to: '/einstellungen/dienste' },
+      { label: 'Dateidienste', icon: 'pi pi-folder-open', to: '/einstellungen/dateidienste' },
+      { label: 'Docker', icon: 'pi pi-clone', to: '/einstellungen/docker' },
+    ],
+  },
+  {
     title: 'Wartung',
     items: [
       { label: 'Benachrichtigungen', icon: 'pi pi-bell', to: '/einstellungen/benachrichtigungen' },

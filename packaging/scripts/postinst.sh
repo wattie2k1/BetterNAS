@@ -40,6 +40,9 @@ if [ "$1" = "configure" ]; then
 	# Samba: Freigaben liegen in /etc/samba/betternas.d. Die smb.conf wird nur ersetzt, wenn sie noch der
 	# Debian-Auslieferung entspricht oder fehlt; eigene Konfiguration bleibt unangetastet.
 	install -d -m 0755 /etc/samba/betternas.d
+	if [ ! -e /etc/samba/betternas.d/global.conf ]; then
+		printf '%s\n' "# Verwaltet von BetterNAS – nicht manuell bearbeiten" > /etc/samba/betternas.d/global.conf
+	fi
 	if [ ! -e /etc/samba/betternas.d/shares.conf ]; then
 		printf '%s\n' "# Verwaltet von BetterNAS – nicht manuell bearbeiten" > /etc/samba/betternas.d/shares.conf
 	fi

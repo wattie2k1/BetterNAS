@@ -55,3 +55,45 @@ func (s *Settings) Power(ctx context.Context, actor, action string) error {
 	s.record(ctx, actor, "system.power", action, err)
 	return err
 }
+
+// Services liefert den Zustand der steuerbaren Dienste.
+func (s *Settings) Services(ctx context.Context) ([]map[string]any, error) {
+	out := []map[string]any{}
+	err := s.agent.Call(ctx, "service.list", nil, &out)
+	return out, err
+}
+
+// ServiceAction startet, stoppt oder startet einen Dienst neu.
+func (s *Settings) ServiceAction(ctx context.Context, actor, unit, action string) error {
+	err := s.agent.Call(ctx, "service.action", map[string]string{"unit": unit, "action": action}, nil)
+	s.record(ctx, actor, "service."+action, unit, err)
+	return err
+}
+
+// SMB liefert die globalen Samba-Einstellungen.
+func (s *Settings) SMB(ctx context.Context) (map[string]any, error) {
+	out := map[string]any{}
+	err := s.agent.Call(ctx, "smb.global.get", nil, &out)
+	return out, err
+}
+
+// SetSMB speichert die globalen Samba-Einstellungen.
+func (s *Settings) SetSMB(ctx context.Context, actor string, v map[string]any) error {
+	err := s.agent.Call(ctx, "smb.global.set", v, nil)
+	s.record(ctx, actor, "smb.global.set", "smb", err)
+	return err
+}
+
+// Docker liefert die Docker-Einstellungen.
+func (s *Settings) Docker(ctx context.Context) (map[string]any, error) {
+	out := map[string]any{}
+	err := s.agent.Call(ctx, "docker.settings.get", nil, &out)
+	return out, err
+}
+
+// SetDocker speichert die Docker-Einstellungen (ohne Neustart des Dienstes).
+func (s *Settings) SetDocker(ctx context.Context, actor string, v map[string]any) error {
+	err := s.agent.Call(ctx, "docker.settings.set", v, nil)
+	s.record(ctx, actor, "docker.settings.set", "docker", err)
+	return err
+}

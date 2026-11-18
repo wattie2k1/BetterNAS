@@ -34,3 +34,35 @@ export const systemApi = {
   regenerateCertificate: () => api.post<CertInfo>('/api/v1/system/certificate/regenerate'),
   installCertificate: (cert: string, key: string) => api.put<CertInfo>('/api/v1/system/certificate', { cert, key }),
 }
+
+export interface ServiceState {
+  unit: string
+  label: string
+  active: boolean
+  enabled: boolean
+  installed: boolean
+}
+export type ServiceAction = 'start' | 'stop' | 'restart'
+
+export interface SmbGlobal {
+  workgroup: string
+  serverName: string
+  minProtocol: string
+}
+
+export interface DockerSettings {
+  dataRoot: string
+  logMaxSize: string
+  logMaxFile: number
+  registryMirrors: string[]
+  liveRestore: boolean
+}
+
+export const servicesApi = {
+  list: () => api.get<ServiceState[]>('/api/v1/services'),
+  act: (unit: string, action: ServiceAction) => api.post<void>(`/api/v1/services/${unit}/${action}`),
+  smb: () => api.get<SmbGlobal>('/api/v1/settings/smb'),
+  setSmb: (v: SmbGlobal) => api.put<void>('/api/v1/settings/smb', v),
+  docker: () => api.get<DockerSettings>('/api/v1/settings/docker'),
+  setDocker: (v: Omit<DockerSettings, 'dataRoot'>) => api.put<void>('/api/v1/settings/docker', v),
+}
