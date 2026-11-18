@@ -120,6 +120,7 @@ func RollbackScript(iface string) string {
 	return fmt.Sprintf(`#!/bin/sh
 # Von BetterNAS erzeugt: stellt die Netzwerkkonfiguration ohne Bridge wieder her.
 rm -f %[1]s/%[2]s %[1]s/%[3]s %[1]s/%[4]s
+rm -rf %[1]s/%[4]s.d
 ip link set %[5]s down 2>/dev/null
 ip link del %[5]s 2>/dev/null
 networkctl reload

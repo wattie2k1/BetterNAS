@@ -6,6 +6,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
+	"github.com/betternas/betternas/internal/netcfg"
 )
 
 func (s *server) registerNetwork(mux *http.ServeMux) {
@@ -18,6 +19,28 @@ func (s *server) registerNetwork(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+	mux.HandleFunc("GET /api/v1/network", func(w http.ResponseWriter, r *http.Request) {
+		st, err := m.IPStatus(r.Context())
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
+	})
+	mux.HandleFunc("PUT /api/v1/network", func(w http.ResponseWriter, r *http.Request) {
+		var in netcfg.IPConfig
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in); err != nil {
+			apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+			return
+		}
+		done(w, m.IPApply(r.Context(), actor(r), in))
+	})
+	mux.HandleFunc("POST /api/v1/network/confirm", func(w http.ResponseWriter, r *http.Request) {
+		done(w, m.IPConfirm(r.Context(), actor(r)))
+	})
+	mux.HandleFunc("POST /api/v1/network/revert", func(w http.ResponseWriter, r *http.Request) {
+		done(w, m.IPRevert(r.Context(), actor(r)))
+	})
 	mux.HandleFunc("GET /api/v1/network/bridge", func(w http.ResponseWriter, r *http.Request) {
 		st, err := m.Status(r.Context())
 		if err != nil {

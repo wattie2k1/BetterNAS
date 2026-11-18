@@ -62,3 +62,31 @@ func (m *Manager) Disable(ctx context.Context, actor string) error {
 	m.record(ctx, actor, "network.bridge.disable", Name, err)
 	return err
 }
+
+// IPStatus liefert die Netzwerkkonfiguration des Hosts.
+func (m *Manager) IPStatus(ctx context.Context) (IPStatus, error) {
+	st := IPStatus{}
+	err := m.agent.Call(ctx, "network.status", nil, &st)
+	return st, err
+}
+
+// IPApply schreibt die IP-Konfiguration (vorläufig bis zur Bestätigung).
+func (m *Manager) IPApply(ctx context.Context, actor string, cfg IPConfig) error {
+	err := m.agent.Call(ctx, "network.configure", cfg, nil)
+	m.record(ctx, actor, "network.configure", cfg.Mode+" "+cfg.Address, err)
+	return err
+}
+
+// IPConfirm bestätigt die neue IP-Konfiguration.
+func (m *Manager) IPConfirm(ctx context.Context, actor string) error {
+	err := m.agent.Call(ctx, "network.confirm", nil, nil)
+	m.record(ctx, actor, "network.confirm", "ip", err)
+	return err
+}
+
+// IPRevert nimmt eine unbestätigte IP-Änderung zurück.
+func (m *Manager) IPRevert(ctx context.Context, actor string) error {
+	err := m.agent.Call(ctx, "network.revert", nil, nil)
+	m.record(ctx, actor, "network.revert", "ip", err)
+	return err
+}
