@@ -257,11 +257,23 @@ func TestStageAndApplyPending(t *testing.T) {
 		}
 	}
 	old, _ := filepath.Glob(target + ".pre-restore-*")
-	if len(old) != 1 {
-		t.Fatalf("%v", old)
+	if len(old) != 3 {
+		t.Fatalf("erwartet DB + -wal + -shm: %v", old)
 	}
-	if b, _ := os.ReadFile(old[0]); string(b) != "ALT" {
+	saved := ""
+	for _, o := range old {
+		if !strings.HasSuffix(o, "-wal") && !strings.HasSuffix(o, "-shm") {
+			saved = o
+		}
+	}
+	if b, _ := os.ReadFile(saved); string(b) != "ALT" {
 		t.Fatal("alte DB nicht gesichert")
+	}
+	if b, _ := os.ReadFile(saved + "-wal"); string(b) != "w" {
+		t.Fatal("alte WAL nicht mit der alten DB gesichert")
+	}
+	if b, _ := os.ReadFile(saved + "-shm"); string(b) != "s" {
+		t.Fatal("alte SHM nicht mit der alten DB gesichert")
 	}
 	for _, n := range []string{"pending.db", "pending.json"} {
 		if _, err := os.Stat(filepath.Join(rdir, n)); err == nil {

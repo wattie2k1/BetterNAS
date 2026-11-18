@@ -110,6 +110,23 @@ func TestDisableNeedsValidCode(t *testing.T) {
 	}
 }
 
+func TestDisableIsRateLimited(t *testing.T) {
+	s := newStorageAPI(t)
+	_, codes := enableTOTP(t, s)
+	for i := 0; i < 5; i++ {
+		if w := s.do("POST", "/api/v1/auth/totp/disable", `{"code":"000000"}`); w.Code != 403 {
+			t.Fatalf("Versuch %d: %d", i, w.Code)
+		}
+	}
+	// Auch der richtige Code wird nach zu vielen Fehlversuchen nicht mehr angenommen.
+	if w := s.do("POST", "/api/v1/auth/totp/disable", `{"code":"`+codes[0]+`"}`); w.Code != 429 {
+		t.Fatalf("erwartet 429: %d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/auth/totp", ""); !strings.Contains(w.Body.String(), `"enabled":true`) {
+		t.Fatal("trotz Sperre abgeschaltet")
+	}
+}
+
 func TestAdminResetOtherUser(t *testing.T) {
 	s := newStorageAPI(t)
 	store := auth.NewTOTPStore(s.db)

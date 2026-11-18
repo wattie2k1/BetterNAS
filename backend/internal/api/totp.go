@@ -11,6 +11,8 @@ import (
 
 func (s *server) registerTOTP(mux *http.ServeMux) {
 	st := s.deps.TOTP
+	// Fehlversuche beim Abschalten je Benutzer (eine gestohlene Sitzung soll den Code nicht durchprobieren können).
+	disableLimit := auth.NewRateLimiter(5, 5*time.Minute)
 	actor := func(r *http.Request) string { return auth.SessionFrom(r.Context()).Username }
 	record := func(r *http.Request, action, target string, err error) {
 		result := "ok"
@@ -88,8 +90,13 @@ func (s *server) registerTOTP(mux *http.ServeMux) {
 			return
 		}
 		user := actor(r)
+		if disableLimit.Blocked(user) {
+			apierr.Write(w, apierr.New(apierr.RateLimited, "Zu viele Fehlversuche. Bitte in einigen Minuten erneut versuchen."))
+			return
+		}
 		ok, err := st.Verify(r.Context(), user, in.Code, time.Now())
 		if err == nil && !ok {
+			disableLimit.Fail(user)
 			err = apierr.New(apierr.Forbidden, "Code ungültig")
 		}
 		if err == nil {

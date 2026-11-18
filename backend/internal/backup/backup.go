@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // reiner Go-Treiber, kein cgo
@@ -323,20 +324,38 @@ func ApplyPending(dir, dbPath string, keep int) (bool, error) {
 		if err := os.Rename(dbPath, saved); err != nil {
 			return false, err
 		}
+		// WAL und SHM gehören zur alten DB: mit ihr sichern, sonst gehen ungeschriebene Änderungen verloren.
+		for _, s := range []string{"-wal", "-shm"} {
+			if err := os.Rename(dbPath+s, saved+s); err != nil && !errors.Is(err, os.ErrNotExist) {
+				os.Remove(dbPath + s)
+			}
+		}
 	}
 	if err := os.Rename(pending, dbPath); err != nil {
 		if saved != "" {
 			_ = os.Rename(saved, dbPath)
+			for _, s := range []string{"-wal", "-shm"} {
+				_ = os.Rename(saved+s, dbPath+s)
+			}
 		}
 		return false, err
 	}
+	// Reste einer unsauber beendeten Sitzung dürfen nicht zur neuen DB passen.
 	os.Remove(dbPath + "-wal")
 	os.Remove(dbPath + "-shm")
 	os.Remove(filepath.Join(dir, "pending.json"))
-	old, _ := filepath.Glob(dbPath + ".pre-restore-*")
+	all, _ := filepath.Glob(dbPath + ".pre-restore-*")
+	var old []string
+	for _, o := range all {
+		if !strings.HasSuffix(o, "-wal") && !strings.HasSuffix(o, "-shm") {
+			old = append(old, o)
+		}
+	}
 	sort.Strings(old)
 	for i := 0; i < len(old)-keep; i++ {
 		os.Remove(old[i])
+		os.Remove(old[i] + "-wal")
+		os.Remove(old[i] + "-shm")
 	}
 	return true, nil
 }
