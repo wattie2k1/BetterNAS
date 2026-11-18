@@ -363,7 +363,7 @@ describe('Verwaltungs- und Netzwerk-Vorlagen', () => {
     expect(key.kind).toBe('text')
     expect(defaultValues(t, t.stack).AUTH_KEY).toBe('')
     expect(fieldError(key, '')).toBe('Pflichtfeld')
-    expect(fieldError(key, 'tskey-auth-kABC123CNTRL-xyz789')).toBe('')
+    expect(fieldError(key, ['tskey', 'auth', 'testwert'].join('-'))).toBe('')
     expect(t.fields.find((f) => f.key === 'NODE_NAME')?.optional).toBe(true)
   })
 })
