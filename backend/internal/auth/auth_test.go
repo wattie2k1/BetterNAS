@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -192,6 +193,26 @@ func TestLANOnly(t *testing.T) {
 		r := httptest.NewRequest("GET", "/", nil)
 		r.RemoteAddr = addr
 		r.Header.Set("X-Forwarded-For", "192.168.1.1")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Errorf("%s: got %d want %d", addr, w.Code, want)
+		}
+	}
+}
+
+func TestLANOnlyAllowsOnLinkGlobalIPv6(t *testing.T) {
+	old := localPrefixes
+	localPrefixes = func() []netip.Prefix { return []netip.Prefix{netip.MustParsePrefix("2a00:6020:a11b:7200::/64")} }
+	defer func() { localPrefixes = old }()
+	h := LANOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	for addr, want := range map[string]int{
+		"[2a00:6020:a11b:7200:1234::5]:1": 200, // gleiches Subnetz wie das NAS
+		"[2a00:6020:a11b:7201::5]:1":      403, // anderes Subnetz
+		"8.8.8.8:1":                       403,
+	} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = addr
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		if w.Code != want {

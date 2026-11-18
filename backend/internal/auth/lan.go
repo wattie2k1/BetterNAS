@@ -28,6 +28,26 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
+// localPrefixes liefert die Subnetze der Schnittstellen des NAS (ohne Loopback). Variable, damit Tests sie ersetzen können.
+var localPrefixes = func() []netip.Prefix {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []netip.Prefix
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok {
+			if p, ok := netip.AddrFromSlice(n.IP); ok {
+				ones, _ := n.Mask.Size()
+				out = append(out, netip.PrefixFrom(p.Unmap(), ones).Masked())
+			}
+		}
+	}
+	return out
+}
+
+// isPrivate: private Netze oder dasselbe Subnetz wie eine Schnittstelle des NAS. Letzteres deckt
+// Clients mit globaler IPv6-Adresse (Provider-Präfix) im eigenen LAN ab, die über betternas.local kommen.
 func isPrivate(ip string) bool {
 	a, err := netip.ParseAddr(ip)
 	if err != nil {
@@ -36,6 +56,11 @@ func isPrivate(ip string) bool {
 	a = a.Unmap().WithZone("")
 	for _, p := range privateNets {
 		if p.Contains(a) {
+			return true
+		}
+	}
+	for _, p := range localPrefixes() {
+		if p.Bits() > 0 && p.Contains(a) {
 			return true
 		}
 	}
