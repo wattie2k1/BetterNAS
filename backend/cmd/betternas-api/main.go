@@ -134,12 +134,13 @@ func main() {
 		}
 	}()
 	ns := notify.NewService(d, hub)
+	dm := docker.NewManager(d, agent, jm, hub)
+	go dm.RunAutoUpdate(ctx, ns)
 	mon := monitor.New(d, sm, ns, hub)
+	mon.SetDocker(dm)
 	go mon.Run(ctx)
 	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)
 	go bm.Run(ctx, ns)
-	dm := docker.NewManager(d, agent, jm, hub)
-	go dm.RunAutoUpdate(ctx, ns)
 	var certs *api.CertStore
 	if !cfg.Dev {
 		host, _ := os.Hostname()

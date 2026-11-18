@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/notify"
 	"github.com/betternas/betternas/internal/snapraid"
@@ -23,6 +25,12 @@ type Source interface {
 	SnapraidStatus(ctx context.Context, pool string) (snapraid.Status, error)
 }
 
+// DockerSource liefert den Zustand der Container (implementiert von docker.Manager).
+type DockerSource interface {
+	Status(ctx context.Context) (docker.Status, error)
+	ListContainers(ctx context.Context) ([]docker.Container, error)
+}
+
 // Notifier verschickt Meldungen (implementiert von notify.Service).
 type Notifier interface {
 	Send(ctx context.Context, m notify.Message) []notify.Result
@@ -33,6 +41,9 @@ type Finding struct {
 	Key         string
 	Level       notify.Level
 	Title, Body string
+	// Confirm ist die Zahl aufeinanderfolgender Prüfungen, in denen der Befund bestehen muss, bevor er gemeldet wird
+	// (0/1: sofort). Das filtert kurze Zacken, z. B. einen einzelnen Neustart.
+	Confirm int
 }
 
 // Active ist ein gemerkter, noch nicht behobener Befund.
@@ -50,11 +61,73 @@ type Monitor struct {
 	src Source
 	n   Notifier
 	hub *events.Hub
+
+	docker DockerSource // optional
+	mu     sync.Mutex
+	seen   map[string]int // Befund → Zahl aufeinanderfolgender Beobachtungen (nur mit Confirm > 1)
 }
 
 // New erzeugt einen Monitor; hub darf nil sein.
 func New(d *sql.DB, src Source, n Notifier, hub *events.Hub) *Monitor {
 	return &Monitor{db: d, src: src, n: n, hub: hub}
+}
+
+// SetDocker schaltet die Überwachung der Docker-Container zu (optional, vor dem Start von Run aufrufen).
+func (m *Monitor) SetDocker(d DockerSource) { m.docker = d }
+
+// dockerFindings meldet Container mit fehlschlagendem Healthcheck und solche in einer Neustart-Schleife.
+// Absichtlich gestoppte oder beendete Container sind kein Befund.
+func (m *Monitor) dockerFindings(ctx context.Context) (fs []Finding, unknown []string, err error) {
+	if m.docker == nil {
+		return nil, nil, nil
+	}
+	st, serr := m.docker.Status(ctx)
+	if serr != nil || !st.Installed || !st.Active {
+		// Ohne laufendes Docker gibt es nichts zu beurteilen; bestehende Alarme bleiben, es gibt keine Fehlermeldung.
+		return nil, []string{"container-"}, nil
+	}
+	list, lerr := m.docker.ListContainers(ctx)
+	if lerr != nil {
+		return nil, []string{"container-"}, fmt.Errorf("container: %w", lerr)
+	}
+	for _, c := range list {
+		where := ""
+		if c.Stack != "" {
+			where = " (Stack " + c.Stack + ")"
+		}
+		switch {
+		case c.State == "restarting":
+			fs = append(fs, Finding{Key: "container-restarting:" + c.Name, Level: "crit", Confirm: 2,
+				Title: "Container startet dauernd neu: " + c.Name,
+				Body:  "Der Container „" + c.Name + "“" + where + " stürzt immer wieder ab und wird neu gestartet. Prüfe die Logs unter Docker → Container."})
+		case c.Health == "unhealthy":
+			fs = append(fs, Finding{Key: "container-unhealthy:" + c.Name, Level: "warn", Confirm: 2,
+				Title: "Container fehlerhaft: " + c.Name,
+				Body:  "Der Healthcheck des Containers „" + c.Name + "“" + where + " schlägt fehl; der Dienst antwortet vermutlich nicht. Prüfe die Logs unter Docker → Container."})
+		}
+	}
+	return fs, nil, nil
+}
+
+// confirmed zählt aufeinanderfolgende Beobachtungen und lässt Befunde mit Confirm erst nach genug Wiederholungen durch.
+func (m *Monitor) confirmed(fs []Finding) []Finding {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	next := map[string]int{}
+	out := make([]Finding, 0, len(fs))
+	for _, f := range fs {
+		if f.Confirm <= 1 {
+			out = append(out, f)
+			continue
+		}
+		n := m.seen[f.Key] + 1
+		next[f.Key] = n
+		if n >= f.Confirm {
+			out = append(out, f)
+		}
+	}
+	m.seen = next
+	return out
 }
 
 func diskLabel(d storage.DiskView) string {
@@ -135,6 +208,10 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 			add("snapraid-scrub:"+p.Name, "crit", "SnapRAID-Prüfung meldet Fehler: "+p.Name, orDefault(r.Message, "Die letzte Prüfung ist fehlgeschlagen."))
 		}
 	}
+	dfs, dunknown, derr2 := m.dockerFindings(ctx)
+	fs = append(fs, dfs...)
+	unknown = append(unknown, dunknown...)
+	err = errors.Join(err, derr2)
 	return fs, unknown, err
 }
 
@@ -196,6 +273,7 @@ func (m *Monitor) Check(ctx context.Context) error {
 	for _, a := range active {
 		known[a.Key] = a
 	}
+	fs = m.confirmed(fs) // auch bei leerer Liste: setzt die Zähler zurück
 	changed := false
 	now := time.Now().UTC().Format(time.RFC3339)
 	current := map[string]bool{}
