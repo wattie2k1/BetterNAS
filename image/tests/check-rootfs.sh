@@ -41,6 +41,8 @@ if ls "$W"/var/lib/dpkg/info/betternas.list >/dev/null 2>&1; then
 	[ -s "$W/usr/share/keyrings/betternas-archive-keyring.gpg" ] || err "APT-Schlüsselbund von BetterNAS fehlt"
 	if [ -n "${APT_URL:-}" ]; then
 		grep -qxF "URIs: $APT_URL" "$W/etc/apt/sources.list.d/betternas.sources" 2>/dev/null || err "BetterNAS-APT-Quelle fehlt oder zeigt nicht auf $APT_URL"
+		head -n1 "$W/etc/apt/sources.list.d/betternas.sources" | grep -q 'Verwaltet von BetterNAS' || err "BetterNAS-APT-Quelle ohne Kopfzeile"
+		grep -qxF "Suites: ${APT_SUITE:-stable}" "$W/etc/apt/sources.list.d/betternas.sources" || err "BetterNAS-APT-Quelle hat nicht die Suite ${APT_SUITE:-stable}"
 	else
 		[ ! -e "$W/etc/apt/sources.list.d/betternas.sources" ] || err "BetterNAS-APT-Quelle vorhanden, obwohl APT_URL leer ist"
 	fi

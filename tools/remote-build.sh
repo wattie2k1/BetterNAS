@@ -35,8 +35,8 @@ cd $REMOTE_DIR
 mkdir -p dist build
 rm -f dist/betternas_*_$ARCH.deb
 echo "[remote] Paket …";       sudo packaging/build-deb.sh $ARCH $VERSION
-echo "[remote] Root-Dateisystem …"; sudo APT_URL='${APT_URL:-}' image/build-rootfs.sh $ARCH > build/rootfs.log 2>&1 || { tail -30 build/rootfs.log; exit 1; }
-sudo APT_URL='${APT_URL:-}' image/tests/check-rootfs.sh dist/rootfs-$ARCH.tar
+echo "[remote] Root-Dateisystem …"; sudo APT_URL='${APT_URL:-}' APT_SUITE='${APT_SUITE:-stable}' image/build-rootfs.sh $ARCH > build/rootfs.log 2>&1 || { tail -30 build/rootfs.log; exit 1; }
+sudo APT_URL='${APT_URL:-}' APT_SUITE='${APT_SUITE:-stable}' image/tests/check-rootfs.sh dist/rootfs-$ARCH.tar
 echo "[remote] ISO …";         sudo image/build-iso.sh $ARCH $VERSION > build/iso.log 2>&1 || { tail -30 build/iso.log; exit 1; }
 sudo chown -R \$(id -u):\$(id -g) dist build
 for m in $MODES; do

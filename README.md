@@ -120,13 +120,22 @@ BetterNAS steht unter der GNU General Public License, Version 3 oder neuer (GPL-
 
 ## Release veröffentlichen (GitHub)
 
-APT-Repo über GitHub Pages, ISO als Release-Asset:
+Ein Release entsteht durch einen Tag; GitHub Actions testet, baut das Paket, signiert das APT-Repo und
+veröffentlicht es auf GitHub Pages (`https://wattie2k1.github.io/BetterNAS`) samt Release-Eintrag:
 
 ```bash
-make remote VERSION=0.6.0 APT_URL=https://<owner>.github.io/<repo> MODES="uefi bios secureboot"
-tools/release.sh <owner>/<repo> 0.6.0
+git tag v0.7.0-rc1 && git push origin v0.7.0-rc1   # Release-Candidate → Kanal testing
+git tag v0.7.0     && git push origin v0.7.0        # stabil → Kanäle stable und testing
 ```
 
-`APT_URL` muss beim ISO-Bau gesetzt sein, sonst trägt das Image keine BetterNAS-Paketquelle ein.
-Das Repo braucht aktivierte Pages (Quelle: Branch `gh-pages`); der Signierschlüssel liegt unter
-`~/.betternas/apt-signing-key.asc` und muss gesichert sein (`make apt-key` erzeugt ihn einmalig).
+Der Workflow wartet auf die Freigabe im GitHub-Environment `release` (dort liegt der Signierschlüssel).
+
+Das ISO wird weiterhin auf dem ThinkCentre gebaut und an das Release angehängt:
+
+```bash
+make remote VERSION=0.7.0 APT_URL=https://wattie2k1.github.io/BetterNAS MODES="uefi bios secureboot"
+tools/release-iso.sh 0.7.0
+```
+
+`APT_URL` muss beim ISO-Bau gesetzt sein, sonst trägt das Image keine BetterNAS-Paketquelle ein. `APT_SUITE=testing`
+trägt stattdessen den Kanal `testing` ein (Standard: `stable`).
