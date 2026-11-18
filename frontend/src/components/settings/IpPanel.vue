@@ -6,11 +6,13 @@ import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import { useToast } from 'primevue/usetoast'
 import { networkApi, type IpConfig, type IpStatus } from '@/api/network'
+import { maskToPrefix, splitCidr } from '@/utils/netmask'
 
 const toast = useToast()
 const status = ref<IpStatus | null>(null)
 const mode = ref<'dhcp' | 'static'>('dhcp')
 const address = ref('')
+const netmask = ref('255.255.255.0')
 const gateway = ref('')
 const dns = ref('')
 const domains = ref('')
@@ -30,12 +32,12 @@ const remaining = computed(() => Math.max(0, (status.value?.deadline ?? 0) - now
 function fill(s: IpStatus) {
   mode.value = s.config.mode
   if (s.config.mode === 'static') {
-    address.value = s.config.address
+    ;({ ip: address.value, mask: netmask.value } = splitCidr(s.config.address))
     gateway.value = s.config.gateway
     dns.value = s.config.dns.join(', ')
     domains.value = s.config.domains.join(', ')
   } else {
-    address.value = s.current.addresses[0] ?? ''
+    ;({ ip: address.value, mask: netmask.value } = splitCidr(s.current.addresses[0] ?? ''))
     gateway.value = s.current.gateway
     dns.value = s.current.dns.filter((d) => !d.includes(':')).join(', ')
     domains.value = s.current.domains.join(', ')
@@ -70,9 +72,18 @@ const links = computed(() => {
 })
 
 async function apply() {
-  busy.value = true
   error.value = ''
-  const cfg: IpConfig = { mode: mode.value, address: address.value.trim(), gateway: gateway.value.trim(), dns: split(dns.value), domains: split(domains.value) }
+  let cidr = ''
+  if (mode.value === 'static') {
+    const prefix = maskToPrefix(netmask.value)
+    if (prefix === null) {
+      error.value = 'Ungültige Netzmaske (z. B. 255.255.255.0).'
+      return
+    }
+    cidr = `${address.value.trim()}/${prefix}`
+  }
+  busy.value = true
+  const cfg: IpConfig = { mode: mode.value, address: cidr, gateway: gateway.value.trim(), dns: split(dns.value), domains: split(domains.value) }
   try {
     await networkApi.configure(cfg)
   } catch (e) {
@@ -150,8 +161,10 @@ async function revert() {
       <form v-else @submit.prevent="apply">
         <SelectButton v-model="mode" :options="modes" option-label="label" option-value="value" :allow-empty="false" data-test="ip-mode" aria-label="Konfiguration" />
         <div v-if="mode === 'static'" class="grid" data-test="ip-static">
-          <label for="ip-address">IPv4-Adresse mit Netzmaske</label>
-          <InputText id="ip-address" v-model="address" placeholder="192.168.1.10/24" autocomplete="off" />
+          <label for="ip-address">IPv4-Adresse</label>
+          <InputText id="ip-address" v-model="address" placeholder="192.168.1.10" autocomplete="off" />
+          <label for="ip-netmask">Netzmaske</label>
+          <InputText id="ip-netmask" v-model="netmask" placeholder="255.255.255.0" autocomplete="off" />
           <label for="ip-gateway">Gateway</label>
           <InputText id="ip-gateway" v-model="gateway" placeholder="192.168.1.1" autocomplete="off" />
           <label for="ip-dns">DNS-Server (bis zu 3)</label>
