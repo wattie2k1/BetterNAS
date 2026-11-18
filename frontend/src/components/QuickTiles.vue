@@ -197,9 +197,10 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
             </span>
             <span class="app-text">
               <strong>{{ e.item.name }}</strong>
-              <small>{{ e.item.state === 'running' ? 'running' : 'stopped' }}<template v-if="e.item.status"> · {{ e.item.status }}</template></small>
+              <small v-if="e.item.status">{{ e.item.status }}</small>
             </span>
           </component>
+          <span class="status" :class="e.item.state === 'running' ? 'ok' : 'bad'" role="img" :aria-label="e.item.state === 'running' ? 'läuft' : 'gestoppt'" :title="e.item.state === 'running' ? 'Läuft' : 'Gestoppt'" :data-test="`quick-container-status-${e.item.name}`" />
           <button v-if="!editing" type="button" class="dots" :data-test="`quick-container-menu-${e.item.name}`" :aria-label="`Container ${e.item.name}: Aktionen`" @click="openContainer($event, e.item)">
             <i class="pi pi-ellipsis-h" />
           </button>
@@ -230,9 +231,10 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
             <span class="app-icon" :class="{ off: e.item.state !== 'running' }" :style="e.item.state === 'running' ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}"><i class="pi pi-desktop" /></span>
             <span class="app-text">
               <strong>{{ e.item.name }}</strong>
-              <small>VM · {{ vmLabel[e.item.state] ?? e.item.state }}</small>
+              <small>VM<template v-if="e.item.state !== 'running' && e.item.state !== 'shutoff'"> · {{ vmLabel[e.item.state] ?? e.item.state }}</template></small>
             </span>
           </component>
+          <span class="status" :class="e.item.state === 'running' ? 'ok' : 'bad'" role="img" :aria-label="vmLabel[e.item.state] ?? e.item.state" :title="vmLabel[e.item.state] ?? e.item.state" :data-test="`quick-vm-status-${e.item.name}`" />
           <button v-if="!editing" type="button" class="dots" :data-test="`quick-vm-menu-${e.item.name}`" :aria-label="`VM ${e.item.name}: Aktionen`" @click="openVm($event, e.item)">
             <i class="pi pi-ellipsis-h" />
           </button>
@@ -328,6 +330,27 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
 }
 .app.dragging {
   opacity: 0.45;
+}
+.status {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.status.ok {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+}
+.status.bad {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+}
+.app.editing .status {
+  right: 44px;
+  top: 17px;
 }
 .handle {
   position: absolute;
