@@ -146,6 +146,10 @@ BetterNAS steht unter der GNU General Public License, Version 3 oder neuer (GPL-
 
 ## Release veröffentlichen (GitHub)
 
+**Kurzweg:** `tools/release.sh` führt durch den ganzen Ablauf (Version und Kanal abfragen, ISO bauen und in QEMU
+testen, Tag pushen, auf den Workflow warten, ISO anhängen). `--dry-run` zeigt nur, was passieren würde. Die
+Einzelschritte stehen darunter.
+
 Ein Release entsteht durch einen Tag; GitHub Actions testet, baut das Paket, signiert das APT-Repo und
 veröffentlicht es auf GitHub Pages (`https://wattie2k1.github.io/BetterNAS`) samt Release-Eintrag:
 
