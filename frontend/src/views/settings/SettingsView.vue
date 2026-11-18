@@ -3,7 +3,12 @@
 const groups = [
   {
     title: 'System',
-    items: [{ label: 'Netzwerk', icon: 'pi pi-sitemap', to: '/einstellungen/netzwerk' }],
+    items: [
+      { label: 'Allgemein', icon: 'pi pi-sliders-h', to: '/einstellungen/allgemein' },
+      { label: 'Netzwerk', icon: 'pi pi-sitemap', to: '/einstellungen/netzwerk' },
+      { label: 'Webzugriff', icon: 'pi pi-lock', to: '/einstellungen/webzugriff' },
+      { label: 'Energie', icon: 'pi pi-power-off', to: '/einstellungen/energie' },
+    ],
   },
   {
     title: 'Wartung',

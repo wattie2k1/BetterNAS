@@ -11,6 +11,9 @@ import UpdatesView from '@/views/system/UpdatesView.vue'
 import NotificationsView from '@/views/system/NotificationsView.vue'
 import BackupView from '@/views/system/BackupView.vue'
 import SettingsView from '@/views/settings/SettingsView.vue'
+import GeneralSettings from '@/views/settings/GeneralSettings.vue'
+import WebAccessSettings from '@/views/settings/WebAccessSettings.vue'
+import PowerSettings from '@/views/settings/PowerSettings.vue'
 import NetworkSettings from '@/views/settings/NetworkSettings.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
@@ -45,7 +48,10 @@ export const router = createRouter({
           component: SettingsView,
           meta: { title: 'Einstellungen' },
           children: [
-            { path: '', redirect: { name: 'settings-network' } },
+            { path: '', redirect: { name: 'settings-general' } },
+            { path: 'allgemein', name: 'settings-general', component: GeneralSettings, meta: { title: 'Einstellungen · Allgemein' } },
+            { path: 'webzugriff', name: 'settings-web', component: WebAccessSettings, meta: { title: 'Einstellungen · Webzugriff' } },
+            { path: 'energie', name: 'settings-power', component: PowerSettings, meta: { title: 'Einstellungen · Energie' } },
             { path: 'netzwerk', name: 'settings-network', component: NetworkSettings, meta: { title: 'Einstellungen · Netzwerk' } },
             { path: 'benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Einstellungen · Benachrichtigungen' } },
             { path: 'sicherung', name: 'backup', component: BackupView, meta: { title: 'Einstellungen · Sicherung' } },

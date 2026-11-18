@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"log/slog"
@@ -128,7 +129,15 @@ func main() {
 	go mon.Run(ctx)
 	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)
 	go bm.Run(ctx, ns)
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
+	var certs *api.CertStore
+	if !cfg.Dev {
+		host, _ := os.Hostname()
+		if certs, err = api.NewCertStore(cfg.TLSDir, host); err != nil {
+			log.Error("zertifikat", "err", err)
+			os.Exit(1)
+		}
+	}
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: docker.NewManager(d, agent, jm, hub), VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
@@ -143,14 +152,9 @@ func main() {
 		srv.Addr = ":8080"
 		err = srv.ListenAndServe()
 	} else {
-		host, _ := os.Hostname()
-		cert, key, cerr := api.EnsureSelfSignedCert(cfg.TLSDir, host)
-		if cerr != nil {
-			log.Error("zertifikat", "err", cerr)
-			os.Exit(1)
-		}
+		srv.TLSConfig = &tls.Config{GetCertificate: certs.GetCertificate, MinVersion: tls.VersionTLS12}
 		srv.Addr = cfg.Listen
-		err = srv.ListenAndServeTLS(cert, key)
+		err = srv.ListenAndServeTLS("", "")
 	}
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server", "err", err)
