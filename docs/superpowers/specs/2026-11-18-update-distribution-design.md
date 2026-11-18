@@ -1,6 +1,6 @@
 # Update-Verteilung über GitHub (Design)
 
-Stand: 2026-11-18 · Status: Entwurf zur Freigabe
+Stand: 2026-11-18 · Status: umgesetzt und in Betrieb (Releases v0.7.0-rc1, v0.7.0 und v0.7.1-rc1 veröffentlicht; Abschnitt „Umsetzungsstand“ am Ende)
 
 ## Intention
 
@@ -8,9 +8,9 @@ Alle BetterNAS-Nutzer sollen Updates des Pakets `betternas` über die Weboberfl�
 Der Code liegt öffentlich auf GitHub, die Auslieferung läuft komplett über GitHub (Pages + Releases). Ein Release
 entsteht durch das Setzen eines Tags und nicht mehr durch ein Skript auf dem Entwicklungsrechner.
 
-Heute vorhanden: signiertes APT-Repo (`tools/apt-repo.sh`), Update-Seite mit `apt-get dist-upgrade` in eigener
-systemd-Unit, APT-Quelle im Image nur bei gesetztem `APT_URL`, manuelles `tools/release.sh` (Pages + Release).
-Es gibt noch kein GitHub-Remote und nie ein Release.
+Ausgangslage (Entwurfszeitpunkt): signiertes APT-Repo (`tools/apt-repo.sh`), Update-Seite mit `apt-get dist-upgrade`
+in eigener systemd-Unit, APT-Quelle im Image nur bei gesetztem `APT_URL`, manuelles `tools/release.sh` (Pages + Release).
+Es gab noch kein GitHub-Remote und nie ein Release. Heutiger Stand: siehe „Umsetzungsstand“.
 
 ## Ziele
 
@@ -93,8 +93,8 @@ Ruleset: nur Maintainer dürfen `v*`-Tags anlegen, `main` geschützt. Das Secret
 - **Später** (Überlappung, kein Gerät bleibt zurück): Das Keyring-Paket enthält alte und neue öffentliche Schlüssel.
   Release N liefert beide aus, signiert noch mit dem alten; ab Release N+1 signiert `InRelease` mit beiden,
   Release N+2 entfernt den alten Schlüssel aus dem Keyring. Ablauf kommt in die README.
-- Das Testgerät (`0.3.0-rc3`, altes Keyring, vermutlich ohne Quelle) bekommt das neue `.deb` einmalig per `dpkg -i`
-  und die Quelle von Hand.
+- Das Testgerät (damals `0.3.0-rc3`, altes Keyring, vermutlich ohne Quelle) bekam das neue `.deb` einmalig per `dpkg -i`
+  und die Quelle von Hand (erledigt, es läuft inzwischen eine 0.7.x-Version).
 
 ### Image
 
@@ -130,4 +130,37 @@ Ruleset: nur Maintainer dürfen `v*`-Tags anlegen, `main` geschützt. Das Secret
 
 ## Offen
 
-Nichts.
+Nichts aus dem ursprünglichen Umfang. Kleinigkeiten stehen unten unter „Umsetzungsstand“.
+
+## Umsetzungsstand (geprüft am 2026-11-18)
+
+Umgesetzt, wie oben beschrieben:
+
+- **Workflow** `.github/workflows/release.yml` (Tag `v*`): Jobs `meta` (Tag prüfen, Paketversion und Kanal über
+  `tools/deb-version.sh` ableiten, ungültige Tags brechen vor dem Bauen ab), `test`, `build` (nur amd64), `publish`
+  (Environment `release`, `concurrency` ohne Abbruch laufender Veröffentlichungen). Alle Actions sind auf Commit-SHA
+  gepinnt, `permissions` ist minimal, der Push auf `gh-pages` läuft über `tools/publish-pages.sh`.
+- **Repo** `https://wattie2k1.github.io/BetterNAS`: Suiten `stable` und `testing` mit `InRelease` und `Release.gpg`,
+  Pool je Suite, 5 Versionen je Suite (`BNAS_KEEP`). Beide Suiten tragen eine gültige Signatur des neuen Schlüssels
+  „BetterNAS Archive Signing Key“ (Fingerabdruck endet auf …D605E1FA7BF06915). Stand: `stable` = 0.7.0,
+  `testing` = 0.7.0, 0.7.0~rc1 und 0.7.1~rc1.
+- **Kanalumschalter**: Agent-RPC und API (`SetUpdateChannel`) schreiben nur das Feld `Suites:` in der eigenen Datei;
+  eine manuell angepasste Quelle wird nie angefasst. Die GUI nutzt dafür den Update-Store.
+- **Image**: Hook `40-apt.sh` trägt die BetterNAS-Quelle nur bei gesetztem `APT_URL` ein und prüft `APT_SUITE`
+  (`stable` oder `testing`); `image/tests/check-rootfs.sh` und `tools/tests/apt-hook.test.sh` decken das ab.
+- **Schlüsselrotation** und Kanalwechsel sind in der README beschrieben, die Lizenz (GPL-3.0-or-later, `LICENSE`,
+  `CONTRIBUTING.md`) liegt im Repo.
+
+Abweichungen und Ergänzungen gegenüber dem Entwurf:
+
+- `tools/release.sh` existiert weiter und ist jetzt der empfohlene Kurzweg: Version und Kanal abfragen, ISO auf dem
+  ThinkCentre bauen und in QEMU testen, Tag pushen, auf den Workflow warten, ISO per `tools/release-iso.sh` anhängen.
+  Es ersetzt nicht den Workflow, sondern steuert ihn. Das ISO hängt als Release-Asset an (z. B. `betternas-0.7.0-amd64.iso`
+  mit `.sha256`), nicht auf Pages.
+- Die Debian-Quellen im Image sind `trixie`, `trixie-updates` und `trixie-security` (Debian 13, Kernel 6.12). Ein
+  Wechsel auf eine neuere Debian-Version ist nicht Teil dieses Vorhabens.
+- Das Verzeichnis für `arm64` ist in beiden Suiten angelegt, aber leer; Pakete gibt es nur für amd64.
+- Das Paket `betternas` 0.7.0 in `stable` kennt die Abhängigkeiten `virtiofsd`, `nftables` und `openssh-server` noch
+  nicht, die `packaging/build-deb.sh` inzwischen verlangt. Sie kommen mit dem nächsten stabilen Release.
+- Der Branch `feat/update-distribution` ist in `main` enthalten und kann gelöscht werden.
+- Die E-Mail-Adresse des Signierschlüssels (`archive@betternas.invalid`) ist ein Platzhalter und für APT ohne Bedeutung.
