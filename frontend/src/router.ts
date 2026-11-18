@@ -10,6 +10,8 @@ import UsersGroupsView from '@/views/users/UsersGroupsView.vue'
 import UpdatesView from '@/views/system/UpdatesView.vue'
 import NotificationsView from '@/views/system/NotificationsView.vue'
 import BackupView from '@/views/system/BackupView.vue'
+import SettingsView from '@/views/settings/SettingsView.vue'
+import NetworkSettings from '@/views/settings/NetworkSettings.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
 import PoolsView from '@/views/storage/PoolsView.vue'
@@ -38,9 +40,21 @@ export const router = createRouter({
         { path: 'docker/ressourcen', name: 'resources', component: ResourcesView, meta: { title: 'Docker-Ressourcen' } },
         { path: 'vms', name: 'vms', component: VmsView, meta: { title: 'Virtuelle Maschinen' } },
         { path: 'vms/:name', name: 'vm-config', component: VmConfigView, meta: { title: 'VM-Einstellungen' } },
-        { path: 'system/updates', name: 'updates', component: UpdatesView, meta: { title: 'Updates' } },
-        { path: 'system/benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Benachrichtigungen' } },
-        { path: 'system/sicherung', name: 'backup', component: BackupView, meta: { title: 'Sicherung' } },
+        {
+          path: 'einstellungen',
+          component: SettingsView,
+          meta: { title: 'Einstellungen' },
+          children: [
+            { path: '', redirect: { name: 'settings-network' } },
+            { path: 'netzwerk', name: 'settings-network', component: NetworkSettings, meta: { title: 'Einstellungen · Netzwerk' } },
+            { path: 'benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Einstellungen · Benachrichtigungen' } },
+            { path: 'sicherung', name: 'backup', component: BackupView, meta: { title: 'Einstellungen · Sicherung' } },
+            { path: 'updates', name: 'updates', component: UpdatesView, meta: { title: 'Einstellungen · Updates' } },
+          ],
+        },
+        { path: 'system/updates', redirect: '/einstellungen/updates' },
+        { path: 'system/benachrichtigungen', redirect: '/einstellungen/benachrichtigungen' },
+        { path: 'system/sicherung', redirect: '/einstellungen/sicherung' },
         { path: 'profil', name: 'profile', component: ProfileView, meta: { title: 'Profil' } },
         { path: 'benutzer', name: 'users', component: UsersGroupsView, meta: { title: 'Benutzer & Gruppen' } },
         { path: 'benutzer/gruppen', redirect: { name: 'users', query: { tab: 'gruppen' } } },
