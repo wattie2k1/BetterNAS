@@ -17,7 +17,7 @@ newroot() { r="$T/$1"; mkdir -p "$r/etc/apt/sources.list.d" "$r/var/lib/apt/list
 S() { echo "$1/etc/apt/sources.list.d/betternas.sources"; }
 
 r="$(newroot leer)"
-PATH="$T/bin:$PATH" APT_URL= sh "$HOOK" "$r" >/dev/null 2>&1 || err "ohne APT_URL: Hook fehlgeschlagen"
+PATH="$T/bin:$PATH" APT_URL='' sh "$HOOK" "$r" >/dev/null 2>&1 || err "ohne APT_URL: Hook fehlgeschlagen"
 [ ! -e "$(S "$r")" ] || err "ohne APT_URL darf keine Quelle entstehen"
 
 r="$(newroot standard)"

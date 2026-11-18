@@ -1,0 +1,126 @@
+name: Release
+
+# Ein Tag veröffentlicht ein Update:
+#   vX.Y.Z      -> Kanäle stable und testing
+#   vX.Y.Z-rcN  -> Kanal testing (Paketversion X.Y.Z~rcN)
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+jobs:
+  # Tag prüfen und Paketversion/Kanal ableiten – ungültige Tags brechen hier ab, bevor etwas gebaut wird.
+  meta:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      channel: ${{ steps.v.outputs.channel }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          out="$(tools/deb-version.sh "$TAG")"
+          echo "version=${out% *}" >> "$GITHUB_OUTPUT"
+          echo "channel=${out#* }" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: meta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils gnupg git
+      - run: cd frontend && npm ci --no-audit --no-fund
+      - run: make test
+
+  build:
+    needs: [meta, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - run: make build web VERSION="$VERSION"
+      - run: packaging/build-deb.sh amd64 "$VERSION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deb
+          path: dist/betternas_*_amd64.deb
+          if-no-files-found: error
+
+  # Signieren und Veröffentlichen: nur hier ist der Signierschlüssel erreichbar (Environment mit Pflicht-Freigabe).
+  publish:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    environment: release
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      CHANNEL: ${{ needs.meta.outputs.channel }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: deb
+          path: dist
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils gnupg
+      - name: APT-Repo signieren und auf gh-pages veröffentlichen
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -n "$APT_SIGNING_KEY" ] || { echo "FEHLER: Secret APT_SIGNING_KEY ist leer – es wird nichts veröffentlicht" >&2; exit 1; }
+          umask 077
+          key="$(mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$APT_SIGNING_KEY" > "$key"
+          if [ "$CHANNEL" = stable ]; then suites="stable testing"; else suites="testing"; fi
+          # Anmeldung nur für diesen Push (die Checkout-Anmeldung ist bewusst abgeschaltet).
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_VALUE_0
+          # shellcheck disable=SC2086
+          BNAS_APT_KEY="$key" tools/publish-pages.sh "https://github.com/${GITHUB_REPOSITORY}.git" \
+            packaging/apt/betternas-archive-keyring.gpg "dist/betternas_${VERSION}_amd64.deb" $suites
+      - name: GitHub-Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=""
+          [ "$CHANNEL" = testing ] && flags="--prerelease"
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "BetterNAS ${VERSION}" --generate-notes $flags dist/*.deb
