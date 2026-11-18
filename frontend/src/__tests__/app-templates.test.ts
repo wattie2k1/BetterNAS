@@ -13,7 +13,11 @@ describe('Vorlagen', () => {
       for (const k of keys) expect(used, `${t.id}: ${k} ungenutzt`).toContain(k)
       const v = defaultValues(t, t.stack)
       // Die IP-Adresse des NAS ist nur im Browser vorbelegt (aus der Adresszeile), im Test also leer.
-      for (const f of t.fields) expect(fieldError(f, v[f.key]), `${t.id}.${f.key}`).toBe(f.kind === 'ip' ? 'Pflichtfeld' : '')
+      // Ausnahmen: die IP-Adresse (nur im Browser vorbelegt) und Pflichtangaben, die nur der Nutzer kennt (z. B. Auth-Key).
+      for (const f of t.fields) {
+        const userSupplied = f.kind === 'ip' || (f.kind === 'text' && !f.optional && v[f.key] === '')
+        expect(fieldError(f, v[f.key]), `${t.id}.${f.key}`).toBe(userSupplied ? 'Pflichtfeld' : '')
+      }
     }
   })
 
@@ -306,5 +310,58 @@ describe('Vorlagen mit Datenbank und weitere Apps', () => {
     const { files, env } = tpl('gitea')
     expect(files.compose).toContain('${SSH_PORT}:22')
     expect(env).toContain('SSH_PORT=2222\n')
+  })
+})
+
+describe('Verwaltungs- und Netzwerk-Vorlagen', () => {
+  it('rendert die Verwaltungs-Apps mit Kategorie, Port und Container-Port', () => {
+    const cases: [string, string, string][] = [
+      ['portainer', '9443', '${PORT}:9443'],
+      ['dozzle', '8888', '${PORT}:8080'],
+      ['filebrowser', '8089', '${PORT}:80'],
+      ['heimdall', '8090', '${PORT}:80'],
+      ['duplicati', '8200', '${PORT}:8200'],
+    ]
+    for (const [id, port, line] of cases) {
+      const { t, files, env } = tpl(id)
+      expect(t.category, id).toBe('Verwaltung')
+      expect(files.compose, id).toContain(line)
+      expect(env, id).toContain(`PORT=${port}\n`)
+    }
+  })
+
+  it('Portainer, Dozzle und Tailscale warnen vor erweiterten Rechten', () => {
+    for (const id of ['portainer', 'dozzle', 'tailscale']) expect(APP_TEMPLATES.find((t) => t.id === id)?.notice, id).toBeTruthy()
+  })
+
+  it('Dozzle bindet den Docker-Socket nur lesend, Portainer mit Datenordner', () => {
+    expect(tpl('dozzle').files.compose).toContain('/var/run/docker.sock:/var/run/docker.sock:ro')
+    expect(tpl('portainer').files.compose).toContain('${DATA_DIR}:/data')
+  })
+
+  it('Duplicati liest den Quellordner nur und schreibt Sicherungen in einen eigenen Ordner', () => {
+    const { files } = tpl('duplicati')
+    expect(files.compose).toContain('${SOURCE_DIR}:/source:ro')
+    expect(files.compose).toContain('${BACKUP_DIR}:/backups')
+  })
+
+  it('Tailscale braucht NET_ADMIN, /dev/net/tun und das Host-Netz ohne Portfeld', () => {
+    const { t, files } = tpl('tailscale')
+    expect(t.category).toBe('Netzwerk')
+    expect(files.compose).toContain('NET_ADMIN')
+    expect(files.compose).toContain('/dev/net/tun')
+    expect(files.compose).toContain('network_mode: host')
+    expect(files.compose).not.toContain('ports:')
+    expect(t.fields.some((f) => f.kind === 'port')).toBe(false)
+  })
+
+  it('Tailscale: Auth-Key ist Pflicht und wird nicht zufällig vorbelegt, Name ist optional', () => {
+    const t = APP_TEMPLATES.find((x) => x.id === 'tailscale')!
+    const key = t.fields.find((f) => f.key === 'AUTH_KEY')!
+    expect(key.kind).toBe('text')
+    expect(defaultValues(t, t.stack).AUTH_KEY).toBe('')
+    expect(fieldError(key, '')).toBe('Pflichtfeld')
+    expect(fieldError(key, 'tskey-auth-kABC123CNTRL-xyz789')).toBe('')
+    expect(t.fields.find((f) => f.key === 'NODE_NAME')?.optional).toBe(true)
   })
 })

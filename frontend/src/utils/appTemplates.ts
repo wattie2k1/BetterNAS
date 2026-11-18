@@ -1008,6 +1008,161 @@ volumes:
       - /etc/localtime:/etc/localtime:ro
 `,
   },
+  {
+    id: 'portainer',
+    title: 'Portainer',
+    description: 'Weboberfläche zur Verwaltung von Docker-Containern, Images und Netzwerken.',
+    icon: 'pi pi-server',
+    category: 'Verwaltung',
+    stack: 'portainer',
+    notice: 'Portainer bekommt Zugriff auf den Docker-Socket. Wer Portainer steuert, hat damit Vollzugriff auf alle Container und praktisch auf das ganze NAS. Nur im Heimnetz erreichbar lassen und ein starkes Passwort setzen.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port (HTTPS)', kind: 'port', def: () => '9443', hint: 'Portainer spricht nur HTTPS mit einem selbst signierten Zertifikat. Beim ersten Aufruf Administrator-Passwort setzen, bevor die Einrichtung abläuft.' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  portainer:
+    image: portainer/portainer-ce:lts
+    restart: unless-stopped
+    ports:
+      - "\${PORT}:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'dozzle',
+    title: 'Dozzle',
+    description: 'Protokolle aller Container live im Browser ansehen.',
+    icon: 'pi pi-list',
+    category: 'Verwaltung',
+    stack: 'dozzle',
+    notice: 'Dozzle liest den Docker-Socket (nur lesend). Es zeigt die Protokolle aller Container, auch mit sensiblen Inhalten. Nur im Heimnetz erreichbar lassen.',
+    fields: [{ key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8888' }],
+    compose: `services:
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: unless-stopped
+    ports:
+      - "\${PORT}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+`,
+  },
+  {
+    id: 'filebrowser',
+    title: 'Filebrowser',
+    description: 'Dateien der Pools im Browser ansehen, hoch- und herunterladen.',
+    icon: 'pi pi-folder',
+    category: 'Verwaltung',
+    stack: 'filebrowser',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8089' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'DATA_DIR', label: 'Sichtbarer Ordner', kind: 'path', def: () => '/srv/pools', hint: 'Alles darin ist im Filebrowser les- und schreibbar. Das Anfangspasswort des Benutzers admin steht im Protokoll des Containers.' },
+    ],
+    compose: `services:
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    restart: unless-stopped
+    environment:
+      FB_DATABASE: /database/filebrowser.db
+      FB_ROOT: /srv
+    ports:
+      - "\${PORT}:80"
+    volumes:
+      - \${CONFIG_DIR}:/database
+      - \${DATA_DIR}:/srv
+`,
+  },
+  {
+    id: 'heimdall',
+    title: 'Heimdall',
+    description: 'Startseite mit Kacheln für alle Dienste im Heimnetz.',
+    icon: 'pi pi-th-large',
+    category: 'Verwaltung',
+    stack: 'heimdall',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8090' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      ...idFields,
+    ],
+    compose: `services:
+  heimdall:
+    image: lscr.io/linuxserver/heimdall:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:80"
+    volumes:
+      - \${CONFIG_DIR}:/config
+`,
+  },
+  {
+    id: 'duplicati',
+    title: 'Duplicati',
+    description: 'Verschlüsselte Sicherungen von Ordnern auf ein Ziel deiner Wahl (Ordner, Cloud, SFTP).',
+    icon: 'pi pi-save',
+    category: 'Verwaltung',
+    stack: 'duplicati',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8200' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'SOURCE_DIR', label: 'Zu sichernder Ordner (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: 'Duplicati sieht ihn als /source.' },
+      { key: 'BACKUP_DIR', label: 'Ordner für die Sicherungen', kind: 'path', def: () => '/srv/pools', hint: 'Besser auf einem anderen Pool als die Originale. Duplicati sieht ihn als /backups.' },
+      ...idFields,
+    ],
+    compose: `services:
+  duplicati:
+    image: lscr.io/linuxserver/duplicati:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8200"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${SOURCE_DIR}:/source:ro
+      - \${BACKUP_DIR}:/backups
+`,
+  },
+  {
+    id: 'tailscale',
+    title: 'Tailscale',
+    description: 'Verbindet das NAS mit deinem Tailscale-Netz, damit du es von unterwegs erreichst (im Host-Netz).',
+    icon: 'pi pi-globe',
+    category: 'Netzwerk',
+    stack: 'tailscale',
+    notice: 'Tailscale läuft im Host-Netz mit erweiterten Rechten (NET_ADMIN) und braucht das Gerät /dev/net/tun. Den Auth-Key erzeugst du in der Tailscale-Verwaltung; er wird in der .env gespeichert.',
+    fields: [
+      { key: 'AUTH_KEY', label: 'Auth-Key von Tailscale', kind: 'text', def: () => '', hint: 'In der Tailscale-Verwaltung unter Einstellungen → Keys erzeugen (Form tskey-auth-…). Wiederverwendbar und ohne Ablauf, wenn der Dienst auch nach Neuinstallation wieder beitreten soll.' },
+      { key: 'NODE_NAME', label: 'Name im Tailscale-Netz (optional)', kind: 'text', optional: true, def: () => 'betternas' },
+      { key: 'STATE_DIR', label: 'Ordner für den Zustand', kind: 'path', def: appdata('state') },
+    ],
+    compose: `services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TS_AUTHKEY: "\${AUTH_KEY}"
+      TS_HOSTNAME: "\${NODE_NAME}"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - \${STATE_DIR}:/var/lib/tailscale
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
