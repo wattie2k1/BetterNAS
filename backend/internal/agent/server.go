@@ -254,6 +254,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerVMConfig(s, d)
 	registerVMDisk(s, d)
 	registerVMUSB(s, d)
+	registerVMRename(s, d)
 	registerSpindown(s, d)
 	registerSystem(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {

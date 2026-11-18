@@ -355,3 +355,21 @@ func TestDiskAddRemoveRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestRenameRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("POST", "/api/v1/vms/debian/rename", `{"newName":"neu","renameFiles":true,"deleteSnapshots":true}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.rename"].(map[string]any); p["name"] != "debian" || p["newName"] != "neu" || p["renameFiles"] != true || p["deleteSnapshots"] != true {
+		t.Fatalf("%v", stub.calls["vm.rename"])
+	}
+	for _, bad := range []string{`{"newName":"Falsch"}`, `{"newName":""}`, `kaputt`} {
+		if w := s.do("POST", "/api/v1/vms/debian/rename", bad); w.Code != 400 {
+			t.Fatalf("%q: %d", bad, w.Code)
+		}
+	}
+	if w := s.do("POST", "/api/v1/vms/-bad/rename", `{"newName":"x"}`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+}

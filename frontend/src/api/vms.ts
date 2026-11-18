@@ -126,6 +126,12 @@ export interface VmDiskRemove {
   deleteSnapshots: boolean
 }
 
+export interface VmRename {
+  newName: string
+  renameFiles: boolean
+  deleteSnapshots: boolean
+}
+
 export interface VmSnapshot {
   name: string
   created: string
@@ -182,6 +188,7 @@ export const vmsApi = {
   configure: (name: string, u: VmConfigUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/config`, u),
   usb: () => api.get<VmUsbDevice[]>('/api/v1/vms/usb'),
   disks: (name: string) => api.get<VmDisk[]>(`/api/v1/vms/${enc(name)}/disks`),
+  rename: (name: string, r: VmRename) => api.post<void>(`/api/v1/vms/${enc(name)}/rename`, r),
   diskAdd: (name: string, a: VmDiskAdd) => api.post<{ path: string }>(`/api/v1/vms/${enc(name)}/disks`, a),
   diskRemove: (name: string, r: VmDiskRemove) => api.post<void>(`/api/v1/vms/${enc(name)}/disks/remove`, r),
   diskResize: (name: string, r: VmDiskResize) => api.post<void>(`/api/v1/vms/${enc(name)}/disks/resize`, r),

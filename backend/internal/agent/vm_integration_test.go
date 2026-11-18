@@ -447,3 +447,83 @@ func TestVMDiskAddRemoveLibvirt(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// TestVMRenameLibvirt benennt eine UEFI-VM mit Snapshot und Autostart um (echtes libvirt) und prüft,
+// dass Festplatten-Datei und UEFI-Variablen mitziehen.
+func TestVMRenameLibvirt(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	for _, bin := range []string{"virsh", "qemu-img"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " ist nicht installiert")
+		}
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active {
+		t.Skip("libvirt läuft nicht")
+	}
+	const a, b = "bnas-it-rn-a", "bnas-it-rn-b"
+	clean := func() {
+		for _, n := range []string{a, b} {
+			_ = VMAction(ctx, d, n, "destroy")
+			_ = VMDelete(ctx, d, n, true)
+		}
+	}
+	t.Cleanup(clean)
+	clean()
+
+	spec := vm.Spec{Name: a, OS: "linux", Firmware: "uefi", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, true); err != nil { // Start erzeugt die UEFI-Variablen-Datei
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	if err := VMAction(ctx, d, a, "destroy"); err != nil {
+		t.Fatal(err)
+	}
+	if err := VMAction(ctx, d, a, "autostart"); err != nil {
+		t.Fatal(err)
+	}
+	if err := VMSnapshotCreate(ctx, d, a, "s1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VMDiskAdd(ctx, d, a, vm.DiskAdd{SizeGiB: 1, DeleteSnapshots: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := VMSnapshotCreate(ctx, d, a, "s2"); err != nil {
+		t.Fatal(err)
+	}
+	// Mit Snapshot und Dateien: Bestätigung nötig.
+	if err := VMRename(ctx, d, a, vm.Rename{NewName: b, RenameFiles: true}); code(err) != apierr.Conflict {
+		t.Fatalf("Konflikt erwartet: %v", err)
+	}
+	if err := VMRename(ctx, d, a, vm.Rename{NewName: b, RenameFiles: true, DeleteSnapshots: true}); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if _, ok := findVM(t, d, a); ok {
+		t.Fatal("alter Name darf nicht mehr existieren")
+	}
+	v, ok := findVM(t, d, b)
+	if !ok || !v.Autostart {
+		t.Fatalf("%+v %v", v, ok)
+	}
+	c, err := VMConfig(ctx, d, b)
+	if err != nil || len(c.Disks) != 2 || c.Disks[0] != vm.DiskPath(b) || c.Disks[1] != vm.ExtraDiskPath(b, 2) {
+		t.Fatalf("%+v %v", c, err)
+	}
+	for _, f := range []string{vm.DiskPath(b), vm.ExtraDiskPath(b, 2), vm.NvramDir + b + "_VARS.fd"} {
+		if _, err := os.Stat(f); err != nil {
+			t.Fatalf("%s fehlt: %v", f, err)
+		}
+	}
+	for _, f := range []string{vm.DiskPath(a), vm.ExtraDiskPath(a, 2), vm.NvramDir + a + "_VARS.fd"} {
+		if _, err := os.Stat(f); !os.IsNotExist(err) {
+			t.Fatalf("%s sollte nicht mehr existieren", f)
+		}
+	}
+	// Die umbenannte VM lässt sich starten.
+	if err := VMAction(ctx, d, b, "start"); err != nil {
+		t.Fatalf("Start nach Umbenennen: %v", err)
+	}
+}

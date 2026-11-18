@@ -17,6 +17,8 @@ type FS interface {
 	MkdirAll(p string, perm os.FileMode) error
 	Glob(pattern string) ([]string, error)
 	Symlink(target, link string) error
+	// Rename benennt eine Datei um. Existiert das Ziel bereits, ist es ein Fehler (es wird nichts überschrieben).
+	Rename(oldPath, newPath string) error
 	Exists(p string) bool
 }
 
@@ -131,4 +133,19 @@ func (r rootFS) Exists(p string) bool {
 	}
 	_, err = os.Lstat(full)
 	return err == nil
+}
+
+func (r rootFS) Rename(oldPath, newPath string) error {
+	from, err := r.resolve(oldPath)
+	if err != nil {
+		return err
+	}
+	to, err := r.resolve(newPath)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(to); err == nil {
+		return os.ErrExist
+	}
+	return os.Rename(from, to)
 }

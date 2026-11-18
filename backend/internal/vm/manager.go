@@ -312,6 +312,23 @@ func (m *Manager) ResizeDisk(ctx context.Context, actor, name string, r DiskResi
 	return err
 }
 
+// Rename benennt eine ausgeschaltete VM um.
+func (m *Manager) Rename(ctx context.Context, actor, name string, r Rename) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	params := struct {
+		Name string `json:"name"`
+		Rename
+	}{name, r}
+	err := m.agent.Call(ctx, "vm.rename", params, nil)
+	m.record(ctx, actor, "vm.rename", name+" -> "+r.NewName, err)
+	return err
+}
+
 // AddDisk legt eine leere Festplatte an und hängt sie an die ausgeschaltete VM. Es liefert den Dateipfad.
 func (m *Manager) AddDisk(ctx context.Context, actor, name string, a DiskAdd) (string, error) {
 	if err := checkName(name); err != nil {

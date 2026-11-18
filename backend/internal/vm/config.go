@@ -253,6 +253,14 @@ var (
 	reUSBHostdev = regexp.MustCompile(`(?s)[ \t]*<hostdev\b[^>]*type='usb'[^>]*>.*?</hostdev>\n?`)
 )
 
+// NvramFile liefert den Pfad der UEFI-Variablen-Datei aus der Domain-XML ("" = keine).
+func NvramFile(xmlStr string) string {
+	if m := reNvramPath.FindStringSubmatch(xmlStr); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 func validMAC(m string) bool {
 	m = strings.ToLower(m)
 	if !macRe.MatchString(m) {
