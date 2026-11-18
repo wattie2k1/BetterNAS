@@ -40,7 +40,7 @@ function pick(t: AppTemplate) {
   values.value = defaultValues(t, name.value)
   deviceChoice.value = ''
   devices.value = []
-  if (t.device) dockerApi.devices().then((l) => (devices.value = l), () => (devices.value = []))
+  if (t.device) dockerApi.devices().then((l) => (devices.value = Array.isArray(l) ? l : []), () => (devices.value = []))
 }
 
 // Standardpfade folgen dem Stacknamen, solange sie nicht von Hand geändert wurden.

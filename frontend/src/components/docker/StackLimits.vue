@@ -26,7 +26,8 @@ let lastEmitted: string | null = null
 
 onMounted(async () => {
   try {
-    host.value = await api.get<{ cpuCount: number; memTotalBytes: number }>('/api/v1/system/info')
+    const info = await api.get<{ cpuCount: number; memTotalBytes: number }>('/api/v1/system/info')
+    host.value = typeof info?.cpuCount === 'number' && typeof info?.memTotalBytes === 'number' ? info : null
   } catch {
     host.value = null // ohne Host-Angaben fehlen nur die Plausibilitätsprüfungen
   }
