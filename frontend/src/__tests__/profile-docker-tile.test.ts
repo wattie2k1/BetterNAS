@@ -87,5 +87,7 @@ describe('QuickTiles', () => {
     expect(link.element.tagName).toBe('A')
     expect(link.attributes('href')).toBe(`http://${window.location.hostname}:8080/`)
     expect(w.find('[data-test="quick-container-menu-web"]').exists()).toBe(true)
+    expect(w.find('[data-test="quick-vm-menu-win11"]').exists()).toBe(true)
+    expect(w.find('[data-test="quick-vm-open-win11"]').element.tagName).toBe('DIV')
   })
 })
