@@ -46,6 +46,8 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = []docker.VolumeInfo{{Name: "data", Unused: true}}
 	case "resource.prune":
 		out = docker.PruneResult{Reclaimed: "1.5GB"}
+	case "folder.list":
+		out = docker.FolderList{Path: "/srv/pools", Dirs: []docker.Folder{{Name: "tank", Path: "/srv/pools/tank"}}}
 	case "docker.status":
 		out = docker.Status{Installed: true, Active: true, Version: "26"}
 	}
@@ -215,5 +217,20 @@ func TestDockerAutoUpdateRoutes(t *testing.T) {
 		t.Fatalf("run %d %s", w.Code, w.Body)
 	} else {
 		s.waitJob(t, w.Body.Bytes())
+	}
+}
+
+func TestDockerFolderRoute(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/docker/folders?path=%2Fsrv%2Fpools", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"/srv/pools/tank"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/docker/folders", ""); w.Code != 200 {
+		t.Fatalf("Übersicht %d %s", w.Code, w.Body)
+	}
+	for _, bad := range []string{"%2Fetc", "%2Fsrv%2Fpools%2F..%2F..%2Fetc", "relativ"} {
+		if w := s.do("GET", "/api/v1/docker/folders?path="+bad, ""); w.Code != 400 {
+			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import FolderPicker from '@/components/docker/FolderPicker.vue'
 import type { StackFiles } from '@/api/docker'
 import { APP_TEMPLATES, defaultValues, fieldError, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
 
@@ -13,6 +14,7 @@ const emit = defineEmits<{ 'update:visible': [boolean]; create: [files: StackFil
 const picked = ref<AppTemplate | null>(null)
 const name = ref('')
 const values = ref<Record<string, string>>({})
+const browsing = ref<string | null>(null)
 
 watch(
   () => props.visible,
@@ -82,6 +84,16 @@ function submit() {
         <label :for="`tpl-${f.key}`">{{ f.label }}</label>
         <div class="row">
           <InputText :id="`tpl-${f.key}`" v-model="values[f.key]" :invalid="!!errors[f.key]" autocomplete="off" spellcheck="false" :data-test="`tpl-field-${f.key}`" />
+          <Button
+            v-if="f.kind === 'path'"
+            icon="pi pi-folder-open"
+            text
+            severity="secondary"
+            aria-label="Ordner wählen"
+            title="Ordner wählen"
+            :data-test="`tpl-browse-${f.key}`"
+            @click="browsing = f.key"
+          />
           <Button v-if="f.kind === 'secret'" icon="pi pi-refresh" text severity="secondary" aria-label="Neu erzeugen" title="Neu erzeugen" @click="values[f.key] = randomSecret()" />
         </div>
         <small v-if="errors[f.key]" class="err">{{ errors[f.key] }}</small>
@@ -91,6 +103,12 @@ function submit() {
         Die Eingaben werden in der .env gespeichert (nur für Administratoren lesbar). Im nächsten Schritt kannst du alles noch ändern, bevor der Stack angelegt wird.
       </Message>
     </div>
+    <FolderPicker
+      :visible="browsing !== null"
+      :start="browsing ? values[browsing] : ''"
+      @update:visible="(v) => !v && (browsing = null)"
+      @select="(p) => browsing && (values[browsing] = p)"
+    />
     <template #footer>
       <Button v-if="picked" label="Zurück" text @click="picked = null" />
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />

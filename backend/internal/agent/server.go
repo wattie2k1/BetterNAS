@@ -242,6 +242,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerDockerOps(s, d)
 	registerDockerUpdates(s, d)
 	registerDockerResources(s, d)
+	registerDockerFolders(s, d)
 	registerVM(s, d)
 	registerBridge(s, d)
 	registerNetwork(s, d)

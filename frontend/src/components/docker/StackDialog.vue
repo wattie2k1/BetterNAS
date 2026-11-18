@@ -11,6 +11,7 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import Textarea from 'primevue/textarea'
 import { useDockerStore } from '@/stores/docker'
+import FolderPicker from '@/components/docker/FolderPicker.vue'
 import { MAX_ICON_BYTES, STACK_NAME_RE, STACK_TEMPLATE, type IconChange, type StackCheck, type StackFiles } from '@/api/docker'
 
 export type SubmitMode = 'save' | 'start' | 'check'
@@ -37,6 +38,16 @@ const name = ref('')
 const compose = ref('')
 const env = ref('')
 const tab = ref('compose')
+const editor = ref<{ insert?: (text: string) => boolean } | null>(null)
+const browsing = ref(false)
+const inserted = ref(false)
+
+/** Fügt einen gewählten Ordner als Bind-Mount ein; den Zielpfad im Container muss man noch anpassen. */
+function insertFolder(path: string) {
+  const text = `${path}:/pfad-im-container`
+  if (!editor.value?.insert?.(text)) compose.value = `${compose.value.replace(/\n*$/, '\n')}${text}\n`
+  inserted.value = true
+}
 
 // --- Icon: gewählte Änderung wird erst mit „Speichern“ angewendet ---
 const iconChange = ref<IconChange | null>(null)
@@ -117,6 +128,7 @@ watch(
     compose.value = src?.compose ?? STACK_TEMPLATE
     env.value = src?.env ?? ''
     tab.value = 'compose'
+    inserted.value = false
     resetIcon()
   },
   { immediate: true },
@@ -160,7 +172,11 @@ const files = (): StackFiles => ({
       </TabList>
       <TabPanels>
         <TabPanel value="compose">
-          <YamlEditor v-model="compose" />
+          <div class="folder-bar">
+            <Button data-test="stack-insert-folder" label="Ordner einfügen" icon="pi pi-folder-open" size="small" severity="secondary" text @click="browsing = true" />
+            <small v-if="inserted" class="hint" data-test="stack-insert-hint">Eingefügt. Ersetze „/pfad-im-container“ durch den Ordner, unter dem der Container die Daten erwartet.</small>
+          </div>
+          <YamlEditor ref="editor" v-model="compose" />
         </TabPanel>
         <TabPanel value="env">
           <Textarea id="stack-env" v-model="env" rows="12" class="env" spellcheck="false" placeholder="NAME=wert" />
@@ -196,6 +212,7 @@ const files = (): StackFiles => ({
       <span v-if="check.ok">Die Compose-Datei ist gültig.</span>
       <pre v-else class="out">{{ check.message }}</pre>
     </Message>
+    <FolderPicker :visible="browsing" @update:visible="browsing = $event" @select="insertFolder" />
     <template #footer>
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
       <Button data-test="stack-check" label="Speichern & prüfen" icon="pi pi-check-circle" severity="secondary" :disabled="!valid || busy" @click="emit('submit', files(), 'check')" />
@@ -206,6 +223,12 @@ const files = (): StackFiles => ({
 </template>
 
 <style scoped>
+.folder-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
 .field {
   display: flex;
   flex-direction: column;

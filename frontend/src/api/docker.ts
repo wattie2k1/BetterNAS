@@ -62,6 +62,13 @@ export interface UpdateInfo {
   errors: string[]
 }
 
+/** Inhalt eines Ordners in der Ordnerauswahl; path/parent sind in der Übersicht leer bzw. bei einer Wurzel leer. */
+export interface FolderList {
+  path: string
+  parent: string
+  dirs: { name: string; path: string }[]
+}
+
 /** Einstellungen der automatischen Updates (Uhrzeit HH:MM, Ortszeit des Geräts). */
 export interface AutoUpdateConfig {
   enabled: boolean
@@ -144,6 +151,7 @@ export const dockerApi = {
   stats: () => api.get<ContainerStats[]>('/api/v1/containers/stats'),
   updates: () => api.get<UpdateReport>('/api/v1/docker/updates'),
   checkUpdates: () => api.post<{ jobId: string }>('/api/v1/docker/updates/check'),
+  folders: (path: string) => api.get<FolderList>(`/api/v1/docker/folders?path=${enc(path)}`),
   autoUpdate: () => api.get<AutoUpdateConfig>('/api/v1/docker/autoupdate'),
   setAutoUpdate: (c: AutoUpdateConfig) => api.put<AutoUpdateConfig>('/api/v1/docker/autoupdate', c),
   runAutoUpdate: () => api.post<{ jobId: string }>('/api/v1/docker/autoupdate/run'),

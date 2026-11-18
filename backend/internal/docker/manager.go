@@ -226,6 +226,17 @@ func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (str
 	}), nil
 }
 
+// Folders liefert die Unterordner von p für die Ordnerauswahl (leer: die Wurzeln /srv/pools und /srv/appdata).
+func (m *Manager) Folders(ctx context.Context, p string) (FolderList, error) {
+	c, err := CleanFolder(p)
+	if err != nil {
+		return FolderList{}, err
+	}
+	var out FolderList
+	err = m.agent.Call(ctx, "folder.list", map[string]string{"path": c}, &out)
+	return out, err
+}
+
 // ListContainers liefert alle Container.
 func (m *Manager) ListContainers(ctx context.Context) ([]Container, error) {
 	list := []Container{}

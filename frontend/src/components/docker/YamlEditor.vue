@@ -39,6 +39,16 @@ watch(model, (v) => {
   if (ed && ed.getValue() !== v) ed.setValue(v)
 })
 
+/** Fügt Text an der Cursorposition ein (ersetzt eine Markierung). Liefert false, solange der Editor noch lädt. */
+function insert(text: string): boolean {
+  if (!ed) return false
+  const range = ed.getSelection() ?? { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }
+  ed.executeEdits('folder-picker', [{ range, text, forceMoveMarkers: true }])
+  ed.focus()
+  return true
+}
+defineExpose({ insert })
+
 onBeforeUnmount(() => {
   mq?.removeEventListener?.('change', onScheme)
   ed?.dispose()

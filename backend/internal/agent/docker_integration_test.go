@@ -371,3 +371,55 @@ func TestDockerRollback(t *testing.T) {
 		t.Fatalf("Rollback-Tags bleiben: %s", out)
 	}
 }
+
+// TestDockerFolders prüft die Ordnerauswahl mit echtem realpath/find, auch den Ausbruch per Symlink.
+func TestDockerFolders(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if st, err := os.Stat("/srv/appdata"); err != nil || !st.IsDir() {
+		t.Skip("/srv/appdata fehlt")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	base := "/srv/appdata/bnasit-folders"
+	_ = os.RemoveAll(base)
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+	for _, sub := range []string{"Medien", "backup", ".versteckt", "mit Leerzeichen"} {
+		if err := os.MkdirAll(base+"/"+sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("/etc", base+"/hinaus"); err != nil {
+		t.Fatal(err)
+	}
+
+	roots, err := ListFolders(ctx, d, "")
+	if err != nil || len(roots.Dirs) == 0 || roots.Dirs[len(roots.Dirs)-1].Path != "/srv/appdata" {
+		t.Fatalf("Wurzeln: %+v %v", roots, err)
+	}
+	l, err := ListFolders(ctx, d, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, f := range l.Dirs {
+		names = append(names, f.Name)
+	}
+	// Symlink auf ein Verzeichnis zählt für `find -type d` nicht als Ordner; versteckte fehlen.
+	if got := strings.Join(names, "|"); got != "backup|Medien|mit Leerzeichen" || l.Parent != "/srv/appdata" {
+		t.Fatalf("%q %+v", got, l)
+	}
+	if _, err := ListFolders(ctx, d, base+"/hinaus"); err == nil {
+		t.Fatal("Symlink nach /etc darf nicht gelistet werden")
+	}
+	if app, err := ListFolders(ctx, d, "/srv/appdata"); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, f := range app.Dirs {
+			if f.Name == "docker" || f.Name == "stacks" {
+				t.Fatalf("interner Ordner sichtbar: %s", f.Name)
+			}
+		}
+	}
+}
