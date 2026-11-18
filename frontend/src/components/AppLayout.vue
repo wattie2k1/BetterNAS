@@ -128,9 +128,8 @@ async function logout() {
   position: fixed;
   left: 18px;
   top: 22px;
-  max-height: calc(100vh - 44px);
-  overflow-y: auto;
-  z-index: 20;
+  /* kein overflow: sonst werden die Tooltips abgeschnitten und die Leiste scrollt horizontal */
+  z-index: 50;
   width: 74px;
   padding: 14px 0;
   border-radius: 28px;
@@ -289,6 +288,27 @@ async function logout() {
 .logout:hover {
   background: var(--bn-tile-hover);
   color: var(--p-text-color);
+}
+/* Niedrige Fenster: Dock verdichten statt scrollen */
+@media (min-width: 801px) and (max-height: 760px) {
+  .dock {
+    top: 10px;
+    padding: 8px 0;
+    gap: 4px;
+  }
+  .item {
+    width: 46px;
+    height: 46px;
+  }
+  .icon,
+  .logo {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+  .tip {
+    left: 58px;
+  }
 }
 @media (max-width: 800px) {
   .shell {
