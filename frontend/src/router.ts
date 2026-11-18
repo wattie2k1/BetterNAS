@@ -18,6 +18,8 @@ import ServicesSettings from '@/views/settings/ServicesSettings.vue'
 import FileServicesSettings from '@/views/settings/FileServicesSettings.vue'
 import DockerSettings from '@/views/settings/DockerSettings.vue'
 import SecuritySettings from '@/views/settings/SecuritySettings.vue'
+import FirewallSettings from '@/views/settings/FirewallSettings.vue'
+import SshSettings from '@/views/settings/SshSettings.vue'
 import LogsSettings from '@/views/settings/LogsSettings.vue'
 import AboutSettings from '@/views/settings/AboutSettings.vue'
 import NetworkSettings from '@/views/settings/NetworkSettings.vue'
@@ -63,6 +65,8 @@ export const router = createRouter({
             { path: 'dateidienste', name: 'settings-fileservices', component: FileServicesSettings, meta: { title: 'Einstellungen · Dateidienste' } },
             { path: 'docker', name: 'settings-docker', component: DockerSettings, meta: { title: 'Einstellungen · Docker' } },
             { path: 'anmeldung', name: 'settings-security', component: SecuritySettings, meta: { title: 'Einstellungen · Anmeldung' } },
+            { path: 'firewall', name: 'settings-firewall', component: FirewallSettings, meta: { title: 'Einstellungen · Firewall' } },
+            { path: 'ssh', name: 'settings-ssh', component: SshSettings, meta: { title: 'Einstellungen · SSH' } },
             { path: 'protokolle', name: 'settings-logs', component: LogsSettings, meta: { title: 'Einstellungen · Protokolle' } },
             { path: 'ueber', name: 'settings-about', component: AboutSettings, meta: { title: 'Einstellungen · Über' } },
             { path: 'benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Einstellungen · Benachrichtigungen' } },

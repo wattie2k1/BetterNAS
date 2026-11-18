@@ -247,6 +247,8 @@ func Register(s *rpc.Server, d Deps) {
 	registerNetwork(s, d)
 	registerSysConfig(s, d)
 	registerServices(s, d)
+	registerSSH(s, d)
+	registerFirewall(s, d)
 	registerLogs(s, d)
 	registerVMOps(s, d)
 	registerVMConfig(s, d)

@@ -97,3 +97,66 @@ func (s *Settings) SetDocker(ctx context.Context, actor string, v map[string]any
 	s.record(ctx, actor, "docker.settings.set", "docker", err)
 	return err
 }
+
+// SSH liefert die SSH-Einstellungen.
+func (s *Settings) SSH(ctx context.Context) (map[string]any, error) {
+	out := map[string]any{}
+	err := s.agent.Call(ctx, "ssh.get", nil, &out)
+	return out, err
+}
+
+// SetSSH speichert die SSH-Einstellungen.
+func (s *Settings) SetSSH(ctx context.Context, actor string, v map[string]any) error {
+	err := s.agent.Call(ctx, "ssh.set", v, nil)
+	s.record(ctx, actor, "ssh.set", "ssh", err)
+	return err
+}
+
+// SSHKeys liefert die öffentlichen Schlüssel eines Benutzers.
+func (s *Settings) SSHKeys(ctx context.Context, user string) ([]map[string]any, error) {
+	out := []map[string]any{}
+	err := s.agent.Call(ctx, "ssh.keys.list", map[string]string{"user": user}, &out)
+	return out, err
+}
+
+// AddSSHKey hinterlegt einen öffentlichen Schlüssel.
+func (s *Settings) AddSSHKey(ctx context.Context, actor, user, key string) error {
+	err := s.agent.Call(ctx, "ssh.keys.add", map[string]string{"user": user, "key": key}, nil)
+	s.record(ctx, actor, "ssh.key.add", user, err)
+	return err
+}
+
+// RemoveSSHKey entfernt einen öffentlichen Schlüssel.
+func (s *Settings) RemoveSSHKey(ctx context.Context, actor, user, fingerprint string) error {
+	err := s.agent.Call(ctx, "ssh.keys.remove", map[string]string{"user": user, "fingerprint": fingerprint}, nil)
+	s.record(ctx, actor, "ssh.key.remove", user, err)
+	return err
+}
+
+// Firewall liefert Konfiguration und Zustand der Firewall.
+func (s *Settings) Firewall(ctx context.Context) (map[string]any, error) {
+	out := map[string]any{}
+	err := s.agent.Call(ctx, "firewall.get", nil, &out)
+	return out, err
+}
+
+// SetFirewall übernimmt die Firewall-Konfiguration vorläufig (Bestätigung nötig).
+func (s *Settings) SetFirewall(ctx context.Context, actor, clientIP string, cfg map[string]any) error {
+	err := s.agent.Call(ctx, "firewall.set", map[string]any{"config": cfg, "clientIp": clientIP}, nil)
+	s.record(ctx, actor, "firewall.set", "firewall", err)
+	return err
+}
+
+// ConfirmFirewall bestätigt die Firewall-Änderung.
+func (s *Settings) ConfirmFirewall(ctx context.Context, actor string) error {
+	err := s.agent.Call(ctx, "firewall.confirm", nil, nil)
+	s.record(ctx, actor, "firewall.confirm", "firewall", err)
+	return err
+}
+
+// RevertFirewall nimmt die Firewall-Änderung zurück.
+func (s *Settings) RevertFirewall(ctx context.Context, actor string) error {
+	err := s.agent.Call(ctx, "firewall.revert", nil, nil)
+	s.record(ctx, actor, "firewall.revert", "firewall", err)
+	return err
+}

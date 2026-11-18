@@ -20,7 +20,11 @@ const groups = [
   },
   {
     title: 'Sicherheit',
-    items: [{ label: 'Anmeldung', icon: 'pi pi-shield', to: '/einstellungen/anmeldung' }],
+    items: [
+      { label: 'Anmeldung', icon: 'pi pi-shield', to: '/einstellungen/anmeldung' },
+      { label: 'Firewall', icon: 'pi pi-ban', to: '/einstellungen/firewall' },
+      { label: 'SSH', icon: 'pi pi-key', to: '/einstellungen/ssh' },
+    ],
   },
   {
     title: 'Wartung',
