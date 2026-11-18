@@ -174,6 +174,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 .ico.avatar-sm {
   border-radius: 11px;
   background: #64748b;
+  box-shadow: 0 6px 14px -6px rgb(0 0 0 / 50%);
 }
 .ico.avatar-sm.on {
   background: linear-gradient(135deg, #2563eb, #60a5fa);
