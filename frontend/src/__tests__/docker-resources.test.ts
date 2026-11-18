@@ -55,7 +55,7 @@ describe('ResourcesView', () => {
     'GET /api/v1/stacks': [],
     'GET /api/v1/containers': [],
     'GET /api/v1/docker/images': [
-      { id: 'aaaaaaaaaaaa', ref: 'ghcr.io/x/y:1', repository: 'ghcr.io/x/y', tag: '1', sizeBytes: 1000000, created: '2 weeks ago', dangling: false, unused: false },
+      { id: 'aaaaaaaaaaaa', ref: 'ghcr.io/x/y:1', repository: 'ghcr.io/x/y', tag: '1', sizeBytes: 1000000, created: '2 weeks ago', dangling: false, unused: true },
       { id: 'bbbbbbbbbbbb', ref: 'bbbbbbbbbbbb', repository: '', tag: '', sizeBytes: 5, created: 'x', dangling: true, unused: true },
     ],
     'GET /api/v1/docker/networks': [
@@ -85,6 +85,36 @@ describe('ResourcesView', () => {
     expect(fn).not.toHaveBeenCalledWith(expect.stringContaining('?ref='), expect.anything())
     ;(document.querySelector('[data-test="confirm-submit"]') as HTMLElement).click()
     await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/docker/images?ref=ghcr.io%2Fx%2Fy%3A1', expect.objectContaining({ method: 'DELETE' })))
+    w.unmount()
+  })
+
+  it('sperrt Löschen bei Einträgen in Benutzung und löscht mehrere ausgewählte', async () => {
+    const r = {
+      ...routes,
+      'GET /api/v1/docker/images': [
+        { id: 'aaaaaaaaaaaa', ref: 'a:1', repository: 'a', tag: '1', sizeBytes: 1, created: 'x', dangling: false, unused: false },
+        { id: 'bbbbbbbbbbbb', ref: 'b:1', repository: 'b', tag: '1', sizeBytes: 1, created: 'x', dangling: false, unused: true },
+        { id: 'cccccccccccc', ref: 'c:1', repository: 'c', tag: '1', sizeBytes: 1, created: 'x', dangling: false, unused: true },
+      ],
+      'DELETE /api/v1/docker/images?ref=b%3A1': null,
+      'DELETE /api/v1/docker/images?ref=c%3A1': null,
+    }
+    const fn = stub(r)
+    const w = mount(ResourcesView, { global: { plugins: plugins() }, attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-test="image-a:1"] button[aria-label="Entfernen"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-test="image-a:1"] input[type="checkbox"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-test="remove-selected"]').exists()).toBe(false)
+    await w.find('[data-test="select-all"]').setValue(true)
+    expect(w.find('[data-test="remove-selected"]').text()).toContain('(2)')
+    await w.find('[data-test="remove-selected"]').trigger('click')
+    await flushPromises()
+    ;(document.querySelector('[data-test="confirm-submit"]') as HTMLElement).click()
+    await vi.waitFor(() => {
+      expect(fn).toHaveBeenCalledWith('/api/v1/docker/images?ref=b%3A1', expect.objectContaining({ method: 'DELETE' }))
+      expect(fn).toHaveBeenCalledWith('/api/v1/docker/images?ref=c%3A1', expect.objectContaining({ method: 'DELETE' }))
+    })
+    expect(fn).not.toHaveBeenCalledWith('/api/v1/docker/images?ref=a%3A1', expect.anything())
     w.unmount()
   })
 
