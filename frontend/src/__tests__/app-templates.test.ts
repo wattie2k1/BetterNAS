@@ -12,7 +12,8 @@ describe('Vorlagen', () => {
       for (const u of used) expect(keys, `${t.id}: ${u}`).toContain(u)
       for (const k of keys) expect(used, `${t.id}: ${k} ungenutzt`).toContain(k)
       const v = defaultValues(t, t.stack)
-      for (const f of t.fields) expect(fieldError(f, v[f.key]), `${t.id}.${f.key}`).toBe('')
+      // Die IP-Adresse des NAS ist nur im Browser vorbelegt (aus der Adresszeile), im Test also leer.
+      for (const f of t.fields) expect(fieldError(f, v[f.key]), `${t.id}.${f.key}`).toBe(f.kind === 'ip' ? 'Pflichtfeld' : '')
     }
   })
 
@@ -22,6 +23,29 @@ describe('Vorlagen', () => {
     expect(files.name).toBe('jf')
     expect(files.env).toBe('PORT=9000\nCONFIG_DIR=/srv/appdata/jf/config\nCACHE_DIR=/srv/appdata/jf/cache\nMEDIA_DIR=/srv/pools/a\n')
     expect(files.compose).toContain('${PORT}:8096')
+  })
+
+  it('hat eindeutige Namen und keine doppelten Vorgabe-Ports', () => {
+    const ids = APP_TEMPLATES.map((t) => t.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(new Set(APP_TEMPLATES.map((t) => t.stack)).size).toBe(ids.length)
+    const ports = APP_TEMPLATES.flatMap((t) => t.fields.filter((f) => f.kind === 'port').map((f) => `${t.id}.${f.key}=${f.def!('x')}`))
+    const values = ports.map((p) => p.split('=')[1])
+    expect(new Set(values).size, ports.join(', ')).toBe(values.length)
+  })
+
+  it('belegt Port 53 nie auf allen Adressen (dort laufen schon systemd-resolved und libvirt)', () => {
+    for (const t of APP_TEMPLATES) {
+      for (const m of t.compose.matchAll(/"([^"]*):?53:53\/(tcp|udp)"/g)) expect(m[0], t.id).toMatch(/^"\$\{DNS_IP\}:53:53/)
+    }
+    const dns = APP_TEMPLATES.filter((t) => t.compose.includes(':53:53'))
+    expect(dns.map((t) => t.id).sort()).toEqual(['adguardhome', 'pihole'])
+  })
+
+  it('prüft IPv4-Adressen', () => {
+    const ip = { key: 'I', label: '', kind: 'ip' as const }
+    expect(fieldError(ip, '192.168.1.10')).toBe('')
+    for (const bad of ['', '192.168.1', '192.168.1.256', 'nas.local', '1.2.3.4.5', '::1']) expect(fieldError(ip, bad), bad).not.toBe('')
   })
 
   it('prüft Eingaben', () => {
