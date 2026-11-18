@@ -19,11 +19,17 @@ const groups = [
     ],
   },
   {
+    title: 'Sicherheit',
+    items: [{ label: 'Anmeldung', icon: 'pi pi-shield', to: '/einstellungen/anmeldung' }],
+  },
+  {
     title: 'Wartung',
     items: [
       { label: 'Benachrichtigungen', icon: 'pi pi-bell', to: '/einstellungen/benachrichtigungen' },
       { label: 'Sicherung', icon: 'pi pi-history', to: '/einstellungen/sicherung' },
       { label: 'Updates', icon: 'pi pi-download', to: '/einstellungen/updates' },
+      { label: 'Protokolle', icon: 'pi pi-list', to: '/einstellungen/protokolle' },
+      { label: 'Über', icon: 'pi pi-info-circle', to: '/einstellungen/ueber' },
     ],
   },
 ]

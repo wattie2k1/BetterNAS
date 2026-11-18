@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os/user"
+	"strings"
 	"time"
 
 	"github.com/betternas/betternas/internal/apierr"
@@ -76,6 +77,7 @@ type Handlers struct {
 	limiter  *RateLimiter
 	secure   bool
 	totp     *TOTPStore
+	policy   policyHolder
 	mfa      *mfaTokens
 	now      func() time.Time
 }
@@ -159,7 +161,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 // startSession legt die Sitzung an, setzt das Cookie und protokolliert die Anmeldung.
 func (h *Handlers) startSession(w http.ResponseWriter, r *http.Request, username, action string) {
-	token, csrf, err := h.store.Create(r.Context(), username)
+	token, csrf, err := h.store.CreateFrom(r.Context(), username, ClientIP(r))
 	if err != nil {
 		apierr.Write(w, err)
 		return
@@ -185,7 +187,8 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	if h.totp != nil {
 		totp, _ = h.totp.Enabled(r.Context(), s.Username)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"username": s.Username, "csrfToken": s.CSRF, "totp": totp})
+	required := h.Policy().RequireTOTP && h.totp != nil && !totp
+	writeJSON(w, http.StatusOK, map[string]any{"username": s.Username, "csrfToken": s.CSRF, "totp": totp, "totpRequired": required})
 }
 
 // RequireSession verlangt eine gültige Sitzung und bei ändernden Anfragen ein passendes CSRF-Token.
@@ -206,6 +209,13 @@ func (h *Handlers) RequireSession(next http.Handler) http.Handler {
 		default:
 			if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(s.CSRF)) != 1 {
 				apierr.Write(w, apierr.New(apierr.Forbidden, "Ungültiges CSRF-Token"))
+				return
+			}
+		}
+		// 2FA-Pflicht: bis zur Einrichtung bleiben nur Anmelde-/Profilrouten erreichbar.
+		if h.Policy().RequireTOTP && h.totp != nil && !strings.HasPrefix(r.URL.Path, "/api/v1/auth/") {
+			if on, err := h.totp.Enabled(r.Context(), s.Username); err == nil && !on {
+				apierr.Write(w, apierr.New(apierr.Forbidden, "Die Zwei-Faktor-Anmeldung ist Pflicht. Bitte zuerst im Profil einrichten.").With("reason", "mfa_required"))
 				return
 			}
 		}

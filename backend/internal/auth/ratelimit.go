@@ -35,6 +35,13 @@ func (r *RateLimiter) prune(ip string) []time.Time {
 	return kept
 }
 
+// SetLimits ändert Grenzwert und Zeitfenster zur Laufzeit.
+func (r *RateLimiter) SetLimits(max int, window time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.max, r.window = max, window
+}
+
 // Blocked meldet, ob die IP gesperrt ist.
 func (r *RateLimiter) Blocked(ip string) bool {
 	r.mu.Lock()

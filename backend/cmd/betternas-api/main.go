@@ -53,6 +53,12 @@ func main() {
 		log.Info("wiederherstellung eingesetzt – alle Sitzungen sind ungültig")
 	}
 
+	if reset, err := backup.ApplyFactoryReset(filepath.Join(stateDir, "restore"), cfg.DBPath, 2); err != nil {
+		log.Error("werkseinstellungen einsetzen", "err", err)
+	} else if reset {
+		log.Info("werkseinstellungen eingesetzt – Konfiguration wurde zurückgesetzt")
+	}
+
 	d, err := db.Open(cfg.DBPath)
 	if err != nil {
 		log.Error("datenbank", "err", err)
@@ -72,6 +78,9 @@ func main() {
 	go api.ForwardAgentEvents(ctx, agent, hub)
 	totpStore := auth.NewTOTPStore(d)
 	handlers := auth.NewHandlers(d, auth.NewStore(d, 12*time.Hour), auth.AgentVerifier{Agent: agent}, auth.SystemGroupChecker, !cfg.Dev).WithTOTP(totpStore)
+	if err := handlers.LoadPolicy(ctx); err != nil {
+		log.Warn("anmelde-einstellungen", "err", err)
+	}
 	go handlers.Maintain(ctx, time.Hour)
 	// Freigaben-Manager und Storage/Benutzer verweisen aufeinander; die Funktionen lesen shm erst bei Aufruf.
 	var shm *shares.Manager
