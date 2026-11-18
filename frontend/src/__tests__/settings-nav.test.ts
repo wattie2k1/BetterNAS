@@ -9,7 +9,8 @@ import NetworkSettings from '@/views/settings/NetworkSettings.vue'
 
 describe('SettingsView', () => {
   it('zeigt die Bereiche und rendert den gewählten', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+    const ip = { interface: 'eno1', bridgeActive: false, config: { mode: 'dhcp', address: '', gateway: '', dns: [], domains: [] }, current: { addresses: [], gateway: '', dns: [], domains: [] }, interfaces: [], pending: false, deadline: 0, hostname: 'betternas' }
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(url.endsWith('/api/v1/network') ? ip : {}), { status: 200 })))
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [{ path: '/einstellungen', component: SettingsView, children: [{ path: 'netzwerk', component: NetworkSettings }] }],

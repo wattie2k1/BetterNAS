@@ -134,6 +134,9 @@ func BridgeEnable(ctx context.Context, d Deps, iface string) error {
 			return apierr.New(apierr.Conflict, "Eine VM nutzt "+iface+" als LAN-Netz (macvtap). Stelle diese VM zuerst auf ein anderes Netz um.")
 		}
 	}
+	if ps, ok := readIPState(d); ok && ps.Pending && ipTimerActive(ctx, d) {
+		return apierr.New(apierr.Conflict, "Eine Netzwerk-Änderung wartet noch auf Bestätigung")
+	}
 	orig, err := d.FS.ReadFile(legacyNetworkFile)
 	if err != nil {
 		return apierr.New(apierr.Conflict, "Die Netzwerkkonfiguration von BetterNAS wurde nicht gefunden")
@@ -173,6 +176,16 @@ func BridgeEnable(ctx context.Context, d Deps, iface string) error {
 	}
 	for name, content := range files {
 		if err := d.FS.WriteFile(netcfg.Dir+"/"+name, []byte(content), 0o644); err != nil {
+			runRollback(ctx, d)
+			return err
+		}
+	}
+	// Eine statische IP-Konfiguration zieht mit auf die Bridge um.
+	if ip, err := d.FS.ReadFile(netcfg.DropinPath(netcfg.MainNetworkFile)); err == nil {
+		if err := d.FS.MkdirAll(netcfg.Dir+"/"+netcfg.BridgeFile+".d", 0o755); err == nil {
+			err = d.FS.WriteFile(netcfg.DropinPath(netcfg.BridgeFile), ip, 0o644)
+		}
+		if err != nil {
 			runRollback(ctx, d)
 			return err
 		}

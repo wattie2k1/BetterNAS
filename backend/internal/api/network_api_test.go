@@ -72,3 +72,42 @@ func TestNetworkBridgeRoutes(t *testing.T) {
 		t.Fatalf("Audit-Einträge: %d", n)
 	}
 }
+
+func TestNetworkIPRoutes(t *testing.T) {
+	d, err := db.Open(filepath.Join(t.TempDir(), "b.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	hub := events.NewHub()
+	store := auth.NewStore(d, time.Hour)
+	token, csrf, _ := store.Create(context.Background(), "anna")
+	stub := &netAgentStub{}
+	h := NewServer(Config{WebDir: t.TempDir(), Dev: true}, Deps{
+		DB: d, Jobs: jobs.NewManager(d, hub), Hub: hub,
+		Auth:    auth.NewHandlers(d, store, nil, nil, false),
+		Network: netcfg.NewManager(d, stub),
+	})
+	s := &storageAPI{h: h, cookie: &http.Cookie{Name: auth.CookieName, Value: token}, csrf: csrf}
+	if w := s.do("GET", "/api/v1/network", ""); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	body := `{"mode":"static","address":"192.168.1.10/24","gateway":"192.168.1.1","dns":["192.168.1.1"],"domains":[]}`
+	if w := s.do("PUT", "/api/v1/network", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["network.configure"].(map[string]any); p["address"] != "192.168.1.10/24" || p["mode"] != "static" {
+		t.Fatalf("%v", stub.calls)
+	}
+	if w := s.do("PUT", "/api/v1/network", `kaputt`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+	for _, path := range []string{"/api/v1/network/confirm", "/api/v1/network/revert"} {
+		if w := s.do("POST", path, ""); w.Code != 204 {
+			t.Fatalf("%s %d", path, w.Code)
+		}
+	}
+	if _, ok := stub.calls["network.confirm"]; !ok {
+		t.Fatalf("%v", stub.calls)
+	}
+}
