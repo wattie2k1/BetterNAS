@@ -21,7 +21,7 @@ Neu, in Gruppen (Gruppenname = Kategorie im Dialog):
 - **Entwicklung:** Gitea
 - **Medien-Werkzeug:** Tdarr (Server mit eingebautem Knoten, mit GPU-Option)
 
-Das sind 23 neue Vorlagen (zusammen 34). Die bestehenden 11 bekommen nachträglich eine Kategorie.
+Das sind 24 neue Vorlagen (zusammen 35). Die bestehenden 11 bekommen nachträglich eine Kategorie.
 Vaultwarden gibt es schon.
 
 ## Ziele
@@ -31,7 +31,7 @@ Vaultwarden gibt es schon.
 - Downloader, *arr, Plex und Emby sind **einzelne Stacks mit gemeinsamem Datenordner**: alle fragen nach demselben
   Ordner (Vorgabe `/srv/pools`) und binden ihn als `/data` ein. Nur so funktionieren Hardlinks und Verschieben ohne
   Kopieren. Die Hinweise nennen die empfohlene Struktur (`/data/downloads`, `/data/media/{filme,serie,musik}`).
-- Der Vorlagen-Dialog bleibt bei 34 Einträgen bedienbar: Kategorien als Überschriften und ein Suchfeld.
+- Der Vorlagen-Dialog bleibt bei 35 Einträgen bedienbar: Kategorien als Überschriften und ein Suchfeld.
 
 ## Nicht-Ziele
 
