@@ -15,6 +15,8 @@ const statusLabel: Record<string, { label: string; severity: string }> = {
   failed: { label: 'Fehlgeschlagen', severity: 'danger' },
 }
 
+const statusOf = (s: string) => statusLabel[s] ?? { label: s, severity: 'secondary' }
+
 const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
 </script>
 
@@ -33,7 +35,7 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
     <li v-for="j in jobs.jobs" :key="j.id">
       <div class="row">
         <strong>{{ j.kind }}</strong>
-        <Tag :value="statusLabel[j.status].label" :severity="statusLabel[j.status].severity" />
+        <Tag :value="statusOf(j.status).label" :severity="statusOf(j.status).severity" />
       </div>
       <div class="meta">{{ j.target }} · {{ j.startedBy }} · {{ time(j.startedAt) }}</div>
       <ProgressBar v-if="j.status === 'running'" :value="j.progress" style="height: 6px" :show-value="false" />

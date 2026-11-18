@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { vmsApi, type VmAction, type VmInfo, type VmSpec, type VmStatus } from '@/api/vms'
 import type { EventMessage } from '@/api/ws'
+import { pollWhileVisible } from '@/utils/poll'
 
 export const VM_POLL_MS = 5000
 
@@ -10,7 +11,7 @@ export const useVmsStore = defineStore('vms', () => {
   const vms = ref<VmInfo[]>([])
   const loading = ref(false)
   const error = ref('')
-  let timer: ReturnType<typeof setInterval> | undefined
+  let stopTimer: (() => void) | undefined
 
   async function refresh() {
     loading.value = true
@@ -32,11 +33,11 @@ export const useVmsStore = defineStore('vms', () => {
   /** Aktualisiert die Liste regelmäßig, solange die VM-Seite offen ist. */
   function startPolling() {
     stopPolling()
-    timer = setInterval(() => void refresh(), VM_POLL_MS)
+    stopTimer = pollWhileVisible(() => void refresh(), VM_POLL_MS)
   }
   function stopPolling() {
-    clearInterval(timer)
-    timer = undefined
+    stopTimer?.()
+    stopTimer = undefined
   }
 
   async function act(name: string, action: VmAction) {

@@ -5,9 +5,11 @@ export interface EventMessage {
   data?: unknown
 }
 
-export function connectEvents(onMessage: (m: EventMessage) => void): () => void {
+/** onReconnect wird nach jedem erneuten Verbinden aufgerufen: in der Lücke verpasste Ereignisse müssen nachgeladen werden. */
+export function connectEvents(onMessage: (m: EventMessage) => void, onReconnect?: () => void): () => void {
   let ws: WebSocket | undefined
   let delay = 1000
+  let wasConnected = false
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -16,6 +18,8 @@ export function connectEvents(onMessage: (m: EventMessage) => void): () => void 
     ws = new WebSocket(`${proto}//${location.host}/api/v1/ws`)
     ws.onopen = () => {
       delay = 1000
+      if (wasConnected) onReconnect?.()
+      wasConnected = true
     }
     ws.onmessage = (ev) => {
       try {

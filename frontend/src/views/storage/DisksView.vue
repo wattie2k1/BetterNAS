@@ -26,16 +26,19 @@ const roleLabel: Record<string, { label: string; severity: string }> = {
 }
 
 function fail(e: unknown) {
-  toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 8000 })
+  toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
 }
 
-async function act(id: string, fn: () => Promise<void>, done: string) {
+/** Führt eine Aktion aus; liefert true, wenn sie gelingt (Dialoge bleiben bei Fehlern offen). */
+async function act(id: string, fn: () => Promise<void>, done: string): Promise<boolean> {
   busy.value = id
   try {
     await fn()
     toast.add({ severity: 'success', summary: done, life: 4000 })
+    return true
   } catch (e) {
     fail(e)
+    return false
   } finally {
     busy.value = null
   }
@@ -52,8 +55,7 @@ async function openFormat(d: DiskView) {
 
 async function doFormat(req: FormatRequest) {
   const id = preview.value!.diskId
-  await act(id, () => store.format(id, req), 'Datenträger formatiert')
-  showFormat.value = false
+  if (await act(id, () => store.format(id, req), 'Datenträger formatiert')) showFormat.value = false
 }
 
 const spinError = ref<Record<string, string>>({})

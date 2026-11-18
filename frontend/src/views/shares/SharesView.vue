@@ -63,7 +63,11 @@ async function copy(text: string) {
   }
 }
 const nfsCommand = (s: ShareView) => `mount -t nfs ${s.nfsMount} /mnt`
-const smbUrl = (s: ShareView) => `smb://${s.uncPath.split('\\')[2]}.local/${s.name}`
+/** Mac-Adresse: einfache Hostnamen werden per Bonjour als „.local“ erreicht; FQDN und IP bleiben unverändert. */
+const smbUrl = (s: ShareView) => {
+  const host = s.uncPath.split('\\')[2] ?? ''
+  return `smb://${host.includes('.') || host.includes(':') ? host : `${host}.local`}/${s.name}`
+}
 </script>
 
 <template>

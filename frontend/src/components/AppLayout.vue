@@ -52,6 +52,20 @@ const initial = computed(() => (auth.user ?? '?').slice(0, 1).toUpperCase())
 const time = computed(() => now.value.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))
 const date = computed(() => now.value.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))
 
+/** Nach einem WebSocket-Reconnect (z. B. Neustart der API) den Stand neu laden, weil Ereignisse fehlen können. */
+function resync() {
+  jobs.load().catch(() => {})
+  void reboot.load()
+  void storage.refresh()
+  void usersStore.refresh()
+  void sharesStore.refresh()
+  void dockerStore.refresh()
+  void vmsStore.refresh()
+  void notificationsStore.loadAlerts()
+  void notificationsStore.loadHistory()
+  void backupStore.load()
+}
+
 let disconnect: (() => void) | undefined
 onMounted(() => {
   clock = setInterval(() => (now.value = new Date()), 15000)
@@ -66,7 +80,7 @@ onMounted(() => {
     vmsStore.handleEvent(m)
     notificationsStore.handleEvent(m)
     backupStore.handleEvent(m)
-  })
+  }, resync)
 })
 onUnmounted(() => {
   disconnect?.()

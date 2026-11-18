@@ -16,6 +16,7 @@ import {
   type StackInfo,
 } from '@/api/docker'
 import type { EventMessage } from '@/api/ws'
+import { pollWhileVisible } from '@/utils/poll'
 import { useJobsStore } from './jobs'
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -33,7 +34,7 @@ export const useDockerStore = defineStore('docker', () => {
   const images = ref<ImageInfo[]>([])
   const networks = ref<NetworkInfo[]>([])
   const volumes = ref<VolumeInfo[]>([])
-  let statsTimer: ReturnType<typeof setInterval> | undefined
+  let stopStatsTimer: (() => void) | undefined
 
   async function refresh() {
     loading.value = true
@@ -67,12 +68,12 @@ export const useDockerStore = defineStore('docker', () => {
   function startStats() {
     stopStats()
     void loadStats()
-    statsTimer = setInterval(() => void loadStats(), STATS_INTERVAL_MS)
+    stopStatsTimer = pollWhileVisible(() => void loadStats(), STATS_INTERVAL_MS)
   }
 
   function stopStats() {
-    if (statsTimer) clearInterval(statsTimer)
-    statsTimer = undefined
+    stopStatsTimer?.()
+    stopStatsTimer = undefined
   }
 
   async function loadUpdates() {

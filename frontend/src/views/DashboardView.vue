@@ -12,6 +12,7 @@ import { useStorageStore } from '@/stores/storage'
 import { useNotificationsStore } from '@/stores/notifications'
 import { storageApi, unprotected, type PoolView, type SnapraidStatus } from '@/api/storage'
 import { formatBytes, formatDateTime, formatUptime } from '@/utils/format'
+import { pollWhileVisible } from '@/utils/poll'
 import { moveTile, shiftTile, useTileOrder } from '@/utils/tileOrder'
 
 interface SystemInfo {
@@ -37,11 +38,15 @@ const snap = ref<{ pool: PoolView; status: SnapraidStatus }[]>([])
 const error = ref('')
 const cpuPercent = ref<number | null>(null)
 let lastTicks: { total: number; idle: number } | null = null
-let timer: ReturnType<typeof setInterval> | undefined
-let snapTimer: ReturnType<typeof setInterval> | undefined
+let stopTimer: (() => void) | undefined
+let stopSnapTimer: (() => void) | undefined
+let loading = false
+let loadingSnap = false
 let firstCpu: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
+  if (loading) return // keine überlappenden Abfragen, wenn eine länger als der Takt dauert
+  loading = true
   try {
     const next = await api.get<SystemInfo>('/api/v1/system/info')
     info.value = next
@@ -49,6 +54,8 @@ async function load() {
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading = false
   }
 }
 
@@ -64,12 +71,16 @@ function updateCpu(i: SystemInfo) {
 }
 
 async function loadSnapraid() {
+  if (loadingSnap) return
+  loadingSnap = true
   try {
     await store.refresh()
     const pools = store.pools.filter((p) => p.snapraid)
     snap.value = await Promise.all(pools.map(async (pool) => ({ pool, status: await storageApi.snapraidStatus(pool.name) })))
   } catch {
     snap.value = [] // Speicherstatus ist optional; Fehler zeigt die Speicherseite
+  } finally {
+    loadingSnap = false
   }
 }
 
@@ -78,12 +89,12 @@ onMounted(() => {
   void notifications.loadAlerts()
   loadSnapraid()
   firstCpu = setTimeout(load, 1500) // zweite Messung, damit die CPU-Kachel schnell einen Wert zeigt
-  timer = setInterval(load, 5000)
-  snapTimer = setInterval(loadSnapraid, 60000) // Sync-/Scrub-Stand ändert sich im Hintergrund
+  stopTimer = pollWhileVisible(load, 5000)
+  stopSnapTimer = pollWhileVisible(loadSnapraid, 60000) // Sync-/Scrub-Stand ändert sich im Hintergrund
 })
 onUnmounted(() => {
-  clearInterval(timer)
-  clearInterval(snapTimer)
+  stopTimer?.()
+  stopSnapTimer?.()
   clearTimeout(firstCpu)
 })
 

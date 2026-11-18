@@ -143,7 +143,7 @@ function save(input: PoolInput) {
     :visible="!!cancelling"
     header="Wiederherstellung abbrechen"
     :message="`Die Wiederherstellung für „${cancelling?.name}“ wird abgebrochen. Dateien der ersetzten Platte, die noch nicht zurückgeholt wurden, bleiben verloren; Synchronisierung und Prüfung laufen danach wieder.`"
-    confirm-label="Abbrechen"
+    confirm-label="Wiederherstellung abbrechen"
     :busy="busy"
     @update:visible="(v) => !v && (cancelling = null)"
     @confirm="run(() => store.cancelRecovery(cancelling!.name), 'Wiederherstellung abgebrochen')"

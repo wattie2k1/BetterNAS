@@ -6,6 +6,9 @@ import { useRebootStore } from './reboot'
 
 export const POLL_INTERVAL_MS = 2000
 
+/** So lange darf BetterNAS beim Update nicht antworten, bevor die Abfrage aufgibt. */
+export const MAX_UNREACHABLE_MS = 15 * 60_000
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export const useUpdatesStore = defineStore('updates', () => {
@@ -53,15 +56,22 @@ export const useUpdatesStore = defineStore('updates', () => {
     if (polling) return
     polling = true
     installing.value = true
+    let downSince = 0
     try {
       for (;;) {
         try {
           const run = await updatesApi.run()
+          downSince = 0
           restarting.value = false
           overview.value = { ...overview.value, run }
           if (run.state !== 'running') break
         } catch {
           restarting.value = true
+          downSince ||= Date.now()
+          if (Date.now() - downSince > MAX_UNREACHABLE_MS) {
+            error.value = 'BetterNAS antwortet seit längerer Zeit nicht mehr. Prüfe den Server und lade die Seite neu.'
+            break
+          }
         }
         await sleep(POLL_INTERVAL_MS)
       }
