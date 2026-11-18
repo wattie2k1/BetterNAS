@@ -11,6 +11,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils gnupg git
+      - run: cd frontend && npm ci --no-audit --no-fund
       - run: make test
       - run: make build build-arm64
 
