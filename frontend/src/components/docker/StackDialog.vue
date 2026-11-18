@@ -13,6 +13,7 @@ import Textarea from 'primevue/textarea'
 import { useDockerStore } from '@/stores/docker'
 import FolderPicker from '@/components/docker/FolderPicker.vue'
 import DevicePicker from '@/components/docker/DevicePicker.vue'
+import StackLimits from '@/components/docker/StackLimits.vue'
 import { deviceSnippet } from '@/utils/deviceSnippet'
 import { MAX_ICON_BYTES, STACK_NAME_RE, STACK_TEMPLATE, type HostDevice, type IconChange, type StackCheck, type StackFiles } from '@/api/docker'
 
@@ -179,6 +180,7 @@ const files = (): StackFiles => ({
     <Tabs v-model:value="tab">
       <TabList>
         <Tab value="compose">compose.yaml</Tab>
+        <Tab value="limits" data-test="stack-limits-tab">Ressourcen</Tab>
         <Tab value="env">.env</Tab>
         <Tab value="icon" data-test="stack-icon-tab">Icon</Tab>
       </TabList>
@@ -191,6 +193,9 @@ const files = (): StackFiles => ({
             <small v-else-if="inserted" class="hint" data-test="stack-insert-hint">Eingefügt. Ersetze „/pfad-im-container“ durch den Ordner, unter dem der Container die Daten erwartet.</small>
           </div>
           <YamlEditor ref="editor" v-model="compose" />
+        </TabPanel>
+        <TabPanel value="limits">
+          <StackLimits v-model="compose" />
         </TabPanel>
         <TabPanel value="env">
           <Textarea id="stack-env" v-model="env" rows="12" class="env" spellcheck="false" placeholder="NAME=wert" />
