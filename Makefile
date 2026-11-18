@@ -6,15 +6,19 @@ LDFLAGS := -s -w -X github.com/betternas/betternas/internal/version.Version=$(VE
 BUILDER := betternas-builder
 DOCKER_RUN := docker run --rm --privileged --platform linux/$(ARCH) -e APT_URL=$(APT_URL) -v $(CURDIR):/src -w /src $(BUILDER)-$(ARCH)
 
-.PHONY: test test-go test-web web build build-arm64 builder rootfs iso e2e deb deploy clean apt-key repo dev-repo
+.PHONY: test test-go test-web test-tools web build build-arm64 builder rootfs iso e2e deb deploy clean apt-key repo dev-repo
 
-test: test-go test-web
+test: test-go test-web test-tools
 
 test-go:
 	cd backend && go vet ./... && go test ./...
 
 test-web:
 	cd frontend && npm test
+
+# Shell-Tests der Release-Werkzeuge (brauchen dpkg, apt-ftparchive, gpg): auf Linux direkt, sonst im Builder-Container
+test-tools:
+	@if [ "$$(uname)" = Linux ]; then tools/tests/run.sh; else $(DOCKER_RUN) tools/tests/run.sh; fi
 
 web:
 	cd frontend && npm ci --no-audit --no-fund && npm run build
