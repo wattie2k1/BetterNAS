@@ -56,6 +56,10 @@ type Deps struct {
 	TOTP *auth.TOTPStore
 	// Backup ist optional (nil = keine Backup-Routen).
 	Backup *backup.Manager
+	// SystemSettings ist optional (nil = keine Hostname-/Zeit-/Energie-Routen).
+	SystemSettings *system.Settings
+	// Certs ist optional (nil = keine Zertifikat-Routen).
+	Certs *CertStore
 	// Monitor ist optional (nil = keine aktiven Meldungen).
 	Monitor *monitor.Monitor
 }
@@ -109,6 +113,12 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Network != nil {
 		s.registerNetwork(api)
+	}
+	if deps.SystemSettings != nil {
+		s.registerSystemSettings(api)
+	}
+	if deps.Certs != nil {
+		s.registerWebAccess(api)
 	}
 	if deps.Docker != nil {
 		s.registerDocker(api)
