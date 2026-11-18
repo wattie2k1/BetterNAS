@@ -128,3 +128,70 @@ func UpdateStatus(ctx context.Context, d Deps, unit string) (UpdateRun, error) {
 	logOut, _ := d.Runner.Run(ctx, nil, "journalctl", "-u", unit+".service", "-o", "cat", "-n", "200", "--no-pager")
 	return UpdateRun{State: state, Log: strings.TrimSpace(string(logOut.Stdout))}, nil
 }
+
+// aptSourcesPath ist die BetterNAS-Paketquelle, die das Image anlegt (Hook 40-apt.sh).
+const aptSourcesPath = "/etc/apt/sources.list.d/betternas.sources"
+
+const (
+	sourcesHeader  = "# Verwaltet von BetterNAS – nicht manuell bearbeiten"
+	sourcesKeyring = "Signed-By: /usr/share/keyrings/betternas-archive-keyring.gpg"
+)
+
+// validChannel ist die Whitelist der Update-Kanäle (= Suiten des BetterNAS-Repos).
+func validChannel(ch string) bool { return ch == "stable" || ch == "testing" }
+
+// UpdateChannel liefert den Kanal der BetterNAS-Paketquelle ("stable" oder "testing"); leer, wenn es keine
+// Quelle gibt oder ihre Suite unbekannt ist.
+func UpdateChannel(_ context.Context, d Deps) (string, error) {
+	b, err := d.FS.ReadFile(aptSourcesPath)
+	if err != nil {
+		if !d.FS.Exists(aptSourcesPath) {
+			return "", nil
+		}
+		return "", err
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "Suites:"); ok {
+			if ch := strings.TrimSpace(v); validChannel(ch) {
+				return ch, nil
+			}
+			return "", nil
+		}
+	}
+	return "", nil
+}
+
+// SetUpdateChannel stellt die BetterNAS-Paketquelle auf den Kanal um. Nur das Feld "Suites:" ändert sich; eine
+// vom Nutzer angepasste (nicht von BetterNAS stammende) Datei wird nie angefasst.
+func SetUpdateChannel(_ context.Context, d Deps, channel string) error {
+	if !validChannel(channel) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Update-Kanal")
+	}
+	if !d.FS.Exists(aptSourcesPath) {
+		return apierr.New(apierr.NotFound, "Keine BetterNAS-Paketquelle eingerichtet.")
+	}
+	b, err := d.FS.ReadFile(aptSourcesPath)
+	if err != nil {
+		return err
+	}
+	text := string(b)
+	if !strings.Contains(text, sourcesHeader) && !strings.Contains(text, sourcesKeyring) {
+		return apierr.New(apierr.Conflict, "Die BetterNAS-Paketquelle wurde manuell angepasst.")
+	}
+	lines := strings.Split(text, "\n")
+	found := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "Suites:") {
+			lines[i] = "Suites: " + channel
+			found = true
+		}
+	}
+	if !found {
+		return apierr.New(apierr.Conflict, "Die BetterNAS-Paketquelle wurde manuell angepasst.")
+	}
+	out := strings.Join(lines, "\n")
+	if !strings.Contains(out, sourcesHeader) {
+		out = sourcesHeader + "\n" + out
+	}
+	return d.FS.WriteFile(aptSourcesPath, []byte(out), 0o644)
+}

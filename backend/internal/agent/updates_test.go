@@ -128,3 +128,135 @@ func TestStatusStates(t *testing.T) {
 		}
 	}
 }
+
+const managedSources = `# Verwaltet von BetterNAS – nicht manuell bearbeiten
+Types: deb
+URIs: https://wattie2k1.github.io/BetterNAS
+Suites: stable
+Components: main
+Signed-By: /usr/share/keyrings/betternas-archive-keyring.gpg
+`
+
+func writeSources(t *testing.T, d Deps, content string) {
+	t.Helper()
+	if err := d.FS.WriteFile(aptSourcesPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readSources(t *testing.T, d Deps) string {
+	t.Helper()
+	b, err := d.FS.ReadFile(aptSourcesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestUpdateChannelReadsSuites(t *testing.T) {
+	d, _ := updatesEnv(t)
+	if ch, err := UpdateChannel(context.Background(), d); err != nil || ch != "" {
+		t.Fatalf("ohne Datei: %q %v", ch, err)
+	}
+	writeSources(t, d, strings.Replace(managedSources, "Suites: stable", "Suites: testing", 1))
+	if ch, err := UpdateChannel(context.Background(), d); err != nil || ch != "testing" {
+		t.Fatalf("testing: %q %v", ch, err)
+	}
+	writeSources(t, d, strings.Replace(managedSources, "Suites: stable", "Suites: bookworm", 1))
+	if ch, _ := UpdateChannel(context.Background(), d); ch != "" {
+		t.Fatalf("unbekannte Suite muss leer sein: %q", ch)
+	}
+}
+
+func TestSetUpdateChannelRewritesOnlySuites(t *testing.T) {
+	d, _ := updatesEnv(t)
+	writeSources(t, d, managedSources)
+	if err := SetUpdateChannel(context.Background(), d, "testing"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readSources(t, d), strings.Replace(managedSources, "Suites: stable", "Suites: testing", 1); got != want {
+		t.Fatalf("erwartet\n%s\nbekommen\n%s", want, got)
+	}
+}
+
+func TestSetUpdateChannelAddsMissingHeader(t *testing.T) {
+	d, _ := updatesEnv(t)
+	writeSources(t, d, strings.TrimPrefix(managedSources, "# Verwaltet von BetterNAS – nicht manuell bearbeiten\n"))
+	if err := SetUpdateChannel(context.Background(), d, "testing"); err != nil {
+		t.Fatal(err)
+	}
+	got := readSources(t, d)
+	if !strings.HasPrefix(got, "# Verwaltet von BetterNAS – nicht manuell bearbeiten\n") || !strings.Contains(got, "Suites: testing\n") {
+		t.Fatalf("%s", got)
+	}
+}
+
+func TestSetUpdateChannelRejectsInvalid(t *testing.T) {
+	d, _ := updatesEnv(t)
+	writeSources(t, d, managedSources)
+	for _, ch := range []string{"beta", "", "stable\nURIs: http://evil", "Stable", "stable ", "testing\r"} {
+		if err := SetUpdateChannel(context.Background(), d, ch); code(err) != apierr.InvalidParams {
+			t.Errorf("%q: %v", ch, err)
+		}
+	}
+	if readSources(t, d) != managedSources {
+		t.Fatal("Datei darf unverändert bleiben")
+	}
+}
+
+func TestSetUpdateChannelRefusesForeignFile(t *testing.T) {
+	d, _ := updatesEnv(t)
+	foreign := "Types: deb\nURIs: http://example.org/deb\nSuites: stable\nComponents: main\n"
+	writeSources(t, d, foreign)
+	if err := SetUpdateChannel(context.Background(), d, "testing"); code(err) != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+	if readSources(t, d) != foreign {
+		t.Fatal("fremde Datei darf nicht verändert werden")
+	}
+}
+
+func TestSetUpdateChannelMissingFile(t *testing.T) {
+	d, _ := updatesEnv(t)
+	if err := SetUpdateChannel(context.Background(), d, "testing"); code(err) != apierr.NotFound {
+		t.Fatalf("%v", err)
+	}
+	if d.FS.Exists(aptSourcesPath) {
+		t.Fatal("Datei darf nicht angelegt werden")
+	}
+}
+
+func TestSetUpdateChannelIdempotent(t *testing.T) {
+	d, _ := updatesEnv(t)
+	writeSources(t, d, managedSources)
+	for i := 0; i < 2; i++ {
+		if err := SetUpdateChannel(context.Background(), d, "stable"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if readSources(t, d) != managedSources {
+		t.Fatal("gleicher Kanal ändert nichts")
+	}
+}
+
+func TestRegisteredUpdateChannelMethods(t *testing.T) {
+	d, _ := updatesEnv(t)
+	writeSources(t, d, managedSources)
+	c := rpcClient(t, d)
+	ctx := context.Background()
+	var got struct {
+		Channel string `json:"channel"`
+	}
+	if err := c.Call(ctx, "updates.channel", nil, &got); err != nil || got.Channel != "stable" {
+		t.Fatalf("updates.channel: %v %+v", err, got)
+	}
+	if err := c.Call(ctx, "updates.setchannel", map[string]string{"channel": "testing"}, nil); err != nil {
+		t.Fatalf("updates.setchannel: %v", err)
+	}
+	if err := c.Call(ctx, "updates.channel", nil, &got); err != nil || got.Channel != "testing" {
+		t.Fatalf("nach setchannel: %v %+v", err, got)
+	}
+	if err := c.Call(ctx, "updates.setchannel", map[string]string{"channel": "x"}, nil); apierr.From(err).Code != apierr.InvalidParams {
+		t.Fatalf("ungültig: %v", err)
+	}
+}

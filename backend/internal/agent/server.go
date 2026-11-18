@@ -163,6 +163,22 @@ func Register(s *rpc.Server, d Deps) {
 		}
 		return UpdateStatus(ctx, d, req.Unit)
 	})
+	s.Handle("updates.channel", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		ch, err := UpdateChannel(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"channel": ch}, nil
+	})
+	s.Handle("updates.setchannel", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Channel string `json:"channel"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return struct{}{}, SetUpdateChannel(ctx, d, req.Channel)
+	})
 	s.Handle("snapraid.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st snapraid.State
 		if err := decode(p, &st); err != nil {
