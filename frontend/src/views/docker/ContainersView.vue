@@ -87,7 +87,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
         <tr v-for="c in store.containers" :key="c.id" :data-test="`container-${c.name}`">
           <td>
             <div class="who">
-              <span class="avatar-sm" :class="{ img: !!store.iconUrlFor(c) }" aria-hidden="true">
+              <span class="avatar-sm ico" :class="{ img: !!store.iconUrlFor(c), on: c.state === 'running' }" :data-test="`container-icon-${c.name}`" aria-hidden="true">
                 <img v-if="store.iconUrlFor(c)" :src="store.iconUrlFor(c)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
                 <template v-else>{{ c.name.slice(0, 1).toUpperCase() }}</template>
               </span>
@@ -170,5 +170,21 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 .actions {
   white-space: nowrap;
   text-align: right;
+}
+.ico.avatar-sm {
+  border-radius: 11px;
+  background: #64748b;
+}
+.ico.avatar-sm.on {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+}
+.ico.avatar-sm.img {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border-soft);
+  overflow: hidden;
+}
+.ico.avatar-sm.img:not(.on) img {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 </style>
