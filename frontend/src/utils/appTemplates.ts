@@ -440,6 +440,94 @@ volumes:
       - \${MUSIC_DIR}:/music:ro
 `,
   },
+  {
+    id: 'qbittorrent',
+    title: 'qBittorrent',
+    description: 'Torrent-Client mit Weboberfläche. Das Anfangspasswort steht im Protokoll des Containers.',
+    icon: 'pi pi-download',
+    category: 'Downloader',
+    stack: 'qbittorrent',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8083' },
+      { key: 'TORRENT_PORT', label: 'Port für Torrent-Verbindungen', kind: 'port', def: () => '6881', hint: 'Wird für TCP und UDP geöffnet. Im Router weiterleiten, wenn Verbindungen von außen erlaubt sein sollen.' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+      WEBUI_PORT: "8080"
+    ports:
+      - "\${PORT}:8080"
+      - "\${TORRENT_PORT}:6881"
+      - "\${TORRENT_PORT}:6881/udp"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'sabnzbd',
+    title: 'SABnzbd',
+    description: 'Usenet-Downloader mit Weboberfläche. Die Zugangsdaten des Usenet-Anbieters trägst du dort ein.',
+    icon: 'pi pi-download',
+    category: 'Downloader',
+    stack: 'sabnzbd',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8085' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8080"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'nzbget',
+    title: 'NZBGet',
+    description: 'Schlanker Usenet-Downloader. Standard-Zugang nzbget / tegbzn6789, bitte sofort ändern.',
+    icon: 'pi pi-download',
+    category: 'Downloader',
+    stack: 'nzbget',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '6789' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:6789"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */

@@ -177,3 +177,36 @@ describe('TemplateDialog', () => {
     w.unmount()
   })
 })
+
+const tpl = (id: string) => {
+  const t = APP_TEMPLATES.find((x) => x.id === id)
+  expect(t, `Vorlage ${id} fehlt`).toBeTruthy()
+  const files = renderTemplate(t!, t!.stack, defaultValues(t!, t!.stack))
+  return { t: t!, files, env: files.env ?? '' }
+}
+
+describe('Downloader-Vorlagen', () => {
+  const cases: [string, string, string][] = [
+    ['qbittorrent', '8083', '${PORT}:8080'],
+    ['sabnzbd', '8085', '${PORT}:8080'],
+    ['nzbget', '6789', '${PORT}:6789'],
+  ]
+  for (const [id, port, line] of cases) {
+    it(`rendert ${id}`, () => {
+      const { t, files, env } = tpl(id)
+      expect(t.category).toBe('Downloader')
+      expect(files.compose).toContain(line)
+      expect(files.compose).toContain('${DATA_DIR}:/data')
+      expect(files.compose).toContain('PUID')
+      expect(files.compose).toContain('PGID')
+      expect(env).toContain(`PORT=${port}\n`)
+    })
+  }
+
+  it('qBittorrent veröffentlicht den Torrent-Port für TCP und UDP', () => {
+    const { files, env } = tpl('qbittorrent')
+    expect(files.compose).toContain('"${TORRENT_PORT}:6881"')
+    expect(files.compose).toContain('"${TORRENT_PORT}:6881/udp"')
+    expect(env).toContain('TORRENT_PORT=6881\n')
+  })
+})
