@@ -285,6 +285,13 @@ func (m *Manager) USBDevices(ctx context.Context) ([]USBDevice, error) {
 	return list, err
 }
 
+// PCIDevices liefert die PCI-Geräte des Hosts mit Durchreich-Status.
+func (m *Manager) PCIDevices(ctx context.Context) (PCIInfo, error) {
+	info := PCIInfo{Devices: []PCIDevice{}}
+	err := m.agent.Call(ctx, "vm.pci", nil, &info)
+	return info, err
+}
+
 // Disks liefert die Festplatten einer VM mit Größe.
 func (m *Manager) Disks(ctx context.Context, name string) ([]Disk, error) {
 	if err := checkName(name); err != nil {

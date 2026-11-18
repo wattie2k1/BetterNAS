@@ -44,6 +44,8 @@ type Tuning struct {
 	DiskOpts  []DiskOpt `json:"diskOpts"`
 	// SharedDirs sind Host-Ordner, die der VM per virtiofs bereitstehen.
 	SharedDirs []SharedDir `json:"sharedDirs"`
+	// PCI sind durchgereichte PCI-Geräte (Adressen wie 0000:01:00.0).
+	PCI []string `json:"pci"`
 }
 
 // TuningUpdate sind die erweiterten Werte; fehlt ein Feld, bleibt der Wert unverändert.
@@ -55,6 +57,7 @@ type TuningUpdate struct {
 	ExtraNICs  *[]NIC       `json:"extraNics"`
 	DiskOpts   *[]DiskOpt   `json:"diskOpts"`
 	SharedDirs *[]SharedDir `json:"sharedDirs"`
+	PCI        *[]string    `json:"pci"`
 }
 
 var nicModels = map[string]bool{"virtio": true, "e1000e": true, "rtl8139": true}
@@ -96,6 +99,9 @@ func (u ConfigUpdate) validateTuning() error {
 			}
 		}
 	}
+	if u.PCI != nil && !validPCI(*u.PCI) {
+		return invalid("Ungültige PCI-Geräteliste (höchstens 8 Geräte, Adressen wie 0000:01:00.0, keine Doppelten)")
+	}
 	if u.SharedDirs != nil && !validSharedDirs(*u.SharedDirs) {
 		return invalid("Ungültige Ordnerliste (höchstens 8, Ordner unterhalb von /srv/pools/, Name aus Buchstaben, Ziffern, - und _, keine Doppelten)")
 	}
@@ -127,6 +133,17 @@ type tuningXML struct {
 		Offset string `xml:"offset,attr"`
 	} `xml:"clock"`
 	Devices struct {
+		Hostdevs []struct {
+			Type   string `xml:"type,attr"`
+			Source struct {
+				Address struct {
+					Domain   string `xml:"domain,attr"`
+					Bus      string `xml:"bus,attr"`
+					Slot     string `xml:"slot,attr"`
+					Function string `xml:"function,attr"`
+				} `xml:"address"`
+			} `xml:"source"`
+		} `xml:"hostdev"`
 		Filesystems []struct {
 			Driver struct {
 				Type string `xml:"type,attr"`
@@ -167,7 +184,7 @@ type tuningXML struct {
 }
 
 func parseTuning(data []byte) Tuning {
-	t := Tuning{CPUMode: "other", Clock: "other", ExtraNICs: []NIC{}, DiskOpts: []DiskOpt{}, SharedDirs: []SharedDir{}}
+	t := Tuning{CPUMode: "other", Clock: "other", ExtraNICs: []NIC{}, DiskOpts: []DiskOpt{}, SharedDirs: []SharedDir{}, PCI: []string{}}
 	var x tuningXML
 	if err := xml.NewDecoder(bytes.NewReader(data)).Decode(&x); err != nil {
 		return t
@@ -181,6 +198,12 @@ func parseTuning(data []byte) Tuning {
 	t.Hyperv = x.Features.Hyperv != nil
 	if x.Clock.Offset == "utc" || x.Clock.Offset == "localtime" {
 		t.Clock = x.Clock.Offset
+	}
+	for _, h := range x.Devices.Hostdevs {
+		if h.Type == "pci" {
+			a := h.Source.Address
+			t.PCI = append(t.PCI, pciAddr(a.Domain, a.Bus, a.Slot, a.Function))
+		}
 	}
 	for _, f := range x.Devices.Filesystems {
 		if f.Driver.Type == "virtiofs" {
@@ -319,6 +342,12 @@ func applyTuning(out string, cur Config, u ConfigUpdate) (string, error) {
 		out = reClock.ReplaceAllLiteralString(out, "<clock offset='"+u.Clock+"'")
 	}
 
+	if u.PCI != nil && !samePCI(*u.PCI, cur.PCI) {
+		out, err = applyPCI(out, *u.PCI)
+		if err != nil {
+			return "", err
+		}
+	}
 	if u.SharedDirs != nil && !sameSharedDirs(*u.SharedDirs, cur.SharedDirs) {
 		out, err = applySharedDirs(out, *u.SharedDirs)
 		if err != nil {

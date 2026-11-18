@@ -64,6 +64,26 @@ export interface VmConfig {
   extraNics: VmNic[]
   diskOpts: VmDiskOpt[]
   sharedDirs: VmSharedDir[]
+  /** Durchgereichte PCI-Geräte (Adressen wie 0000:00:1b.0). */
+  pci: string[]
+}
+
+export interface VmPciDevice {
+  address: string
+  id: string
+  name: string
+  kind: 'gpu' | 'audio' | 'usb' | 'net' | 'storage' | 'other'
+  /** IOMMU-Gruppe; -1 = keine. Eine Gruppe lässt sich nur als Ganzes durchreichen. */
+  group: number
+  driver?: string
+  /** Grund, warum sich das Gerät nicht durchreichen lässt; leer = erlaubt. */
+  blocked?: string
+  note?: string
+}
+
+export interface VmPciInfo {
+  iommu: boolean
+  devices: VmPciDevice[]
 }
 
 /** Host-Ordner (unterhalb von /srv/pools/), den die VM per virtiofs unter dem Namen `tag` einbinden kann. */
@@ -116,6 +136,7 @@ export interface VmConfigUpdate {
   extraNics?: VmNic[]
   diskOpts?: VmDiskOpt[]
   sharedDirs?: VmSharedDir[]
+  pci?: string[]
 }
 
 export interface VmDisk {
@@ -214,6 +235,7 @@ export const vmsApi = {
     }),
   config: (name: string) => api.get<VmConfig>(`/api/v1/vms/${enc(name)}/config`),
   configure: (name: string, u: VmConfigUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/config`, u),
+  pci: () => api.get<VmPciInfo>('/api/v1/vms/pci'),
   usb: () => api.get<VmUsbDevice[]>('/api/v1/vms/usb'),
   disks: (name: string) => api.get<VmDisk[]>(`/api/v1/vms/${enc(name)}/disks`),
   live: (name: string, u: VmLiveUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/live`, u),

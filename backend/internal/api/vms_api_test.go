@@ -50,6 +50,8 @@ func (a *vmAgentStub) Call(_ context.Context, method string, params, result any)
 		out = map[string]int{"port": 5901}
 	case "vm.disk.add":
 		out = map[string]string{"path": "/srv/vms/disks/debian-2.qcow2"}
+	case "vm.pci":
+		out = vm.PCIInfo{IOMMU: true, Devices: []vm.PCIDevice{{Address: "0000:00:1b.0", ID: "8086:8c20", Name: "Audio", Kind: "audio", Group: 7}}}
 	case "vm.usb":
 		out = []vm.USBDevice{{Vendor: "1a86", Product: "7523", Name: "QinHeng USB Serial"}}
 	case "vm.disks":
@@ -409,5 +411,22 @@ func TestSharedDirsRoute(t *testing.T) {
 		if w := s.do("POST", "/api/v1/vms/debian/config", bad); w.Code != 400 {
 			t.Fatalf("%q: %d", bad, w.Code)
 		}
+	}
+}
+
+func TestPCIRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vms/pci", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"iommu":true`) || !strings.Contains(w.Body.String(), `"address":"0000:00:1b.0"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	body := `{"vcpus":2,"memoryMiB":2048,"network":"default","pci":["0000:00:1b.0"]}`
+	if w := s.do("POST", "/api/v1/vms/debian/config", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["vm.configure"].(map[string]any); len(p["pci"].([]any)) != 1 {
+		t.Fatalf("%v", stub.calls["vm.configure"])
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/config", `{"vcpus":2,"memoryMiB":2048,"network":"default","pci":["x"]}`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
 	}
 }

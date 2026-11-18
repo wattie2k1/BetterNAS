@@ -99,6 +99,10 @@ func (s *server) registerVMs(mux *http.ServeMux) {
 		}
 		noContent(w, m.Configure(r.Context(), actor(r), r.PathValue("name"), in))
 	})
+	mux.HandleFunc("GET /api/v1/vms/pci", func(w http.ResponseWriter, r *http.Request) {
+		v, err := m.PCIDevices(r.Context())
+		reply(w, v, err)
+	})
 	mux.HandleFunc("GET /api/v1/vms/usb", func(w http.ResponseWriter, r *http.Request) {
 		v, err := m.USBDevices(r.Context())
 		reply(w, v, err)

@@ -68,6 +68,11 @@ func VMConfigure(ctx context.Context, d Deps, name string, u vm.ConfigUpdate) er
 				return err
 			}
 		}
+		if u.PCI != nil && len(*u.PCI) > 0 {
+			if err := checkPCI(ctx, d, cur.PCI, *u.PCI); err != nil {
+				return err
+			}
+		}
 		if u.SharedDirs != nil && len(*u.SharedDirs) > 0 {
 			if !d.FS.Exists(vm.Virtiofsd) {
 				return apierr.New(apierr.Conflict, "Geteilte Ordner brauchen das Paket virtiofsd, das auf diesem NAS nicht installiert ist")

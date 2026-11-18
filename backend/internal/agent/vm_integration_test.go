@@ -701,3 +701,83 @@ func TestVMSharedDirsLibvirt(t *testing.T) {
 		t.Fatalf("Start nach Zurückbauen: %v", err)
 	}
 }
+
+// TestVMPCIPassthroughLibvirt reicht ein harmloses PCI-Audiogerät an eine VM durch und prüft, dass libvirt es
+// beim Start an vfio-pci bindet und beim Beenden an den Host-Treiber zurückgibt. Fasst echte Hardware an und
+// läuft deshalb nur mit BNAS_PCI_TEST=1.
+func TestVMPCIPassthroughLibvirt(t *testing.T) {
+	if os.Getenv("BNAS_PCI_TEST") != "1" {
+		t.Skip("fasst echte PCI-Hardware an: nur mit BNAS_PCI_TEST=1")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := VMStatus(ctx, d); !st.Active || !st.KVM {
+		t.Skip("libvirt/KVM nicht verfügbar")
+	}
+	info, err := VMPCIDevices(ctx, d)
+	if err != nil || !info.IOMMU {
+		t.Skipf("keine IOMMU: %+v %v", info.IOMMU, err)
+	}
+	var dev vm.PCIDevice
+	for _, c := range info.Devices {
+		alone := true
+		for _, o := range info.Devices {
+			if o.Address != c.Address && o.Group == c.Group {
+				alone = false
+			}
+		}
+		if c.Kind == "audio" && c.Blocked == "" && alone && c.Driver != "" && (dev.Address == "" || c.Address == "0000:00:1b.0") {
+			dev = c
+		}
+	}
+	if dev.Address == "" {
+		t.Skip("kein harmloses Audiogerät zum Testen")
+	}
+	driverOf := func() string {
+		l, err := os.Readlink("/sys/bus/pci/devices/" + dev.Address + "/driver")
+		if err != nil {
+			return ""
+		}
+		return l[strings.LastIndex(l, "/")+1:]
+	}
+	orig := driverOf()
+	const name = "bnas-it-pci"
+	t.Cleanup(func() {
+		_ = VMAction(ctx, d, name, "destroy")
+		_ = VMDelete(ctx, d, name, true)
+	})
+	_ = VMAction(ctx, d, name, "destroy")
+	_ = VMDelete(ctx, d, name, true)
+	spec := vm.Spec{Name: name, OS: "linux", Firmware: "bios", Network: "default", VCPUs: 1, MemoryMiB: 256, DiskGiB: 1}
+	if err := VMCreate(ctx, d, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := VMConfig(ctx, d, name)
+	list := []string{dev.Address}
+	u := vm.ConfigUpdate{VCPUs: 1, MemoryMiB: 256, SecureBoot: c.SecureBoot, Network: "default", GuestAgent: true, TuningUpdate: vm.TuningUpdate{PCI: &list}}
+	if err := VMConfigure(ctx, d, name, u); err != nil {
+		t.Fatalf("libvirt lehnt die Konfiguration ab: %v", err)
+	}
+	if c, _ = VMConfig(ctx, d, name); len(c.PCI) != 1 || c.PCI[0] != dev.Address {
+		t.Fatalf("%+v", c.PCI)
+	}
+	if err := VMAction(ctx, d, name, "start"); err != nil {
+		t.Fatalf("Start mit PCI-Gerät: %v", err)
+	}
+	time.Sleep(time.Second)
+	if got := driverOf(); got != "vfio-pci" {
+		t.Fatalf("Gerät sollte an vfio-pci hängen, hängt an %q", got)
+	}
+	if err := VMAction(ctx, d, name, "destroy"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20 && driverOf() != orig; i++ {
+		time.Sleep(500 * time.Millisecond)
+	}
+	if got := driverOf(); got != orig {
+		t.Fatalf("Host-Treiber nicht zurückgegeben: erwartet %q, ist %q", orig, got)
+	}
+}
