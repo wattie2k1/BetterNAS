@@ -278,6 +278,13 @@ func (m *Manager) Config(ctx context.Context, name string) (Config, error) {
 	return c, err
 }
 
+// USBDevices liefert die am Host angeschlossenen USB-Geräte.
+func (m *Manager) USBDevices(ctx context.Context) ([]USBDevice, error) {
+	list := []USBDevice{}
+	err := m.agent.Call(ctx, "vm.usb", nil, &list)
+	return list, err
+}
+
 // Disks liefert die Festplatten einer VM mit Größe.
 func (m *Manager) Disks(ctx context.Context, name string) ([]Disk, error) {
 	if err := checkName(name); err != nil {

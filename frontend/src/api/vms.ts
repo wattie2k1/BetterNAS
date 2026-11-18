@@ -48,6 +48,17 @@ export interface VmConfig {
   hasCdrom: boolean
   media: string
   disks: string[]
+  boot: 'hd' | 'cdrom' | 'custom'
+  mac: string
+  usb: VmUsbDevice[]
+}
+
+export interface VmUsbDevice {
+  vendor: string
+  product: string
+  name?: string
+  /** Massenspeicher: am NAS eingehängte Platten fielen für das NAS weg. */
+  storage?: boolean
 }
 
 /** Änderbare Werte (die VM muss ausgeschaltet sein). */
@@ -58,6 +69,10 @@ export interface VmConfigUpdate {
   network: string
   media: string
   guestAgent: boolean
+  /** Optional: fehlt ein Feld, bleibt der Wert unverändert. */
+  bootFirst?: 'hd' | 'cdrom'
+  mac?: string
+  usb?: VmUsbDevice[]
 }
 
 export interface VmDisk {
@@ -127,6 +142,7 @@ export const vmsApi = {
     }),
   config: (name: string) => api.get<VmConfig>(`/api/v1/vms/${enc(name)}/config`),
   configure: (name: string, u: VmConfigUpdate) => api.post<void>(`/api/v1/vms/${enc(name)}/config`, u),
+  usb: () => api.get<VmUsbDevice[]>('/api/v1/vms/usb'),
   disks: (name: string) => api.get<VmDisk[]>(`/api/v1/vms/${enc(name)}/disks`),
   diskResize: (name: string, r: VmDiskResize) => api.post<void>(`/api/v1/vms/${enc(name)}/disks/resize`, r),
   remove: (name: string, disks: boolean) => api.del<void>(`/api/v1/vms/${enc(name)}${disks ? '?disks=1' : ''}`),

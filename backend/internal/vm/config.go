@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -18,20 +19,38 @@ const NvramDir = "/var/lib/libvirt/qemu/nvram/"
 
 // Config ist die änderbare Konfiguration einer VM (aus der inaktiven Domain-XML gelesen).
 type Config struct {
-	Name       string   `json:"name"`
-	State      string   `json:"state"`
-	VCPUs      int      `json:"vcpus"`
-	MemoryMiB  int      `json:"memoryMiB"`
-	Autostart  bool     `json:"autostart"`
-	Firmware   string   `json:"firmware"` // uefi | bios
-	SecureBoot bool     `json:"secureBoot"`
-	TPM        bool     `json:"tpm"`
-	GuestAgent bool     `json:"guestAgent"` // Kanal für den QEMU-Guest-Agent (Herunterfahren, IP-Anzeige)
-	Network    string   `json:"network"`    // „default“, „direct:eno1“ oder „bridge:br0“
-	HasCDROM   bool     `json:"hasCdrom"`   // mindestens ein CD-Laufwerk
-	Media      string   `json:"media"`      // Dateiname der eingelegten ISO ("" = leer)
-	Disks      []string `json:"disks"`
+	Name       string      `json:"name"`
+	State      string      `json:"state"`
+	VCPUs      int         `json:"vcpus"`
+	MemoryMiB  int         `json:"memoryMiB"`
+	Autostart  bool        `json:"autostart"`
+	Firmware   string      `json:"firmware"` // uefi | bios
+	SecureBoot bool        `json:"secureBoot"`
+	TPM        bool        `json:"tpm"`
+	GuestAgent bool        `json:"guestAgent"` // Kanal für den QEMU-Guest-Agent (Herunterfahren, IP-Anzeige)
+	Network    string      `json:"network"`    // „default“, „direct:eno1“ oder „bridge:br0“
+	HasCDROM   bool        `json:"hasCdrom"`   // mindestens ein CD-Laufwerk
+	Media      string      `json:"media"`      // Dateiname der eingelegten ISO ("" = leer)
+	Disks      []string    `json:"disks"`
+	Boot       string      `json:"boot"` // hd | cdrom (zuerst) | custom (Reihenfolge pro Gerät, nicht änderbar)
+	MAC        string      `json:"mac"`  // MAC-Adresse der ersten Netzwerkkarte
+	USB        []USBDevice `json:"usb"`  // durchgereichte USB-Geräte
 }
+
+// USBDevice ist ein USB-Gerät des Hosts (Hersteller-/Produkt-ID, je vier Hexziffern in Kleinbuchstaben).
+type USBDevice struct {
+	Vendor  string `json:"vendor"`
+	Product string `json:"product"`
+	Name    string `json:"name,omitempty"`
+	Storage bool   `json:"storage,omitempty"` // Massenspeicher: am NAS eingehängte Platten fielen weg
+}
+
+const MaxUSBDevices = 8
+
+var (
+	usbIDRe = regexp.MustCompile(`^[0-9a-f]{4}$`)
+	macRe   = regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`)
+)
 
 // ConfigUpdate sind die änderbaren Werte; die VM muss dafür ausgeschaltet sein.
 type ConfigUpdate struct {
@@ -41,11 +60,21 @@ type ConfigUpdate struct {
 	Network    string `json:"network"`
 	Media      string `json:"media"` // "" = Laufwerk leer
 	GuestAgent bool   `json:"guestAgent"`
+	// Die folgenden Felder lassen den Wert unverändert, wenn sie fehlen („“ bzw. null).
+	BootFirst string       `json:"bootFirst"` // hd | cdrom
+	MAC       string       `json:"mac"`
+	USB       *[]USBDevice `json:"usb"`
 }
 
 // Validate prüft alle Felder gegen die festen Grenzen.
 func (u ConfigUpdate) Validate() error {
 	switch {
+	case u.BootFirst != "" && u.BootFirst != "hd" && u.BootFirst != "cdrom":
+		return invalid("Ungültige Boot-Reihenfolge")
+	case u.MAC != "" && !validMAC(u.MAC):
+		return invalid("Ungültige MAC-Adresse (Beispiel 52:54:00:12:34:56, keine Multicast-Adresse)")
+	case u.USB != nil && !validUSB(*u.USB):
+		return invalid("Ungültige USB-Geräteliste (höchstens 8 Geräte, keine Doppelten)")
 	case u.VCPUs < MinVCPUs || u.VCPUs > MaxVCPUs:
 		return invalid("vCPUs: 1 bis 64")
 	case u.MemoryMiB < MinMemoryMiB || u.MemoryMiB > MaxMemoryMiB:
@@ -77,6 +106,9 @@ type domXML struct {
 			Type   string `xml:"type,attr"`
 			Secure string `xml:"secure,attr"`
 		} `xml:"loader"`
+		Boots []struct {
+			Dev string `xml:"dev,attr"`
+		} `xml:"boot"`
 	} `xml:"os"`
 	Devices struct {
 		Disks []struct {
@@ -84,9 +116,25 @@ type domXML struct {
 			Source struct {
 				File string `xml:"file,attr"`
 			} `xml:"source"`
+			Boot *struct{} `xml:"boot"`
 		} `xml:"disk"`
-		Interfaces []struct {
+		Hostdevs []struct {
 			Type   string `xml:"type,attr"`
+			Source struct {
+				Vendor struct {
+					ID string `xml:"id,attr"`
+				} `xml:"vendor"`
+				Product struct {
+					ID string `xml:"id,attr"`
+				} `xml:"product"`
+			} `xml:"source"`
+		} `xml:"hostdev"`
+		Interfaces []struct {
+			Type string `xml:"type,attr"`
+			MAC  struct {
+				Address string `xml:"address,attr"`
+			} `xml:"mac"`
+			Boot   *struct{} `xml:"boot"`
 			Source struct {
 				Network string `xml:"network,attr"`
 				Bridge  string `xml:"bridge,attr"`
@@ -122,6 +170,30 @@ func ParseConfig(xmlData []byte) (Config, error) {
 		}
 	}
 	c.TPM = d.Devices.TPM != nil
+	c.USB = []USBDevice{}
+	for _, h := range d.Devices.Hostdevs {
+		if h.Type != "usb" {
+			continue
+		}
+		c.USB = append(c.USB, USBDevice{Vendor: strings.TrimPrefix(strings.ToLower(h.Source.Vendor.ID), "0x"), Product: strings.TrimPrefix(strings.ToLower(h.Source.Product.ID), "0x")})
+	}
+	c.Boot = "custom"
+	if len(d.OS.Boots) > 0 {
+		switch d.OS.Boots[0].Dev {
+		case "hd", "cdrom":
+			c.Boot = d.OS.Boots[0].Dev
+		}
+	}
+	for _, disk := range d.Devices.Disks {
+		if disk.Boot != nil {
+			c.Boot = "custom"
+		}
+	}
+	for _, i := range d.Devices.Interfaces {
+		if i.Boot != nil {
+			c.Boot = "custom"
+		}
+	}
 	for _, ch := range d.Devices.Channels {
 		if ch.Target.Name == guestAgentName {
 			c.GuestAgent = true
@@ -144,6 +216,7 @@ func ParseConfig(xmlData []byte) (Config, error) {
 	}
 	if len(d.Devices.Interfaces) > 0 {
 		i := d.Devices.Interfaces[0]
+		c.MAC = strings.ToLower(i.MAC.Address)
 		switch {
 		case i.Type == "direct":
 			c.Network = DirectPrefix + i.Source.Dev
@@ -172,7 +245,55 @@ var (
 	reCDDriver   = regexp.MustCompile(`<driver\b[^>]*/>`)
 	reOSFirmware = regexp.MustCompile(`<os firmware='efi'>`)
 	reChannel    = regexp.MustCompile(`(?s)[ \t]*<channel\b.*?</channel>\n?`)
+	reOSBoot     = regexp.MustCompile(`(?:[ \t]*<boot dev='[^']*'/>\n?)+`)
+	reMAC        = regexp.MustCompile(`<mac address='[^']*'/>`)
+	reIfaceOpen  = regexp.MustCompile(`<interface\b[^>]*>\n?`)
+	reUSBHostdev = regexp.MustCompile(`(?s)[ \t]*<hostdev\b[^>]*type='usb'[^>]*>.*?</hostdev>\n?`)
 )
+
+func validMAC(m string) bool {
+	m = strings.ToLower(m)
+	if !macRe.MatchString(m) {
+		return false
+	}
+	first, _ := strconv.ParseUint(m[:2], 16, 8)
+	return first&1 == 0 // Bit 0 gesetzt = Multicast
+}
+
+func validUSB(list []USBDevice) bool {
+	if len(list) > MaxUSBDevices {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, d := range list {
+		k := d.Vendor + ":" + d.Product
+		if !usbIDRe.MatchString(d.Vendor) || !usbIDRe.MatchString(d.Product) || seen[k] {
+			return false
+		}
+		seen[k] = true
+	}
+	return true
+}
+
+func sameUSB(a, b []USBDevice) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := map[string]bool{}
+	for _, d := range a {
+		set[d.Vendor+":"+d.Product] = true
+	}
+	for _, d := range b {
+		if !set[d.Vendor+":"+d.Product] {
+			return false
+		}
+	}
+	return true
+}
+
+func usbHostdev(d USBDevice) string {
+	return fmt.Sprintf("    <hostdev mode='subsystem' type='usb' managed='yes'>\n      <source startupPolicy='optional'>\n        <vendor id='0x%s'/>\n        <product id='0x%s'/>\n      </source>\n    </hostdev>\n", d.Vendor, d.Product)
+}
 
 func secureBootFirmware(on bool) string {
 	v := "no"
@@ -273,6 +394,53 @@ func ApplyConfig(xmlStr string, u ConfigUpdate) (string, string, error) {
 				return blk
 			})
 		}
+	}
+
+	if u.BootFirst != "" && u.BootFirst != cur.Boot {
+		if cur.Boot == "custom" {
+			return "", "", invalid("Die Boot-Reihenfolge dieser VM ist pro Gerät festgelegt und lässt sich hier nicht ändern")
+		}
+		other := "hd"
+		if u.BootFirst == "hd" {
+			other = "cdrom"
+		}
+		repl := fmt.Sprintf("    <boot dev='%s'/>\n    <boot dev='%s'/>\n", u.BootFirst, other)
+		if !reOSBoot.MatchString(out) {
+			return "", "", invalid("Die Boot-Reihenfolge dieser VM lässt sich nicht ändern")
+		}
+		first := true
+		out = reOSBoot.ReplaceAllStringFunc(out, func(string) string {
+			if !first {
+				return ""
+			}
+			first = false
+			return repl
+		})
+	}
+	if mac := strings.ToLower(u.MAC); mac != "" && mac != cur.MAC {
+		if !reInterface.MatchString(out) {
+			return "", "", invalid("Die VM hat keine Netzwerkschnittstelle")
+		}
+		done := false
+		out = reInterface.ReplaceAllStringFunc(out, func(blk string) string {
+			if done {
+				return blk
+			}
+			done = true
+			tag := "<mac address='" + mac + "'/>"
+			if reMAC.MatchString(blk) {
+				return reMAC.ReplaceAllLiteralString(blk, tag)
+			}
+			return reIfaceOpen.ReplaceAllStringFunc(blk, func(open string) string { return strings.TrimRight(open, "\n") + "\n      " + tag + "\n" })
+		})
+	}
+	if u.USB != nil && !sameUSB(*u.USB, cur.USB) {
+		out = reUSBHostdev.ReplaceAllString(out, "")
+		var b strings.Builder
+		for _, d := range *u.USB {
+			b.WriteString(usbHostdev(d))
+		}
+		out = strings.Replace(out, "  </devices>", b.String()+"  </devices>", 1)
 	}
 	return out, nvram, nil
 }

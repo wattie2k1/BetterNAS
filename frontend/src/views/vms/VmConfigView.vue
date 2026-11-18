@@ -2,13 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
+import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
-import { vmsApi, type VmConfig, type VmDisk } from '@/api/vms'
+import { vmsApi, type VmConfig, type VmConfigUpdate, type VmDisk, type VmUsbDevice } from '@/api/vms'
 import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
 import { useVmsStore } from '@/stores/vms'
 
@@ -31,6 +33,28 @@ const media = ref('')
 const isos = ref<string[]>([])
 const networks = ref<string[]>([])
 const ifaces = ref<string[]>([])
+const bootFirst = ref<'hd' | 'cdrom'>('hd')
+const mac = ref('')
+const usbSel = ref<string[]>([])
+const usbHost = ref<VmUsbDevice[]>([])
+const usbKey = (d: VmUsbDevice) => `${d.vendor}:${d.product}`
+const MAC_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i
+const macValid = computed(() => {
+  if (mac.value.toLowerCase() === (cfg.value?.mac ?? '').toLowerCase()) return true // unverändert
+  if (!MAC_RE.test(mac.value)) return false
+  return (parseInt(mac.value.slice(0, 2), 16) & 1) === 0
+})
+/** Angeschlossene Geräte plus die der VM zugewiesenen, aktuell nicht angeschlossenen. */
+const usbOptions = computed(() => {
+  const list = [...usbHost.value]
+  for (const d of cfg.value?.usb ?? []) if (!list.some((h) => usbKey(h) === usbKey(d))) list.push({ ...d, name: `${d.vendor}:${d.product} (nicht angeschlossen)` })
+  return list
+})
+const usbChanged = computed(() => {
+  const cur = (cfg.value?.usb ?? []).map(usbKey).sort().join(',')
+  return [...usbSel.value].sort().join(',') !== cur
+})
+const usbStorageSel = computed(() => usbOptions.value.some((d) => d.storage && usbSel.value.includes(usbKey(d))))
 const disks = ref<VmDisk[]>([])
 const resizeDisk = ref<VmDisk | null>(null)
 const resizeOpen = ref(false)
@@ -46,7 +70,7 @@ async function loadDisks() {
 
 const editable = computed(() => cfg.value?.state === 'shutoff')
 const inRange = (n: number | null, lo: number, hi: number) => n !== null && Number.isInteger(n) && n >= lo && n <= hi
-const valid = computed(() => inRange(vcpus.value, 1, 64) && inRange(ramMiB.value, 256, 262144))
+const valid = computed(() => inRange(vcpus.value, 1, 64) && inRange(ramMiB.value, 256, 262144) && macValid.value)
 const dirty = computed(
   () =>
     !!cfg.value &&
@@ -55,7 +79,10 @@ const dirty = computed(
       secureBoot.value !== cfg.value.secureBoot ||
       guestAgent.value !== cfg.value.guestAgent ||
       network.value !== cfg.value.network ||
-      media.value !== cfg.value.media),
+      media.value !== cfg.value.media ||
+      (cfg.value.boot !== 'custom' && bootFirst.value !== (cfg.value.boot ?? 'hd')) ||
+      mac.value.toLowerCase() !== (cfg.value.mac ?? '').toLowerCase() ||
+      usbChanged.value),
 )
 const secureBootChanged = computed(() => !!cfg.value && secureBoot.value !== cfg.value.secureBoot)
 
@@ -80,12 +107,16 @@ function apply(c: VmConfig) {
   guestAgent.value = c.guestAgent
   network.value = c.network
   media.value = c.media
+  bootFirst.value = c.boot === 'cdrom' ? 'cdrom' : 'hd'
+  mac.value = c.mac ?? ''
+  usbSel.value = (c.usb ?? []).map(usbKey)
 }
 
 async function load() {
   loading.value = true
   try {
     const [c, i, n, f] = await Promise.all([vmsApi.config(name), vmsApi.isos(), vmsApi.networks(), vmsApi.interfaces().catch(() => []), loadDisks()])
+    usbHost.value = await vmsApi.usb().catch(() => [])
     isos.value = i
     networks.value = n
     ifaces.value = f
@@ -103,7 +134,12 @@ async function save() {
   if (!cfg.value || !valid.value) return
   saving.value = true
   try {
-    await vmsApi.configure(name, { vcpus: vcpus.value!, memoryMiB: ramMiB.value!, secureBoot: secureBoot.value, network: network.value, media: media.value, guestAgent: guestAgent.value })
+    const c = cfg.value
+    const upd: VmConfigUpdate = { vcpus: vcpus.value!, memoryMiB: ramMiB.value!, secureBoot: secureBoot.value, network: network.value, media: media.value, guestAgent: guestAgent.value }
+    if (c.boot !== 'custom' && bootFirst.value !== (c.boot ?? 'hd')) upd.bootFirst = bootFirst.value
+    if (mac.value.toLowerCase() !== (c.mac ?? '').toLowerCase()) upd.mac = mac.value.toLowerCase()
+    if (usbChanged.value) upd.usb = usbOptions.value.filter((d) => usbSel.value.includes(usbKey(d))).map(({ vendor, product }) => ({ vendor, product }))
+    await vmsApi.configure(name, upd)
     toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', detail: name, life: 4000 })
     await load()
     void store.refresh()
@@ -156,9 +192,41 @@ const back = () => router?.push('/vms')
       <small v-else-if="network === 'default'" class="hint">Hinter NAT ist die VM aus dem Heimnetz nicht erreichbar – für Dienste wie Home Assistant besser LAN oder Bridge wählen.</small>
     </div>
     <div class="field">
+      <label for="cfg-mac">MAC-Adresse der Netzwerkkarte</label>
+      <InputText v-model="mac" input-id="cfg-mac" :invalid="!macValid" :disabled="!editable" placeholder="52:54:00:12:34:56" data-test="cfg-mac" />
+      <small class="hint">{{ macValid ? 'Für eine DHCP-Reservierung im Router oder um die Adresse einer anderen Maschine zu übernehmen.' : 'Ungültig – erwartet wird z. B. 52:54:00:12:34:56 (keine Multicast-Adresse).' }}</small>
+    </div>
+    <div class="field">
       <label for="cfg-media">CD-/DVD-Laufwerk</label>
       <Select v-model="media" input-id="cfg-media" :options="mediaOptions" option-label="label" option-value="value" :disabled="!editable" data-test="cfg-media" />
       <small class="hint">{{ cfg.hasCdrom ? 'Das Medium wird beim nächsten Start vor der Festplatte gebootet.' : 'Die VM hat noch kein Laufwerk; es wird beim Speichern hinzugefügt.' }}</small>
+    </div>
+    <div class="field">
+      <label for="cfg-boot">Starten von</label>
+      <Select
+        v-model="bootFirst"
+        input-id="cfg-boot"
+        :options="[{ label: 'Festplatte zuerst', value: 'hd' }, { label: 'CD/ISO zuerst', value: 'cdrom' }]"
+        option-label="label"
+        option-value="value"
+        :disabled="!editable || cfg.boot === 'custom'"
+        data-test="cfg-boot"
+      />
+      <small class="hint">{{ cfg.boot === 'custom' ? 'Die Boot-Reihenfolge dieser VM ist pro Gerät festgelegt und lässt sich hier nicht ändern.' : 'Mit „Festplatte zuerst“ bootet die VM nach der Installation direkt vom System, auch wenn noch eine ISO eingelegt ist.' }}</small>
+    </div>
+    <div class="field">
+      <label>USB-Geräte</label>
+      <ul v-if="usbOptions.length" class="usb" data-test="cfg-usb">
+        <li v-for="d in usbOptions" :key="usbKey(d)">
+          <label class="row">
+            <Checkbox v-model="usbSel" :value="usbKey(d)" :disabled="!editable" :input-id="`usb-${usbKey(d)}`" :data-test="`cfg-usb-${usbKey(d)}`" />
+            <span>{{ d.name || usbKey(d) }} <small class="hint">{{ usbKey(d) }}</small></span>
+          </label>
+        </li>
+      </ul>
+      <small v-else class="hint">Am NAS ist kein USB-Gerät angeschlossen.</small>
+      <small class="hint">Die Geräte gehören der VM ab dem nächsten Start und sind dann am NAS nicht mehr nutzbar. Ist ein Gerät nicht angeschlossen, startet die VM trotzdem.</small>
+      <Message v-if="usbStorageSel" severity="warn" :closable="false" data-test="cfg-usb-storage">Ein ausgewähltes Gerät ist ein Massenspeicher. Ist es am NAS als Datenplatte eingebunden, fällt diese für das NAS weg.</Message>
     </div>
     <div v-if="cfg.firmware === 'uefi'" class="field">
       <label class="row">
@@ -246,6 +314,14 @@ const back = () => router?.push('/vms')
 .empty {
   color: var(--bn-text-soft);
   font-size: 0.8rem;
+}
+.usb {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 .disks {
   list-style: none;

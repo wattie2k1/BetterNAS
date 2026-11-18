@@ -48,6 +48,8 @@ func (a *vmAgentStub) Call(_ context.Context, method string, params, result any)
 		out = []string{"eno1"}
 	case "vm.display":
 		out = map[string]int{"port": 5901}
+	case "vm.usb":
+		out = []vm.USBDevice{{Vendor: "1a86", Product: "7523", Name: "QinHeng USB Serial"}}
 	case "vm.disks":
 		out = []vm.Disk{{Path: "/srv/vms/disks/debian.qcow2", SizeGiB: 40, VirtualSize: 40 * vm.GiB, UsedBytes: 1 << 30}}
 	case "vm.config":
@@ -281,5 +283,23 @@ func TestDiskRoutes(t *testing.T) {
 		if w := s.do("POST", "/api/v1/vms/debian/disks/resize", bad); w.Code != 400 {
 			t.Fatalf("%q: %d", bad, w.Code)
 		}
+	}
+}
+
+func TestUSBRoute(t *testing.T) {
+	s, stub := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vms/usb", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"vendor":"1a86"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	body := `{"vcpus":2,"memoryMiB":2048,"network":"default","bootFirst":"hd","mac":"52:54:00:aa:bb:cc","usb":[{"vendor":"1a86","product":"7523"}]}`
+	if w := s.do("POST", "/api/v1/vms/debian/config", body); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	p, _ := stub.calls["vm.configure"].(map[string]any)
+	if p["bootFirst"] != "hd" || p["mac"] != "52:54:00:aa:bb:cc" || len(p["usb"].([]any)) != 1 {
+		t.Fatalf("%v", p)
+	}
+	if w := s.do("POST", "/api/v1/vms/debian/config", `{"vcpus":2,"memoryMiB":2048,"network":"default","mac":"x"}`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
 	}
 }
