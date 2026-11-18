@@ -91,13 +91,13 @@ func tagsOf(name, kind string, n int) []string {
 
 // snapshotStack hält die aktuellen Images eines Stacks vor einem Update fest (Best Effort: ein Fehler hier
 // verhindert das Update nicht, es gibt dann nur keinen Rollback-Stand).
-func snapshotStack(ctx context.Context, d Deps, name string) {
-	removeFile(d, rollbackPath(name, rollbackPending))
+func snapshotStack(ctx context.Context, d Deps, name, backupID string) {
+	dropPending(d, name)
 	images, err := StackImages(ctx, d, name)
 	if err != nil {
 		return
 	}
-	rb := docker.Rollback{CreatedAt: time.Unix(nowUnix(), 0).UTC().Format(time.RFC3339)}
+	rb := docker.Rollback{CreatedAt: time.Unix(nowUnix(), 0).UTC().Format(time.RFC3339), Backup: backupID}
 	for _, ref := range images {
 		if strings.Contains(ref, "@") { // per Digest festgelegt: ändert sich nie
 			continue
@@ -114,7 +114,16 @@ func snapshotStack(ctx context.Context, d Deps, name string) {
 	}
 	if len(rb.Images) > 0 {
 		_ = writeRollback(d, name, rollbackPending, rb)
+	} else if backupID != "" {
+		removeBackup(d, name, backupID) // ohne Images gibt es keinen Rollback-Stand, also braucht es auch die Sicherung nicht
 	}
+}
+
+// dropPending verwirft einen noch nicht übernommenen Stand samt seiner Sicherung.
+func dropPending(d Deps, name string) {
+	rb, _ := readRollback(d, name, rollbackPending)
+	removeBackup(d, name, rb.Backup)
+	removeFile(d, rollbackPath(name, rollbackPending))
 }
 
 // StackRollbackCommit macht den vor dem Update gemerkten Stand zum Rollback-Stand, falls das Update
@@ -125,7 +134,7 @@ func StackRollbackCommit(ctx context.Context, d Deps, name string) error {
 	}
 	pend, ok := readRollback(d, name, rollbackPending)
 	if !ok {
-		removeFile(d, rollbackPath(name, rollbackPending))
+		dropPending(d, name)
 		return nil
 	}
 	changed := false
@@ -136,6 +145,9 @@ func StackRollbackCommit(ctx context.Context, d Deps, name string) error {
 	}
 	if changed {
 		old, hadOld := readRollback(d, name, rollbackFile)
+		if old.Backup != "" && old.Backup != pend.Backup {
+			removeBackup(d, name, old.Backup) // die ältere Sicherung wird durch die neue abgelöst
+		}
 		for i, im := range pend.Images {
 			_, _ = d.Runner.Run(ctx, nil, "docker", "tag", im.ID, rollbackTag(name, "r", i))
 		}
@@ -145,6 +157,9 @@ func StackRollbackCommit(ctx context.Context, d Deps, name string) error {
 		if err := writeRollback(d, name, rollbackFile, pend); err != nil {
 			return err
 		}
+	}
+	if !changed {
+		removeBackup(d, name, pend.Backup) // ohne neue Images bleibt alles beim Alten, die Sicherung wird nicht gebraucht
 	}
 	dropTags(ctx, d, tagsOf(name, "p", len(pend.Images)))
 	removeFile(d, rollbackPath(name, rollbackPending))
@@ -161,24 +176,35 @@ func StackRollbackClear(ctx context.Context, d Deps, name string) error {
 		if f == rollbackPending {
 			kind = "p"
 		}
-		if rb, ok := readRollback(d, name, f); ok {
+		rb, ok := readRollback(d, name, f)
+		if ok {
 			dropTags(ctx, d, tagsOf(name, kind, len(rb.Images)))
 		}
+		removeBackup(d, name, rb.Backup)
 		removeFile(d, rollbackPath(name, f))
 	}
 	return nil
 }
 
 // rollbackCommand baut die Befehlskette eines Rollbacks: alte IDs zurück auf die Image-Tags, dann Container neu erstellen.
-func rollbackCommand(d Deps, name string, quote func([]string) string) (string, error) {
+// Mit restoreData wird der Stack vorher angehalten und die gesicherten Daten werden zurückgespielt.
+func rollbackCommand(d Deps, name string, restoreData bool) (string, error) {
 	rb, ok := readRollback(d, name, rollbackFile)
 	if !ok {
 		return "", apierr.New(apierr.NotFound, "Für diesen Stack gibt es keinen Rollback-Stand.")
 	}
 	var parts []string
-	for _, im := range rb.Images {
-		parts = append(parts, quote([]string{"docker", "tag", im.ID, im.Ref}))
+	if restoreData {
+		restore, err := restoreCommands(d, name, rb.Backup)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, shQuote(append([]string{"docker"}, composeArgs(name, "stop")...)))
+		parts = append(parts, restore...)
 	}
-	parts = append(parts, quote(append([]string{"docker"}, composeArgs(name, "up", "-d", "--remove-orphans")...)))
+	for _, im := range rb.Images {
+		parts = append(parts, shQuote([]string{"docker", "tag", im.ID, im.Ref}))
+	}
+	parts = append(parts, shQuote(append([]string{"docker"}, composeArgs(name, "up", "-d", "--remove-orphans")...)))
 	return strings.Join(parts, " && "), nil
 }

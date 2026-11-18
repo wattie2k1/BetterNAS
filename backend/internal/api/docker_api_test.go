@@ -46,6 +46,8 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = []docker.VolumeInfo{{Name: "data", Unused: true}}
 	case "resource.prune":
 		out = docker.PruneResult{Reclaimed: "1.5GB"}
+	case "stack.backupplan":
+		out = docker.BackupPlan{Sources: []docker.BackupSource{{Kind: "bind", Name: "/srv/appdata/media/c", Path: "/srv/appdata/media/c", Bytes: 1234}}, TotalBytes: 1234, FreeBytes: 99999, Possible: true}
 	case "device.list":
 		out = []docker.HostDevice{{Kind: "gpu", Path: "/dev/dri/renderD128", Name: "Intel HD", GID: 991, Group: "render"}}
 	case "folder.list":
@@ -241,5 +243,29 @@ func TestDockerDevicesRoute(t *testing.T) {
 	s := newDockerAPI(t)
 	if w := s.do("GET", "/api/v1/docker/devices", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"gid":991`) || !strings.Contains(w.Body.String(), `"/dev/dri/renderD128"`) {
 		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+func TestDockerBackupRoutes(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/stacks/media/backup-plan", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"possible":true`) || !strings.Contains(w.Body.String(), `"totalBytes":1234`) {
+		t.Fatalf("Plan %d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/stacks/Böse/backup-plan", ""); w.Code != 400 {
+		t.Fatalf("Name %d %s", w.Code, w.Body)
+	}
+	// Ohne Body, mit Optionen und mit kaputtem Body.
+	if w := s.do("POST", "/api/v1/stacks/media/update", ""); w.Code != 202 {
+		t.Fatalf("ohne Body %d %s", w.Code, w.Body)
+	} else {
+		s.waitJob(t, w.Body.Bytes())
+	}
+	if w := s.do("POST", "/api/v1/stacks/media/update", `{"backup":true}`); w.Code != 202 {
+		t.Fatalf("mit Option %d %s", w.Code, w.Body)
+	} else {
+		s.waitJob(t, w.Body.Bytes())
+	}
+	if w := s.do("POST", "/api/v1/stacks/media/update", `{kaputt`); w.Code != 400 {
+		t.Fatalf("kaputt %d %s", w.Code, w.Body)
 	}
 }

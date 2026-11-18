@@ -475,3 +475,181 @@ func TestDockerDevices(t *testing.T) {
 		t.Fatalf("mit group_add %d kein Zugriff: %v", gpu.GID, err)
 	}
 }
+
+// TestDockerBackupRollback prüft Update mit Datensicherung und Rollback mit Daten gegen echtes Docker:
+// Nach dem Rollback müssen Bind-Ordner und benanntes Volume wieder den Stand vor dem Update haben.
+func TestDockerBackupRollback(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker ist nicht installiert")
+	}
+	if _, err := os.Stat("/run/systemd/system"); err != nil {
+		t.Skip("braucht systemd")
+	}
+	if st, err := os.Stat("/srv/appdata"); err != nil || !st.IsDir() {
+		t.Skip("/srv/appdata fehlt")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := DockerStatus(ctx, d); !st.Active {
+		t.Skip("Docker-Dienst läuft nicht")
+	}
+	sh := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("docker", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("docker %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	const name, ref = "bnasbk", "bnasbk-img:latest"
+	conf := "/srv/appdata/bnasbk-data/conf"
+	_ = DeleteStack(ctx, d, name)
+	t.Cleanup(func() {
+		_ = DeleteStack(ctx, d, name)
+		_ = exec.Command("docker", "rm", "-f", "bnasbk-tmp").Run()
+		_ = exec.Command("docker", "volume", "rm", "-f", "bnasbk_vol").Run()
+		_ = exec.Command("docker", "rmi", "-f", ref).Run()
+		_ = os.RemoveAll("/srv/appdata/bnasbk-data")
+	})
+	if exec.Command("docker", "image", "inspect", "busybox:stable").Run() != nil {
+		sh("pull", "busybox:stable")
+	}
+	sh("tag", "busybox:stable", ref)
+	idA := sh("image", "inspect", "--format", "{{.Id}}", ref)
+	if err := os.MkdirAll(conf, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	compose := "services:\n  app:\n    image: " + ref + "\n    pull_policy: never\n    command: [\"sleep\", \"600\"]\n" +
+		"    volumes:\n      - " + conf + ":/conf\n      - vol:/data\n      - /srv/pools:/pools:ro\nvolumes:\n  vol:\n    name: bnasbk_vol\n"
+	if err := SaveStack(ctx, d, StackSave{StackFiles: StackFiles{Name: name, Compose: compose}, Create: true}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(action string, opts docker.RunOptions) {
+		t.Helper()
+		unit, err := RunStackOpts(ctx, d, name, action, opts)
+		if err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+		waitRun(t, d, unit)
+	}
+	exec1 := func(script string) string {
+		t.Helper()
+		return sh("exec", name+"-app-1", "sh", "-c", script)
+	}
+	readConf := func(f string) string {
+		b, err := os.ReadFile(conf + "/" + f)
+		if err != nil {
+			return "<fehlt>"
+		}
+		return strings.TrimSpace(string(b))
+	}
+
+	run("up", docker.RunOptions{})
+	if err := os.WriteFile(conf+"/state", []byte("v1\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	exec1("echo v1 > /data/state && mkdir -p /data/sub && echo deep > /data/sub/f")
+
+	plan, err := StackBackupPlan(ctx, d, name)
+	if err != nil || !plan.Possible || len(plan.Sources) != 2 {
+		t.Fatalf("Plan: %+v %v", plan, err)
+	}
+	for _, s := range plan.Sources {
+		if strings.HasPrefix(s.Path, "/srv/pools") {
+			t.Fatalf("Pool darf nicht gesichert werden: %+v", s)
+		}
+	}
+	t.Logf("Plan: %+v", plan)
+
+	run("update", docker.RunOptions{Backup: true})
+	if got := exec1("cat /data/state"); got != "v1" {
+		t.Fatalf("Stack läuft nach dem Update nicht mit den Daten: %q", got)
+	}
+	// Das „Update“ bringt ein neues Image, und die Anwendung verändert ihre Daten (z. B. Migration).
+	sh("run", "--name", "bnasbk-tmp", "busybox:stable", "true")
+	sh("commit", "bnasbk-tmp", ref)
+	sh("rm", "bnasbk-tmp")
+	idB := sh("image", "inspect", "--format", "{{.Id}}", ref)
+	if err := StackRollbackCommit(ctx, d, name); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(conf+"/state", []byte("v2\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(conf+"/neu", []byte("nach dem Update\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	exec1("echo v2 > /data/state && rm -rf /data/sub && echo extra > /data/extra")
+	run("up", docker.RunOptions{}) // Container mit Image B
+	if got := runningImageOf(t, name); got != idB {
+		t.Fatalf("Image nach Update: %s, erwartet %s", got, idB)
+	}
+	list, _ := ListStacks(ctx, d)
+	if len(list) == 0 || list[0].Rollback == "" || !list[0].RollbackData {
+		t.Fatalf("Rollback-Stand ohne Daten: %+v", list)
+	}
+
+	// Rollback ohne Daten lässt den aktuellen Datenstand in Ruhe …
+	run("rollback", docker.RunOptions{})
+	if readConf("state") != "v2" || readConf("neu") == "<fehlt>" {
+		t.Fatalf("Rollback ohne Daten hat Daten verändert: state=%q neu=%q", readConf("state"), readConf("neu"))
+	}
+	// … ein erneutes Update mit Sicherung und Rollback mit Daten stellt den Stand davor wieder her.
+	// (Der erste Rollback hat den Stand verbraucht; wir bauen ihn für den Test neu auf.)
+	sh("tag", "busybox:stable", ref)
+	run("update", docker.RunOptions{Backup: true}) // sichert v2
+	sh("run", "--name", "bnasbk-tmp", "busybox:stable", "true")
+	sh("commit", "bnasbk-tmp", ref)
+	sh("rm", "bnasbk-tmp")
+	if err := StackRollbackCommit(ctx, d, name); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(conf+"/state", []byte("v3\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	exec1("echo v3 > /data/state && echo noch-mehr > /data/mehr")
+	run("rollback", docker.RunOptions{RestoreData: true})
+
+	if readConf("state") != "v2" {
+		t.Fatalf("Bind-Ordner nicht zurückgesetzt: %q", readConf("state"))
+	}
+	if got := exec1("cat /data/state; ls /data | tr '\\n' ' '"); !strings.HasPrefix(got, "v2") || strings.Contains(got, "mehr") {
+		t.Fatalf("Volume nicht zurückgesetzt: %q", got)
+	}
+	if got := exec1("cat /data/extra"); got != "extra" {
+		t.Fatalf("Datei aus der Sicherung fehlt: %q", got)
+	}
+	if st, err := os.Stat(conf + "/state"); err != nil || st.Mode().Perm() != 0o640 {
+		t.Fatalf("Rechte nicht erhalten: %v %v", st, err)
+	}
+	if got := runningImageOf(t, name); got != idA {
+		t.Fatalf("Image nach Rollback: %s, erwartet %s", got, idA)
+	}
+	// Nach einem erfolgreichen Rollback räumt der Manager den Stand samt Sicherung auf.
+	if err := StackRollbackClear(ctx, d, name); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := ListStacks(ctx, d); len(list) == 0 || list[0].Name != name || list[0].Rollback != "" {
+		t.Fatalf("Rollback-Stand bleibt: %+v", list)
+	}
+	if left, _ := os.ReadDir("/srv/appdata/backups/stacks/" + name); len(left) != 0 {
+		t.Fatalf("Sicherung bleibt liegen: %v", left)
+	}
+}
+
+func runningImageOf(t *testing.T, project string) string {
+	t.Helper()
+	cid, err := exec.Command("docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+project).Output()
+	if err != nil || strings.TrimSpace(string(cid)) == "" {
+		t.Fatalf("kein laufender Container: %v", err)
+	}
+	out, err := exec.Command("docker", "inspect", "--format", "{{.Image}}", strings.TrimSpace(string(cid))).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}

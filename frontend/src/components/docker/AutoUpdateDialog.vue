@@ -11,6 +11,7 @@ const emit = defineEmits<{ 'update:visible': [boolean]; save: [AutoUpdateConfig]
 const enabled = ref(false)
 const time = ref('04:00')
 const chosen = ref<string[]>([])
+const backup = ref(true)
 
 watch(
   () => [props.visible, props.config] as const,
@@ -18,6 +19,7 @@ watch(
     if (!v) return
     enabled.value = props.config.enabled
     time.value = props.config.time
+    backup.value = props.config.backup !== false
     // Gelöschte Stacks nicht mitschleppen.
     chosen.value = props.config.stacks.filter((s) => props.stacks.includes(s))
   },
@@ -28,7 +30,7 @@ const valid = () => /^([01]\d|2[0-3]):[0-5]\d$/.test(time.value)
 const toggle = (name: string) => {
   chosen.value = chosen.value.includes(name) ? chosen.value.filter((s) => s !== name) : [...chosen.value, name]
 }
-const save = () => emit('save', { enabled: enabled.value, time: time.value, stacks: chosen.value })
+const save = () => emit('save', { enabled: enabled.value, time: time.value, stacks: chosen.value, backup: backup.value })
 </script>
 
 <template>
@@ -43,7 +45,6 @@ const save = () => emit('save', { enabled: enabled.value, time: time.value, stac
     <p class="hint">
       Die ausgewählten Stacks werden zur eingestellten Uhrzeit aktualisiert, wenn es neue Images gibt. Danach prüft BetterNAS bis zu 10 Minuten lang, ob alle Container
       laufen und gesund sind. Ist das nicht der Fall, wird automatisch auf die vorherige Version zurückgerollt und du wirst benachrichtigt (sofern Benachrichtigungen eingerichtet sind).
-      Daten in Volumes und Ordnern werden dabei nicht gesichert.
     </p>
     <div class="row">
       <label for="au-on">Automatische Updates</label>
@@ -53,6 +54,14 @@ const save = () => emit('save', { enabled: enabled.value, time: time.value, stac
       <label for="au-time">Uhrzeit</label>
       <input id="au-time" v-model="time" type="time" data-test="au-time" />
     </div>
+    <div class="row">
+      <label for="au-backup">Vor jedem Update die Daten sichern</label>
+      <ToggleSwitch v-model="backup" input-id="au-backup" data-test="au-backup" />
+    </div>
+    <p class="hint">
+      Der Stack wird dafür kurz angehalten. Reicht der Platz nicht für die Sicherung, wird er in dieser Nacht nicht aktualisiert (du wirst benachrichtigt).
+      Wird er nach dem Update nicht gesund, werden Images und Daten automatisch zurückgesetzt.
+    </p>
     <div class="stacks" data-test="au-stacks">
       <p v-if="!stacks.length" class="hint">Es gibt noch keine Stacks.</p>
       <label v-for="s in stacks" :key="s" class="stack">

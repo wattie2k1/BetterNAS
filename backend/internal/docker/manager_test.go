@@ -22,6 +22,7 @@ type fakeAgent struct {
 	states   []RunState // Antworten von stack.runstatus nacheinander
 	statusAt int
 	saved    map[string]any
+	runParam map[string]any // Parameter des letzten stack.run
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -31,6 +32,9 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 	var out any
 	switch method {
 	case "stack.run":
+		b, _ := json.Marshal(params)
+		f.runParam = nil
+		_ = json.Unmarshal(b, &f.runParam)
 		if f.runErr != nil {
 			return f.runErr
 		}
@@ -193,6 +197,14 @@ func TestRollbackBookkeepingAfterRuns(t *testing.T) {
 			t.Errorf("%s: %s fehlt: %v", c.action, c.method, a.calls)
 		}
 	}
+	// Ein fehlgeschlagenes Update übernimmt trotzdem den Stand (der Agent verwirft ihn, wenn sich nichts geändert hat).
+	fa := &fakeAgent{states: []RunState{{State: "failed"}}}
+	fm, fjm := newTestManager(t, fa)
+	fid, _ := fm.RunStack(context.Background(), "anna", "media", "update")
+	waitJob(t, fjm, fid)
+	if !hasCall(fa, "stack.rollback.commit") {
+		t.Error("commit fehlt nach fehlgeschlagenem Update")
+	}
 	// Schlägt der Lauf fehl, bleibt der Rollback-Stand unangetastet.
 	a := &fakeAgent{states: []RunState{{State: "failed"}}}
 	m, jm := newTestManager(t, a)
@@ -200,5 +212,28 @@ func TestRollbackBookkeepingAfterRuns(t *testing.T) {
 	waitJob(t, jm, id)
 	if hasCall(a, "stack.rollback.clear") {
 		t.Error("clear nach fehlgeschlagenem Rollback")
+	}
+}
+
+func TestRunStackOptsPassesOptionsToAgent(t *testing.T) {
+	a := &fakeAgent{states: []RunState{{State: "succeeded"}}}
+	m, jm := newTestManager(t, a)
+	id, err := m.RunStackOpts(context.Background(), "anna", "media", "update", RunOptions{Backup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, jm, id)
+	a.mu.Lock()
+	got := a.runParam
+	a.mu.Unlock()
+	if got["backup"] != true || got["restoreData"] != nil || got["action"] != "update" || got["name"] != "media" {
+		t.Fatalf("%v", got)
+	}
+	id, _ = m.RunStack(context.Background(), "anna", "media", "up")
+	waitJob(t, jm, id)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.runParam["backup"] != nil {
+		t.Fatalf("ohne Option darf nichts mitgehen: %v", a.runParam)
 	}
 }

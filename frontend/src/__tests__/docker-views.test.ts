@@ -69,7 +69,7 @@ describe('StackDialog', () => {
 })
 
 describe('AutoUpdateDialog', () => {
-  const config = { enabled: true, time: '03:30', stacks: ['media', 'gone'] }
+  const config = { enabled: true, time: '03:30', stacks: ['media', 'gone'], backup: true }
   const mountAuto = (props = {}) =>
     mount(AutoUpdateDialog, { props: { visible: true, config, stacks: ['media', 'wiki'], ...props }, global: { plugins: plugins() } })
 
@@ -82,11 +82,11 @@ describe('AutoUpdateDialog', () => {
     await w.find('input[data-test="au-stack-wiki"]').setValue(true)
     await w.find('input[data-test="au-time"]').setValue('05:15')
     await w.find('button[data-test="au-save"]').trigger('click')
-    expect(w.emitted('save')).toEqual([[{ enabled: true, time: '05:15', stacks: ['media', 'wiki'] }]])
+    expect(w.emitted('save')).toEqual([[{ enabled: true, time: '05:15', stacks: ['media', 'wiki'], backup: true }]])
   })
 
   it('sperrt Speichern bei ungültiger Uhrzeit und „Jetzt ausführen“ ohne gespeicherte Stacks', async () => {
-    const w = mountAuto({ config: { enabled: false, time: '04:00', stacks: [] } })
+    const w = mountAuto({ config: { enabled: false, time: '04:00', stacks: [], backup: true } })
     await flushPromises()
     expect(w.find('button[data-test="au-run"]').attributes('disabled')).toBeDefined()
     await w.find('input[data-test="au-time"]').setValue('')
@@ -137,9 +137,10 @@ describe('StacksView', () => {
     await w.find('[data-test="stack-media"] button[aria-label="Zurückrollen"]').trigger('click')
     await flushPromises()
     expect(fn).not.toHaveBeenCalledWith('/api/v1/stacks/media/rollback', expect.anything())
-    expect(document.body.textContent).toContain('Daten in Volumes und Ordnern bleiben erhalten')
-    ;(document.querySelector('[data-test="confirm-submit"]') as HTMLElement).click()
-    await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/stacks/media/rollback', expect.objectContaining({ method: 'POST' })))
+    expect(document.body.textContent).toContain('Daten in Volumes und Ordnern bleiben dabei erhalten')
+    expect(document.querySelector('[data-test="rollback-data"]')).toBeNull() // ohne Sicherung keine Datenoption
+    ;(document.querySelector('[data-test="rollback-submit"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledWith('/api/v1/stacks/media/rollback', expect.objectContaining({ method: 'POST', body: undefined })))
     w.unmount()
   })
 
@@ -148,8 +149,8 @@ describe('StacksView', () => {
       'GET /api/v1/docker/status': active,
       'GET /api/v1/stacks': [{ name: 'media', running: 1, total: 1 }, { name: 'wiki', running: 1, total: 1 }],
       'GET /api/v1/containers': [],
-      'GET /api/v1/docker/autoupdate': { enabled: true, time: '04:00', stacks: ['media'] },
-      'PUT /api/v1/docker/autoupdate': { enabled: true, time: '04:00', stacks: ['media', 'wiki'] },
+      'GET /api/v1/docker/autoupdate': { enabled: true, time: '04:00', stacks: ['media'], backup: true },
+      'PUT /api/v1/docker/autoupdate': { enabled: true, time: '04:00', stacks: ['media', 'wiki'], backup: true },
     })
     const w = mount(StacksView, { global: { plugins: plugins() }, attachTo: document.body })
     await flushPromises()
@@ -162,7 +163,7 @@ describe('StacksView', () => {
     await vi.waitFor(() =>
       expect(fn).toHaveBeenCalledWith(
         '/api/v1/docker/autoupdate',
-        expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: true, time: '04:00', stacks: ['media', 'wiki'] }) }),
+        expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: true, time: '04:00', stacks: ['media', 'wiki'], backup: true }) }),
       ),
     )
     w.unmount()

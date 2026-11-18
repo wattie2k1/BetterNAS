@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -51,6 +52,10 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/docker/updates/check", func(w http.ResponseWriter, r *http.Request) {
 		id, err := m.CheckUpdates(r.Context(), actor(r))
 		accepted(w, id, err)
+	})
+	mux.HandleFunc("GET /api/v1/stacks/{name}/backup-plan", func(w http.ResponseWriter, r *http.Request) {
+		p, err := m.BackupPlan(r.Context(), r.PathValue("name"))
+		reply(w, p, err)
 	})
 	mux.HandleFunc("GET /api/v1/docker/folders", func(w http.ResponseWriter, r *http.Request) {
 		l, err := m.Folders(r.Context(), r.URL.Query().Get("path"))
@@ -157,7 +162,15 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 	})
 	for action := range docker.StackActions {
 		mux.HandleFunc("POST /api/v1/stacks/{name}/"+action, func(w http.ResponseWriter, r *http.Request) {
-			id, err := m.RunStack(r.Context(), actor(r), r.PathValue("name"), action)
+			// Optionaler Body mit Zusatzwünschen: {"backup":true} beim Update, {"restoreData":true} beim Rollback.
+			var opts docker.RunOptions
+			if r.ContentLength != 0 {
+				if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
+					apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültige Anfrage"))
+					return
+				}
+			}
+			id, err := m.RunStackOpts(r.Context(), actor(r), r.PathValue("name"), action, opts)
 			accepted(w, id, err)
 		})
 	}

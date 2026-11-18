@@ -153,7 +153,7 @@ func (m *Manager) DeleteStack(ctx context.Context, actor, name string) error {
 
 // startStack startet eine Stack-Aktion beim Agent und liefert den Namen der Lauf-Unit.
 // Der Agent prüft Existenz, Gültigkeit und laufende Vorgänge synchron; Fehler gehen direkt an den Aufrufer.
-func (m *Manager) startStack(ctx context.Context, actor, name, action string) (string, error) {
+func (m *Manager) startStack(ctx context.Context, actor, name, action string, opts RunOptions) (string, error) {
 	if err := checkName(name); err != nil {
 		return "", err
 	}
@@ -163,7 +163,14 @@ func (m *Manager) startStack(ctx context.Context, actor, name, action string) (s
 	var res struct {
 		Unit string `json:"unit"`
 	}
-	err := m.agent.Call(ctx, "stack.run", map[string]string{"name": name, "action": action}, &res)
+	params := map[string]any{"name": name, "action": action}
+	if opts.Backup {
+		params["backup"] = true
+	}
+	if opts.RestoreData {
+		params["restoreData"] = true
+	}
+	err := m.agent.Call(ctx, "stack.run", params, &res)
 	m.record(ctx, actor, "stack."+action, name, err)
 	if err != nil {
 		return "", err
@@ -207,6 +214,10 @@ func (m *Manager) waitStack(ctx context.Context, log jobs.Logger, name, action, 
 			}
 			return nil
 		case "failed":
+			if action == "update" {
+				// Hat der Lauf schon neue Images geladen, bleibt der alte Stand (samt Sicherung) für einen Rollback erhalten.
+				_ = m.agent.Call(ctx, "stack.rollback.commit", map[string]string{"name": name}, nil)
+			}
 			return apierr.New(apierr.Conflict, "Der Vorgang ist fehlgeschlagen (Protokoll siehe oben).")
 		}
 		if time.Now().After(deadline) {
@@ -217,7 +228,25 @@ func (m *Manager) waitStack(ctx context.Context, log jobs.Logger, name, action, 
 
 // RunStack startet eine Stack-Aktion und begleitet sie als Job.
 func (m *Manager) RunStack(ctx context.Context, actor, name, action string) (string, error) {
-	unit, err := m.startStack(ctx, actor, name, action)
+	return m.RunStackOpts(ctx, actor, name, action, RunOptions{})
+}
+
+// BackupPlan liefert, was vor einem Update des Stacks gesichert würde und ob der Platz reicht.
+func (m *Manager) BackupPlan(ctx context.Context, name string) (BackupPlan, error) {
+	if err := checkName(name); err != nil {
+		return BackupPlan{}, err
+	}
+	var plan BackupPlan
+	err := m.agent.Call(ctx, "stack.backupplan", map[string]string{"name": name}, &plan)
+	if plan.Sources == nil {
+		plan.Sources = []BackupSource{}
+	}
+	return plan, err
+}
+
+// RunStackOpts wie RunStack, mit Zusatzwünschen (Datensicherung vor dem Update, Daten beim Rollback zurückspielen).
+func (m *Manager) RunStackOpts(ctx context.Context, actor, name, action string, opts RunOptions) (string, error) {
+	unit, err := m.startStack(ctx, actor, name, action, opts)
 	if err != nil {
 		return "", err
 	}

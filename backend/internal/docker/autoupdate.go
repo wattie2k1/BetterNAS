@@ -28,10 +28,12 @@ type AutoUpdateConfig struct {
 	Enabled bool     `json:"enabled"`
 	Time    string   `json:"time"` // HH:MM, Ortszeit
 	Stacks  []string `json:"stacks"`
+	// Backup sichert vor jedem Update die Daten der Stacks (Standard: an). Ist das nicht möglich, wird der Stack übersprungen.
+	Backup bool `json:"backup"`
 }
 
 func defaultAutoUpdate() AutoUpdateConfig {
-	return AutoUpdateConfig{Time: "04:00", Stacks: []string{}}
+	return AutoUpdateConfig{Time: "04:00", Stacks: []string{}, Backup: true}
 }
 
 // normalize prüft die Einstellungen und liefert die Stacks sortiert und ohne Dubletten.
@@ -68,7 +70,7 @@ func (m *Manager) AutoUpdate(ctx context.Context) (AutoUpdateConfig, error) {
 	if err != nil {
 		return defaultAutoUpdate(), err
 	}
-	var c AutoUpdateConfig
+	c := defaultAutoUpdate() // fehlende Felder behalten ihren Standard
 	if json.Unmarshal([]byte(raw), &c) != nil {
 		return defaultAutoUpdate(), nil
 	}
@@ -181,7 +183,7 @@ func (m *Manager) autoUpdate(ctx context.Context, log jobs.Logger, n Notifier) e
 		if info, ok := rep.Stacks[name]; !ok || len(info.Outdated) == 0 {
 			continue
 		}
-		line, l := m.autoUpdateStack(ctx, log, name)
+		line, l := m.autoUpdateStack(ctx, log, name, cfg.Backup)
 		lines = append(lines, line)
 		raise(l)
 	}
@@ -203,8 +205,22 @@ func (m *Manager) autoUpdate(ctx context.Context, log jobs.Logger, n Notifier) e
 }
 
 // autoUpdateStack aktualisiert einen Stack und liefert eine Zeile für die Zusammenfassung samt Dringlichkeit.
-func (m *Manager) autoUpdateStack(ctx context.Context, log jobs.Logger, name string) (string, notify.Level) {
-	unit, err := m.startStack(ctx, "system", name, "update")
+func (m *Manager) autoUpdateStack(ctx context.Context, log jobs.Logger, name string, backup bool) (string, notify.Level) {
+	var opts RunOptions
+	if backup {
+		plan, err := m.BackupPlan(ctx, name)
+		switch {
+		case err != nil:
+			log.Printf("Stack %s übersprungen: Sicherungsplan nicht lesbar (%s)", name, apierr.From(err).Message)
+			return fmt.Sprintf("%s: übersprungen (Datensicherung nicht prüfbar: %s)", name, apierr.From(err).Message), "warn"
+		case len(plan.Sources) > 0 && !plan.Possible:
+			log.Printf("Stack %s übersprungen: %s", name, plan.Reason)
+			return fmt.Sprintf("%s: übersprungen (%s)", name, plan.Reason), "warn"
+		case len(plan.Sources) > 0:
+			opts.Backup = true
+		}
+	}
+	unit, err := m.startStack(ctx, "system", name, "update", opts)
 	if err != nil {
 		log.Printf("Stack %s übersprungen: %s", name, apierr.From(err).Message)
 		return fmt.Sprintf("%s: übersprungen (%s)", name, apierr.From(err).Message), "warn"
@@ -217,14 +233,18 @@ func (m *Manager) autoUpdateStack(ctx context.Context, log jobs.Logger, name str
 		return name + ": aktualisiert", "info"
 	}
 	log.Printf("Stack %s ist nach dem Update nicht gesund (%s), rolle zurück …", name, reason)
-	unit, err = m.startStack(ctx, "system", name, "rollback")
+	unit, err = m.startStack(ctx, "system", name, "rollback", RunOptions{RestoreData: opts.Backup})
 	if err == nil {
 		err = m.waitStack(ctx, log, name, "rollback", unit)
 	}
 	if err != nil {
 		return fmt.Sprintf("%s: nach dem Update nicht gesund (%s), Rollback fehlgeschlagen (%s)", name, reason, apierr.From(err).Message), "crit"
 	}
-	return fmt.Sprintf("%s: nach dem Update nicht gesund (%s), zurückgerollt auf die vorherige Version", name, reason), "crit"
+	what := "zurückgerollt auf die vorherige Version"
+	if opts.Backup {
+		what += " (Daten aus der Sicherung vor dem Update zurückgespielt)"
+	}
+	return fmt.Sprintf("%s: nach dem Update nicht gesund (%s), %s", name, reason, what), "crit"
 }
 
 var exitCodeRe = regexp.MustCompile(`^Exited \((\d+)\)`)

@@ -10,6 +10,7 @@ import {
   type NetworkInfo,
   type ResourceKind,
   type AutoUpdateConfig,
+  type RunOptions,
   type UpdateReport,
   type VolumeInfo,
   type DockerStatus,
@@ -33,7 +34,7 @@ export const useDockerStore = defineStore('docker', () => {
   const error = ref('')
   const stats = ref<Record<string, ContainerStats>>({})
   const updates = ref<UpdateReport>({ checkedAt: '', stacks: {} })
-  const autoUpdate = ref<AutoUpdateConfig>({ enabled: false, time: '04:00', stacks: [] })
+  const autoUpdate = ref<AutoUpdateConfig>({ enabled: false, time: '04:00', stacks: [], backup: true })
   const images = ref<ImageInfo[]>([])
   const networks = ref<NetworkInfo[]>([])
   const volumes = ref<VolumeInfo[]>([])
@@ -135,8 +136,8 @@ export const useDockerStore = defineStore('docker', () => {
   }
 
   /** Startet eine Stack-Aktion und wartet auf den zugehörigen Auftrag. */
-  async function run(name: string, action: StackAction) {
-    const { jobId } = await dockerApi.run(name, action)
+  async function run(name: string, action: StackAction, opts?: RunOptions) {
+    const { jobId } = await dockerApi.run(name, action, opts)
     try {
       await useJobsStore().track(jobId)
     } finally {

@@ -14,6 +14,31 @@ export interface StackInfo {
   icon?: string
   /** Zeitpunkt (RFC 3339) des Stands vor dem letzten Update; gesetzt = Zurückrollen möglich. */
   rollback?: string
+  /** Zum Rollback-Stand gehört eine Datensicherung: die Daten lassen sich mit zurücksetzen. */
+  rollbackData?: boolean
+}
+
+/** Ein Datenbereich, der vor einem Update gesichert würde. */
+export interface BackupSource {
+  kind: 'bind' | 'volume'
+  name: string
+  path: string
+  bytes: number
+}
+
+/** Was vor einem Update gesichert würde und ob der Platz dafür reicht. */
+export interface BackupPlan {
+  sources: BackupSource[]
+  totalBytes: number
+  freeBytes: number
+  possible: boolean
+  reason?: string
+}
+
+/** Zusatzwünsche zu einer Stack-Aktion: Sicherung vor dem Update, Daten beim Rollback zurückspielen. */
+export interface RunOptions {
+  backup?: boolean
+  restoreData?: boolean
 }
 
 /** Änderung am Icon eines Stacks, die zusammen mit dem Speichern angewendet wird. */
@@ -85,6 +110,8 @@ export interface AutoUpdateConfig {
   enabled: boolean
   time: string
   stacks: string[]
+  /** Vor jedem automatischen Update die Daten sichern. */
+  backup: boolean
 }
 
 export interface UpdateReport {
@@ -156,7 +183,9 @@ export const dockerApi = {
   removeIcon: (name: string) => api.del<void>(`/api/v1/stacks/${enc(name)}/icon`),
   remove: (name: string) => api.del<void>(`/api/v1/stacks/${enc(name)}`),
   validate: (name: string) => api.post<StackCheck>(`/api/v1/stacks/${enc(name)}/validate`),
-  run: (name: string, action: StackAction) => api.post<{ jobId: string }>(`/api/v1/stacks/${enc(name)}/${action}`),
+  run: (name: string, action: StackAction, opts?: RunOptions) =>
+    api.post<{ jobId: string }>(`/api/v1/stacks/${enc(name)}/${action}`, opts && Object.keys(opts).length ? opts : undefined),
+  backupPlan: (name: string) => api.get<BackupPlan>(`/api/v1/stacks/${enc(name)}/backup-plan`),
   containers: () => api.get<ContainerInfo[]>('/api/v1/containers'),
   containerAction: (id: string, action: ContainerAction) => api.post<void>(`/api/v1/containers/${enc(id)}/${action}`),
   stats: () => api.get<ContainerStats[]>('/api/v1/containers/stats'),

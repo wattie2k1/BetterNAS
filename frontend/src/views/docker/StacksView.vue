@@ -9,8 +9,10 @@ import TemplateDialog from '@/components/docker/TemplateDialog.vue'
 import StackDialog, { type SubmitMode } from '@/components/docker/StackDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AutoUpdateDialog from '@/components/docker/AutoUpdateDialog.vue'
+import UpdateDialog from '@/components/docker/UpdateDialog.vue'
+import RollbackDialog from '@/components/docker/RollbackDialog.vue'
 import { useDockerStore } from '@/stores/docker'
-import type { AutoUpdateConfig, StackAction, StackCheck, StackFiles, StackInfo } from '@/api/docker'
+import { dockerApi, type AutoUpdateConfig, type BackupPlan, type RunOptions, type StackAction, type StackCheck, type StackFiles, type StackInfo } from '@/api/docker'
 
 const store = useDockerStore()
 const toast = useToast()
@@ -88,10 +90,10 @@ const labels: Record<StackAction, string> = {
   rollback: 'Stack zurückgerollt',
 }
 
-async function run(name: string, action: StackAction) {
+async function run(name: string, action: StackAction, opts?: RunOptions) {
   busy.value = true
   try {
-    await store.run(name, action)
+    await store.run(name, action, opts)
     toast.add({ severity: 'success', summary: labels[action], detail: name, life: 4000 })
   } catch (e) {
     fail(e)
@@ -102,11 +104,38 @@ async function run(name: string, action: StackAction) {
 
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
 
-async function rollback() {
+async function rollback(restoreData: boolean) {
   const s = rollingBack.value
   if (!s) return
-  await run(s.name, 'rollback')
+  await run(s.name, 'rollback', restoreData ? { restoreData: true } : undefined)
   rollingBack.value = null
+}
+
+// Update: Hat der Stack sicherbare Daten, fragt ein Dialog nach der Sicherung; sonst geht es direkt los.
+const updating = ref<StackInfo | null>(null)
+const updatePlan = ref<BackupPlan | null>(null)
+async function startUpdate(s: StackInfo) {
+  busy.value = true
+  try {
+    const plan = await dockerApi.backupPlan(s.name)
+    if (!plan.sources.length) {
+      busy.value = false
+      await run(s.name, 'update')
+      return
+    }
+    updatePlan.value = plan
+    updating.value = s
+  } catch (e) {
+    fail(e)
+  } finally {
+    busy.value = false
+  }
+}
+async function confirmUpdate(backup: boolean) {
+  const s = updating.value
+  if (!s) return
+  await run(s.name, 'update', backup ? { backup: true } : undefined)
+  updating.value = null
 }
 
 function openNew() {
@@ -203,7 +232,7 @@ async function remove() {
           <Button icon="pi pi-play" text rounded aria-label="Starten" title="Starten (up)" :disabled="busy || !!dockerDown" @click="run(s.name, 'up')" />
           <Button icon="pi pi-stop" text rounded aria-label="Stoppen" title="Stoppen" :disabled="busy || !!dockerDown" @click="run(s.name, 'stop')" />
           <Button icon="pi pi-refresh" text rounded aria-label="Neu starten" title="Neu starten" :disabled="busy || !!dockerDown" @click="run(s.name, 'restart')" />
-          <Button icon="pi pi-download" text rounded aria-label="Aktualisieren" title="Aktualisieren (neue Images laden und neu starten)" :disabled="busy || !!dockerDown" @click="run(s.name, 'update')" />
+          <Button icon="pi pi-download" text rounded aria-label="Aktualisieren" title="Aktualisieren (neue Images laden und neu starten)" :disabled="busy || !!dockerDown" @click="startUpdate(s)" />
           <Button
             v-if="s.rollback"
             icon="pi pi-undo"
@@ -223,16 +252,8 @@ async function remove() {
   <TemplateDialog v-model:visible="showTemplates" :existing="names" @create="fromTemplate" />
   <StackDialog v-model:visible="showDialog" :stack="editing" :draft="draft" :existing="names" :busy="busy" :check="check" @submit="submit" />
   <AutoUpdateDialog v-model:visible="showAuto" :config="store.autoUpdate" :stacks="names" :busy="autoBusy" @save="saveAuto" @run="runAuto" />
-  <ConfirmDialog
-    :visible="!!rollingBack"
-    header="Update zurückrollen"
-    :message="`Der Stack „${rollingBack?.name}“ wird mit den Images von vor dem letzten Update (Stand ${when(rollingBack?.rollback)}) neu erstellt. Daten in Volumes und Ordnern bleiben erhalten; war das Update mit einer Datenbank-Migration verbunden, kann die ältere Version damit eventuell nicht mehr umgehen.`"
-    confirm-label="Zurückrollen"
-    :busy="busy"
-    data-test="rollback-confirm"
-    @update:visible="(v) => !v && (rollingBack = null)"
-    @confirm="rollback"
-  />
+  <UpdateDialog :visible="!!updating" :stack="updating?.name ?? ''" :plan="updatePlan" :busy="busy" @update:visible="(v) => !v && (updating = null)" @confirm="confirmUpdate" />
+  <RollbackDialog :visible="!!rollingBack" :stack="rollingBack" :busy="busy" @update:visible="(v) => !v && (rollingBack = null)" @confirm="rollback" />
   <ConfirmDialog
     :visible="!!deleting"
     header="Stack löschen"

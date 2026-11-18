@@ -25,12 +25,18 @@ type autoAgent struct {
 	containers []Container
 	runs       []string // „<name>:<action>“
 	failRun    map[string]bool
+	plans      map[string]BackupPlan
+	planErr    error
 }
 
 func (a *autoAgent) Call(_ context.Context, method string, params, result any) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	p, _ := params.(map[string]string)
+	var p map[string]any // Parameter beliebigen Typs über JSON vereinheitlichen
+	if b, err := json.Marshal(params); err == nil {
+		_ = json.Unmarshal(b, &p)
+	}
+	str := func(k string) string { s, _ := p[k].(string); return s }
 	var out any
 	switch method {
 	case "stack.list":
@@ -40,7 +46,7 @@ func (a *autoAgent) Call(_ context.Context, method string, params, result any) e
 		}
 		out = list
 	case "stack.images":
-		out = a.stacks[p["name"]]
+		out = a.stacks[str("name")]
 	case "image.digests":
 		var sts []ImageStatus
 		for _, im := range params.(map[string]any)["images"].([]string) {
@@ -48,14 +54,26 @@ func (a *autoAgent) Call(_ context.Context, method string, params, result any) e
 		}
 		out = sts
 	case "stack.run":
-		if a.failRun[p["name"]+":"+p["action"]] {
+		if a.failRun[str("name")+":"+str("action")] {
 			return apierr.New(apierr.Conflict, "läuft schon")
 		}
-		a.runs = append(a.runs, p["name"]+":"+p["action"])
-		if p["action"] == "update" {
-			a.containers = a.afterRun[p["name"]]
+		run := str("name") + ":" + str("action")
+		if p["backup"] == true {
+			run += "+backup"
 		}
-		out = map[string]string{"unit": "u-" + p["name"]}
+		if p["restoreData"] == true {
+			run += "+data"
+		}
+		a.runs = append(a.runs, run)
+		if str("action") == "update" {
+			a.containers = a.afterRun[str("name")]
+		}
+		out = map[string]string{"unit": "u-" + str("name")}
+	case "stack.backupplan":
+		if a.planErr != nil {
+			return a.planErr
+		}
+		out = a.plans[str("name")]
 	case "stack.runstatus":
 		out = RunState{State: "succeeded"}
 	case "container.list":
@@ -257,5 +275,91 @@ func TestNextAutoRun(t *testing.T) {
 	}
 	if got := nextAutoRun(now, 2, 0); !got.Equal(time.Date(2026, 11, 20, 2, 0, 0, 0, loc)) {
 		t.Fatal(got)
+	}
+}
+
+var withData = BackupPlan{Sources: []BackupSource{{Kind: "bind", Name: "/srv/appdata/media/c", Path: "/srv/appdata/media/c", Bytes: 10}}, Possible: true}
+
+func TestAutoUpdateBacksUpFirstWhenEnabled(t *testing.T) {
+	a := baseAgent()
+	a.plans = map[string]BackupPlan{"media": withData}
+	m := autoManager(t, a, AutoUpdateConfig{Enabled: true, Time: "04:00", Stacks: []string{"media"}, Backup: true})
+	run(t, m, &sink{})
+	if got := a.ran(); got != "media:update+backup" {
+		t.Fatalf("Läufe: %q", got)
+	}
+}
+
+func TestAutoUpdateRestoresDataOnRollback(t *testing.T) {
+	a := baseAgent()
+	a.plans = map[string]BackupPlan{"media": withData}
+	bad := okC("media")
+	bad.Health = "unhealthy"
+	a.afterRun["media"] = []Container{bad}
+	m := autoManager(t, a, AutoUpdateConfig{Enabled: true, Time: "04:00", Stacks: []string{"media"}, Backup: true})
+	n := &sink{}
+	run(t, m, n)
+	if got := a.ran(); got != "media:update+backup,media:rollback+data" {
+		t.Fatalf("Läufe: %q", got)
+	}
+	if len(n.msgs) != 1 || !strings.Contains(n.msgs[0].Body, "Daten") {
+		t.Fatalf("%+v", n.msgs)
+	}
+}
+
+func TestAutoUpdateRollbackLeavesDataAloneWithoutBackup(t *testing.T) {
+	a := baseAgent()
+	bad := okC("media")
+	bad.Health = "unhealthy"
+	a.afterRun["media"] = []Container{bad}
+	m := autoManager(t, a, AutoUpdateConfig{Enabled: true, Time: "04:00", Stacks: []string{"media"}, Backup: false})
+	run(t, m, &sink{})
+	if got := a.ran(); got != "media:update,media:rollback" {
+		t.Fatalf("Läufe: %q", got)
+	}
+}
+
+func TestAutoUpdateSkipsWhenBackupImpossibleOrUnknown(t *testing.T) {
+	for name, tc := range map[string]struct {
+		plan BackupPlan
+		err  error
+	}{
+		"zu wenig Platz": {plan: BackupPlan{Sources: withData.Sources, Possible: false, Reason: "Zu wenig Platz für die Sicherung"}},
+		"Plan-Fehler":    {err: apierr.New(apierr.Internal, "kaputt")},
+	} {
+		a := baseAgent()
+		a.plans = map[string]BackupPlan{"media": tc.plan}
+		a.planErr = tc.err
+		m := autoManager(t, a, AutoUpdateConfig{Enabled: true, Time: "04:00", Stacks: []string{"media"}, Backup: true})
+		n := &sink{}
+		run(t, m, n)
+		if got := a.ran(); got != "" {
+			t.Errorf("%s: Läufe %q", name, got)
+		}
+		if len(n.msgs) != 1 || n.msgs[0].Level != "warn" {
+			t.Errorf("%s: %+v", name, n.msgs)
+		}
+	}
+}
+
+func TestAutoUpdateWithoutDataUpdatesPlainly(t *testing.T) {
+	a := baseAgent()
+	a.plans = map[string]BackupPlan{"media": {Sources: []BackupSource{}, Reason: "keine Daten"}}
+	m := autoManager(t, a, AutoUpdateConfig{Enabled: true, Time: "04:00", Stacks: []string{"media"}, Backup: true})
+	run(t, m, &sink{})
+	if got := a.ran(); got != "media:update" {
+		t.Fatalf("Läufe: %q", got)
+	}
+}
+
+func TestAutoUpdateBackupDefaultsToOnForOldSettings(t *testing.T) {
+	m := autoManager(t, baseAgent(), AutoUpdateConfig{Time: "03:00"})
+	// Einstellungen aus der Zeit vor der Option kennen das Feld nicht.
+	if _, err := m.db.Exec(`UPDATE settings SET value = ? WHERE key = ?`, `{"enabled":true,"time":"03:00","stacks":["a"]}`, keyAutoUpdate); err != nil {
+		t.Fatal(err)
+	}
+	c, err := m.AutoUpdate(context.Background())
+	if err != nil || !c.Backup || !c.Enabled {
+		t.Fatalf("%+v %v", c, err)
 	}
 }

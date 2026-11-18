@@ -9,6 +9,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/betternas/betternas/internal/apierr"
@@ -65,6 +66,7 @@ func ListStacks(ctx context.Context, d Deps) ([]docker.StackInfo, error) {
 		si.Name = name
 		if rb, ok := readRollback(d, name, rollbackFile); ok {
 			si.Rollback = rb.CreatedAt
+			_, si.RollbackData = readBackup(d, name, rb.Backup)
 		}
 		list = append(list, si)
 	}
@@ -224,11 +226,19 @@ func stackRunning(ctx context.Context, d Deps, name string) (bool, error) {
 // RunStack startet eine Stack-Aktion in einer transienten systemd-Unit und liefert deren Namen.
 // up/update laufen nur mit gültiger Compose-Datei.
 func RunStack(ctx context.Context, d Deps, name, action string) (string, error) {
+	return RunStackOpts(ctx, d, name, action, docker.RunOptions{})
+}
+
+// RunStackOpts wie RunStack, mit Zusatzwünschen (Datensicherung vor dem Update, Daten beim Rollback zurückspielen).
+func RunStackOpts(ctx context.Context, d Deps, name, action string, opts docker.RunOptions) (string, error) {
 	if err := checkStackName(name); err != nil {
 		return "", err
 	}
 	if !docker.StackActions[action] {
 		return "", apierr.New(apierr.InvalidParams, "Unbekannte Stack-Aktion")
+	}
+	if (opts.Backup && action != "update") || (opts.RestoreData && action != "rollback") {
+		return "", apierr.New(apierr.InvalidParams, "Diese Option passt nicht zur Aktion.")
 	}
 	if !d.FS.Exists(composePath(name)) {
 		return "", apierr.New(apierr.NotFound, "Stack nicht gefunden")
@@ -241,7 +251,7 @@ func RunStack(ctx context.Context, d Deps, name, action string) (string, error) 
 	var rollbackCmd string
 	if action == "rollback" {
 		var err error
-		if rollbackCmd, err = rollbackCommand(d, name, func(a []string) string { return "'" + strings.Join(a, "' '") + "'" }); err != nil {
+		if rollbackCmd, err = rollbackCommand(d, name, opts.RestoreData); err != nil {
 			return "", err
 		}
 	}
@@ -254,8 +264,24 @@ func RunStack(ctx context.Context, d Deps, name, action string) (string, error) 
 			return "", apierr.New(apierr.InvalidParams, "Die Compose-Datei ist ungültig: "+chk.Message)
 		}
 	}
+	var backupID, updateScript string
+	if action == "update" && opts.Backup {
+		plan, err := StackBackupPlan(ctx, d, name)
+		if err != nil {
+			return "", err
+		}
+		if !plan.Possible {
+			return "", apierr.New(apierr.Conflict, "Datensicherung nicht möglich: "+plan.Reason)
+		}
+		backupID = strconv.FormatInt(nowUnix(), 10)
+		cmd, err := prepareBackup(d, name, backupID, plan.Sources)
+		if err != nil {
+			return "", err
+		}
+		updateScript = updateWithBackupScript(name, backupID, cmd)
+	}
 	if action == "update" {
-		snapshotStack(ctx, d, name)
+		snapshotStack(ctx, d, name, backupID)
 	}
 	// Beendete Läufe dieses Stacks aufräumen.
 	if units, err := listRunUnits(ctx, d); err == nil {
@@ -280,6 +306,10 @@ func RunStack(ctx context.Context, d Deps, name, action string) (string, error) 
 		args = append(args, "docker")
 		args = append(args, composeArgs(name, "down", "--remove-orphans")...)
 	case "update":
+		if updateScript != "" {
+			args = append(args, "sh", "-c", updateScript)
+			break
+		}
 		// Feste Zeichenfolge; der Stackname ist durch StackNameRe gesichert.
 		pull := quote(append([]string{"docker"}, composeArgs(name, "pull")...))
 		up := quote(append([]string{"docker"}, composeArgs(name, "up", "-d", "--remove-orphans")...))
@@ -374,12 +404,23 @@ func registerDocker(s *rpc.Server, d Deps) {
 		}
 		return map[string]bool{"ok": true}, nil
 	})
+	s.Handle("stack.backupplan", func(ctx context.Context, p json.RawMessage) (any, error) {
+		name, err := named(p)
+		if err != nil {
+			return nil, err
+		}
+		return StackBackupPlan(ctx, d, name)
+	})
 	s.Handle("stack.run", func(ctx context.Context, p json.RawMessage) (any, error) {
-		var req struct{ Name, Action string }
+		var req struct {
+			Name   string `json:"name"`
+			Action string `json:"action"`
+			docker.RunOptions
+		}
 		if err := decode(p, &req); err != nil {
 			return nil, err
 		}
-		unit, err := RunStack(ctx, d, req.Name, req.Action)
+		unit, err := RunStackOpts(ctx, d, req.Name, req.Action, req.RunOptions)
 		if err != nil {
 			return nil, err
 		}

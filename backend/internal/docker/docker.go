@@ -57,6 +57,8 @@ type StackInfo struct {
 	Icon string `json:"icon,omitempty"`
 	// Rollback ist der Zeitpunkt (RFC 3339) des Stands, auf den ein Rollback zurückgeht (leer: kein Rollback möglich).
 	Rollback string `json:"rollback,omitempty"`
+	// RollbackData sagt, dass zum Rollback-Stand auch eine Datensicherung gehört (Daten lassen sich mit zurücksetzen).
+	RollbackData bool `json:"rollbackData,omitempty"`
 }
 
 // RollbackImage ist ein Image des Rollback-Stands: Referenz aus der Compose-Datei und die damalige lokale ID.
@@ -69,6 +71,40 @@ type RollbackImage struct {
 type Rollback struct {
 	CreatedAt string          `json:"createdAt"`
 	Images    []RollbackImage `json:"images"`
+	// Backup ist die Kennung der Datensicherung, die vor dem Update gemacht wurde (leer: keine).
+	Backup string `json:"backup,omitempty"`
+}
+
+// BackupSource ist ein Datenbereich eines Stacks, der vor einem Update gesichert wird.
+type BackupSource struct {
+	Kind  string `json:"kind"`  // bind | volume
+	Name  string `json:"name"`  // Anzeige: Ordnerpfad bzw. Volume-Name
+	Path  string `json:"path"`  // Pfad auf dem Host
+	Bytes int64  `json:"bytes"` // Größe der Daten
+}
+
+// BackupPlan beschreibt, was vor einem Update gesichert würde und ob das möglich ist.
+type BackupPlan struct {
+	Sources    []BackupSource `json:"sources"`
+	TotalBytes int64          `json:"totalBytes"`
+	FreeBytes  int64          `json:"freeBytes"`
+	Possible   bool           `json:"possible"`
+	Reason     string         `json:"reason,omitempty"` // warum nicht möglich
+}
+
+// DataBackup ist die Beschreibung einer Datensicherung (liegt neben dem Archiv).
+type DataBackup struct {
+	ID        string         `json:"id"`
+	CreatedAt string         `json:"createdAt"`
+	Sources   []BackupSource `json:"sources"`
+}
+
+// RunOptions sind Zusatzwünsche zu einer Stack-Aktion.
+type RunOptions struct {
+	// Backup sichert vor einem Update die Daten des Stacks (nur für „update“).
+	Backup bool `json:"backup,omitempty"`
+	// RestoreData setzt bei einem Rollback auch die Daten auf den gesicherten Stand zurück (nur für „rollback“).
+	RestoreData bool `json:"restoreData,omitempty"`
 }
 
 // RunState ist der Zustand eines Stack-Laufs.
