@@ -841,6 +841,173 @@ volumes:
     # @devices
 `,
   },
+  {
+    id: 'romm',
+    title: 'RomM',
+    description: 'Verwaltet und streamt deine Spielesammlung (ROMs) im Browser, mit Cover und Metadaten (mit MariaDB).',
+    icon: 'pi pi-th-large',
+    category: 'Medien',
+    stack: 'romm',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8087' },
+      { key: 'ROMS_DIR', label: 'Ordner der Spielesammlung', kind: 'path', def: () => '/srv/pools', hint: 'Darin erwartet RomM den Unterordner roms mit einem Ordner je Plattform, z. B. <Ordner>/roms/snes.' },
+      { key: 'ASSETS_DIR', label: 'Ordner für Spielstände und Medien', kind: 'path', def: appdata('assets') },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('mariadb'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
+      { key: 'AUTH_SECRET', label: 'Geheimer Schlüssel für Anmeldungen', kind: 'secret' },
+    ],
+    compose: `services:
+  romm:
+    image: rommapp/romm:latest
+    restart: unless-stopped
+    depends_on:
+      romm-db:
+        condition: service_healthy
+    environment:
+      DB_HOST: romm-db
+      DB_NAME: romm
+      DB_USER: romm
+      DB_PASSWD: "\${DB_PASSWORD}"
+      ROMM_AUTH_SECRET_KEY: "\${AUTH_SECRET}"
+    ports:
+      - "\${PORT}:8080"
+    volumes:
+      - \${ROMS_DIR}:/romm/library
+      - \${ASSETS_DIR}:/romm/assets
+      - \${CONFIG_DIR}:/romm/config
+  romm-db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "\${DB_PASSWORD}"
+      MARIADB_DATABASE: romm
+      MARIADB_USER: romm
+      MARIADB_PASSWORD: "\${DB_PASSWORD}"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - \${DB_DIR}:/var/lib/mysql
+`,
+  },
+  {
+    id: 'wikijs',
+    title: 'Wiki.js',
+    description: 'Wiki mit Markdown-Editor, Suche und Rechteverwaltung (mit PostgreSQL).',
+    icon: 'pi pi-book',
+    category: 'Wissen und Dokumente',
+    stack: 'wikijs',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3005' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('postgres'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
+    ],
+    compose: `services:
+  wiki:
+    image: ghcr.io/requarks/wiki:2
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: wikijs
+      DB_PASS: "\${DB_PASSWORD}"
+      DB_NAME: wiki
+    ports:
+      - "\${PORT}:3000"
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_USER: wikijs
+      POSTGRES_PASSWORD: "\${DB_PASSWORD}"
+    volumes:
+      - \${DB_DIR}:/var/lib/postgresql/data
+`,
+  },
+  {
+    id: 'mealie',
+    title: 'Mealie',
+    description: 'Rezeptverwaltung mit Import von Webseiten, Wochenplaner und Einkaufsliste.',
+    icon: 'pi pi-shopping-cart',
+    category: 'Wissen und Dokumente',
+    stack: 'mealie',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '9925' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:latest
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+      ALLOW_SIGNUP: "false"
+      MAX_WORKERS: "1"
+      WEB_CONCURRENCY: "1"
+    ports:
+      - "\${PORT}:9000"
+    volumes:
+      - \${DATA_DIR}:/app/data
+`,
+  },
+  {
+    id: 'stirling-pdf',
+    title: 'Stirling-PDF',
+    description: 'Werkzeugkasten für PDFs: zusammenfügen, teilen, drehen, komprimieren, Texterkennung.',
+    icon: 'pi pi-file-pdf',
+    category: 'Wissen und Dokumente',
+    stack: 'stirling-pdf',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8091' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('configs') },
+    ],
+    compose: `services:
+  stirling-pdf:
+    image: docker.io/stirlingtools/stirling-pdf:latest
+    restart: unless-stopped
+    environment:
+      LANGS: de_DE
+    ports:
+      - "\${PORT}:8080"
+    volumes:
+      - \${CONFIG_DIR}:/configs
+`,
+  },
+  {
+    id: 'gitea',
+    title: 'Gitea',
+    description: 'Eigener Git-Server mit Weboberfläche, Issues und Pull-Requests.',
+    icon: 'pi pi-code',
+    category: 'Entwicklung',
+    stack: 'gitea',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3006' },
+      { key: 'SSH_PORT', label: 'SSH-Port für Git', kind: 'port', def: () => '2222', hint: 'Nicht 22: Dieser Port gehört dem SSH-Zugang des NAS.' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  gitea:
+    image: docker.gitea.com/gitea:latest
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+    ports:
+      - "\${PORT}:3000"
+      - "\${SSH_PORT}:22"
+    volumes:
+      - \${DATA_DIR}:/data
+      - /etc/localtime:/etc/localtime:ro
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */

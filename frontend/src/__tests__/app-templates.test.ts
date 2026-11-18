@@ -273,3 +273,38 @@ describe('Medienserver-Vorlagen', () => {
     }
   })
 })
+
+describe('Vorlagen mit Datenbank und weitere Apps', () => {
+  it('RomM und Wiki.js haben eine Datenbank und kein Passwort im Klartext', () => {
+    for (const id of ['romm', 'wikijs']) {
+      const { t, files } = tpl(id)
+      expect(files.compose, id).toMatch(/mariadb|postgres/)
+      expect(files.compose, id).toContain('${DB_PASSWORD}')
+      expect(t.fields.find((f) => f.key === 'DB_PASSWORD')?.kind, id).toBe('secret')
+      for (const m of files.compose.matchAll(/^\s*[A-Za-z_]*(?:PASS|PASSWD|PASSWORD|SECRET)[A-Za-z_]*:\s*(.+)$/gm)) expect(m[1], `${id}: ${m[0]}`).toMatch(/^"\$\{[A-Z_]+\}"$/)
+    }
+    expect(tpl('romm').files.compose).toContain('${AUTH_SECRET}')
+  })
+
+  it('rendert die Apps mit Kategorie und Port', () => {
+    const cases: [string, string, string, string][] = [
+      ['romm', 'Medien', '8087', '${PORT}:8080'],
+      ['wikijs', 'Wissen und Dokumente', '3005', '${PORT}:3000'],
+      ['mealie', 'Wissen und Dokumente', '9925', '${PORT}:9000'],
+      ['stirling-pdf', 'Wissen und Dokumente', '8091', '${PORT}:8080'],
+      ['gitea', 'Entwicklung', '3006', '${PORT}:3000'],
+    ]
+    for (const [id, cat, port, line] of cases) {
+      const { t, files, env } = tpl(id)
+      expect(t.category, id).toBe(cat)
+      expect(files.compose, id).toContain(line)
+      expect(env, id).toContain(`PORT=${port}\n`)
+    }
+  })
+
+  it('Gitea nutzt für SSH nie Port 22 (gehört dem BetterNAS-SSH)', () => {
+    const { files, env } = tpl('gitea')
+    expect(files.compose).toContain('${SSH_PORT}:22')
+    expect(env).toContain('SSH_PORT=2222\n')
+  })
+})
