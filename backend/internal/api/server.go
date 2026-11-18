@@ -116,6 +116,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.SystemSettings != nil {
 		s.registerSystemSettings(api)
+		s.registerServices(api)
 	}
 	if deps.Certs != nil {
 		s.registerWebAccess(api)

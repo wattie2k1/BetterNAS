@@ -78,6 +78,9 @@ func (a *sysAgentStub) Call(_ context.Context, method string, params, result any
 	if method == "system.settings.get" {
 		return json.Unmarshal([]byte(`{"hostname":"nas","timezone":"Europe/Berlin","ntp":true}`), result)
 	}
+	if method == "service.list" {
+		return json.Unmarshal([]byte(`[]`), result)
+	}
 	if method == "system.timezones" {
 		return json.Unmarshal([]byte(`["Europe/Berlin","UTC"]`), result)
 	}
@@ -130,6 +133,25 @@ func TestSystemSettingsAndWebAccessRoutes(t *testing.T) {
 	}
 	if w := s.do("POST", "/api/v1/system/power", `{"action":"format","confirm":"x"}`); w.Code != 400 {
 		t.Fatalf("%d", w.Code)
+	}
+	// Dienste und Einstellungen werden durchgereicht
+	if w := s.do("POST", "/api/v1/services/docker/restart", ""); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["service.action"].(map[string]any); p["unit"] != "docker" || p["action"] != "restart" {
+		t.Fatalf("%v", stub.calls)
+	}
+	if w := s.do("PUT", "/api/v1/settings/smb", `{"workgroup":"HEIM","serverName":"x","minProtocol":"SMB3_11"}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if p, _ := stub.calls["smb.global.set"].(map[string]any); p["workgroup"] != "HEIM" {
+		t.Fatalf("%v", stub.calls)
+	}
+	if w := s.do("PUT", "/api/v1/settings/docker", `{"logMaxSize":"10m","logMaxFile":3}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/services", ""); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	// Zertifikat
 	if w := s.do("GET", "/api/v1/system/certificate", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"selfSigned":true`) {

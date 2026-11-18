@@ -14,6 +14,9 @@ import SettingsView from '@/views/settings/SettingsView.vue'
 import GeneralSettings from '@/views/settings/GeneralSettings.vue'
 import WebAccessSettings from '@/views/settings/WebAccessSettings.vue'
 import PowerSettings from '@/views/settings/PowerSettings.vue'
+import ServicesSettings from '@/views/settings/ServicesSettings.vue'
+import FileServicesSettings from '@/views/settings/FileServicesSettings.vue'
+import DockerSettings from '@/views/settings/DockerSettings.vue'
 import NetworkSettings from '@/views/settings/NetworkSettings.vue'
 import SetupView from '@/views/SetupView.vue'
 import SharesView from '@/views/shares/SharesView.vue'
@@ -53,6 +56,9 @@ export const router = createRouter({
             { path: 'webzugriff', name: 'settings-web', component: WebAccessSettings, meta: { title: 'Einstellungen · Webzugriff' } },
             { path: 'energie', name: 'settings-power', component: PowerSettings, meta: { title: 'Einstellungen · Energie' } },
             { path: 'netzwerk', name: 'settings-network', component: NetworkSettings, meta: { title: 'Einstellungen · Netzwerk' } },
+            { path: 'dienste', name: 'settings-services', component: ServicesSettings, meta: { title: 'Einstellungen · Dienste' } },
+            { path: 'dateidienste', name: 'settings-fileservices', component: FileServicesSettings, meta: { title: 'Einstellungen · Dateidienste' } },
+            { path: 'docker', name: 'settings-docker', component: DockerSettings, meta: { title: 'Einstellungen · Docker' } },
             { path: 'benachrichtigungen', name: 'notifications', component: NotificationsView, meta: { title: 'Einstellungen · Benachrichtigungen' } },
             { path: 'sicherung', name: 'backup', component: BackupView, meta: { title: 'Einstellungen · Sicherung' } },
             { path: 'updates', name: 'updates', component: UpdatesView, meta: { title: 'Einstellungen · Updates' } },

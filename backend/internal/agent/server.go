@@ -246,6 +246,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerBridge(s, d)
 	registerNetwork(s, d)
 	registerSysConfig(s, d)
+	registerServices(s, d)
 	registerVMOps(s, d)
 	registerVMConfig(s, d)
 	registerSpindown(s, d)
