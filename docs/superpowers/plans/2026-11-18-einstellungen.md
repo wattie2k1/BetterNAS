@@ -32,7 +32,7 @@ Ziel: Ein Dock-Eintrag **Einstellungen** (`/einstellungen`), unter dem alle Eins
 
 **Etappe 4 – Dienste (umgesetzt: Übersicht der Dienste mit Start/Stopp/Neustart über feste Liste, SMB global (Arbeitsgruppe, Beschreibung, Mindestprotokoll) über `betternas.d/global.conf`, Docker (Log-Größe/-Anzahl, Registry-Mirrors, Live-Restore) in der `daemon.json` mit `dockerd --validate`. Nicht umgesetzt: NFS-Globals, libvirt-Pfade und Aufräum-Zeitplan; der Docker-`data-root` wird nur angezeigt).** Ursprünglicher Entwurf: SMB-/NFS-Globals, Docker- und libvirt-Einstellungen, jeweils mit Dienststatus. Änderungen an `daemon.json` nur, wenn sie von BetterNAS verwaltet ist (Kennzeichnung wie bei networkd).
 
-**Etappe 5 – Sicherheit + Wartung.** Sitzungs-/Login-Optionen, 2FA-Pflicht, Protokolle, Support-Paket, „Über“, Werkseinstellungen (mit Wort-Bestätigung wie beim Restore). Firewall und SSH als eigene Etappe 6, weil Aussperrrisiko.
+**Etappe 5 – Sicherheit + Wartung (umgesetzt, Details in `2026-11-18-einstellungen-etappe5.md`: Anmeldung mit Sitzungsdauer, Login-Sperre, 2FA-Pflicht, aktive Sitzungen; Protokolle inkl. Audit, Journale, Support-Paket; Über mit Werkseinstellungen).** Sitzungs-/Login-Optionen, 2FA-Pflicht, Protokolle, Support-Paket, „Über“, Werkseinstellungen (mit Wort-Bestätigung wie beim Restore). Firewall und SSH als eigene Etappe 6, weil Aussperrrisiko.
 
 ## Regeln für alle Bereiche
 
