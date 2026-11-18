@@ -151,13 +151,13 @@ dl {
   margin: 0.5rem 0;
 }
 dt {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 dd {
   margin: 0;
 }
 .sub {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.875rem;
 }
 .actions {

@@ -99,8 +99,8 @@ function fullscreen() {
 <style scoped>
 .screen {
   height: min(620px, 70vh);
-  border-radius: 8px;
-  background: #0b1020;
+  border-radius: var(--bn-radius-xs);
+  background: var(--bn-terminal-bg);
   overflow: hidden;
 }
 .tools {
@@ -111,6 +111,6 @@ function fullscreen() {
 .hint {
   display: block;
   margin-top: 0.4rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 </style>

@@ -53,7 +53,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
   busy.value = c.id
   try {
     await store.containerAction(c.id, action)
-    toast.add({ severity: 'success', summary: done[action], detail: c.name, life: 3000 })
+    toast.add({ severity: 'success', summary: done[action], detail: c.name, life: 4000 })
     removing.value = null
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
@@ -64,7 +64,6 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 </script>
 
 <template>
-  <div class="toolbar" />
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <Message v-if="dockerDown" severity="warn" :closable="false" data-test="docker-down">
     {{ store.status?.installed ? 'Der Docker-Dienst läuft nicht.' : 'Docker ist nicht installiert.' }}
@@ -140,32 +139,17 @@ async function act(c: ContainerInfo, action: ContainerAction) {
   align-items: center;
   gap: 0.75rem;
 }
-.table-wrap {
-  overflow-x: auto;
-}
 .containers {
   width: 100%;
   border-collapse: collapse;
 }
-th,
-td {
-  text-align: left;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid var(--bn-border-soft);
-  vertical-align: top;
-}
-th {
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color);
-  font-weight: 600;
-}
 .sub {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   margin-top: 0.15rem;
 }
 .empty {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.875rem;
 }
 .actions {

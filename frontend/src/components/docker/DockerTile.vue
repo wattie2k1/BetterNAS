@@ -32,7 +32,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
   busy.value = true
   try {
     await store.containerAction(c.id, action)
-    toast.add({ severity: 'success', summary: done[action], detail: c.name, life: 3000 })
+    toast.add({ severity: 'success', summary: done[action], detail: c.name, life: 4000 })
   } catch (e) {
     fail(e)
   } finally {
@@ -60,7 +60,7 @@ async function submitYaml(files: StackFiles, mode: SubmitMode) {
       return
     }
     showYaml.value = false
-    toast.add({ severity: 'success', summary: 'Stack gespeichert', detail: files.name, life: 3000 })
+    toast.add({ severity: 'success', summary: 'Stack gespeichert', detail: files.name, life: 4000 })
     if (mode === 'start') await store.run(files.name, 'up')
   } catch (e) {
     fail(e)
@@ -161,7 +161,7 @@ li {
   color: var(--bn-text-soft);
 }
 .state.on {
-  color: #10b981;
+  color: var(--bn-ok);
 }
 .soft {
   color: var(--bn-text-soft);

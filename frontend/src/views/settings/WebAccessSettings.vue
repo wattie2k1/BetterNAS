@@ -46,7 +46,7 @@ async function run(fn: () => Promise<CertInfo>, ok: string) {
 <template>
   <div class="stack" data-test="settings-webaccess">
     <section class="card">
-      <h3>HTTPS-Zertifikat</h3>
+      <h2>HTTPS-Zertifikat</h2>
       <Message v-if="error" severity="error" :closable="false" data-test="web-error">{{ error }}</Message>
       <template v-if="info">
         <Message v-if="info.expired" severity="error" :closable="false">Das Zertifikat ist abgelaufen.</Message>
@@ -66,7 +66,7 @@ async function run(fn: () => Promise<CertInfo>, ok: string) {
       </template>
     </section>
     <section class="card">
-      <h3>Eigenes Zertifikat verwenden</h3>
+      <h2>Eigenes Zertifikat verwenden</h2>
       <p class="soft">Füge Zertifikat (inklusive Zwischenzertifikaten) und privaten Schlüssel im PEM-Format ein. Der Schlüssel darf nicht passwortgeschützt sein. Bei Fehlern bleibt das bisherige Zertifikat aktiv.</p>
       <form class="form" @submit.prevent="run(() => systemApi.installCertificate(cert, key), 'Zertifikat installiert')">
         <label for="w-cert">Zertifikat</label>
@@ -96,13 +96,6 @@ async function run(fn: () => Promise<CertInfo>, ok: string) {
   flex-direction: column;
   gap: 18px;
   max-width: 760px;
-}
-.card {
-  padding: 20px 22px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .soft {
   margin: 0 0 12px;

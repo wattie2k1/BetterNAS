@@ -47,7 +47,7 @@ async function save() {
   try {
     await securityApi.setPolicy({ ...form.value })
     loaded.value = { ...form.value }
-    toast.add({ severity: 'success', summary: 'Anmelde-Einstellungen gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Anmelde-Einstellungen gespeichert', life: 4000 })
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -67,7 +67,7 @@ async function revoke(s: SessionInfo) {
 async function revokeOthers() {
   try {
     const r = await securityApi.revokeOthers()
-    toast.add({ severity: 'info', summary: `${r.revoked} Sitzung(en) beendet`, life: 3000 })
+    toast.add({ severity: 'info', summary: `${r.revoked} Sitzung(en) beendet`, life: 4000 })
     await loadSessions()
   } catch (e) {
     sessionError.value = e instanceof Error ? e.message : String(e)
@@ -78,7 +78,7 @@ async function revokeOthers() {
 <template>
   <div data-test="settings-security">
     <div class="card">
-      <h3>Anmeldung</h3>
+      <h2>Anmeldung</h2>
       <Message v-if="error" severity="error" :closable="false" data-test="security-error">{{ error }}</Message>
       <form v-if="loaded" class="grid" @submit.prevent="save">
         <label for="s-hours">Sitzungsdauer (Stunden)</label>
@@ -100,7 +100,7 @@ async function revokeOthers() {
 
     <div class="card">
       <div class="head">
-        <h3>Aktive Sitzungen</h3>
+        <h2>Aktive Sitzungen</h2>
         <Button data-test="sessions-revoke-others" label="Alle anderen beenden" icon="pi pi-sign-out" severity="secondary" size="small" :disabled="others === 0" @click="revokeOthers" />
       </div>
       <Message v-if="sessionError" severity="error" :closable="false">{{ sessionError }}</Message>
@@ -125,13 +125,7 @@ async function revokeOthers() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-  margin-bottom: 18px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .head {
   display: flex;
@@ -184,7 +178,7 @@ h3 {
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
-  background: rgba(99, 102, 241, 0.18);
+  background: color-mix(in srgb, var(--bn-accent-1) 18%, transparent);
 }
 @media (max-width: 600px) {
   .grid {

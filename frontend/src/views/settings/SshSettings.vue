@@ -70,7 +70,7 @@ async function save() {
   error.value = ''
   try {
     await sshApi.set({ port: port.value, passwordAuth: passwordAuth.value, permitRootLogin: rootLogin.value ? 'prohibit-password' : 'no' })
-    toast.add({ severity: 'success', summary: 'SSH-Einstellungen gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'SSH-Einstellungen gespeichert', life: 4000 })
     await load()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -104,7 +104,7 @@ async function removeKey(k: SshKey) {
 <template>
   <div class="stack" data-test="settings-ssh">
     <section class="card">
-      <h3>SSH-Server</h3>
+      <h2>SSH-Server</h2>
       <Message v-if="error" severity="error" :closable="false" data-test="ssh-error">{{ error }}</Message>
       <Message v-if="loaded && !loaded.active" severity="warn" :closable="false" data-test="ssh-inactive">
         Der SSH-Dienst läuft nicht. Starte ihn unter „Dienste“; die Einstellungen gelten dann beim Start.
@@ -128,7 +128,7 @@ async function removeKey(k: SshKey) {
     </section>
 
     <section class="card">
-      <h3>Öffentliche Schlüssel</h3>
+      <h2>Öffentliche Schlüssel</h2>
       <Message v-if="keyError" severity="error" :closable="false" data-test="ssh-key-error">{{ keyError }}</Message>
       <div class="grid">
         <label for="ssh-user">Benutzer</label>
@@ -158,13 +158,6 @@ async function removeKey(k: SshKey) {
   flex-direction: column;
   gap: 18px;
   max-width: 760px;
-}
-.card {
-  padding: 20px 22px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .grid {
   display: grid;

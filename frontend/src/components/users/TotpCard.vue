@@ -101,7 +101,7 @@ function done() {
 </script>
 
 <template>
-  <section class="card glass" data-test="totp-card">
+  <section class="card" data-test="totp-card">
     <h2>Zwei-Faktor-Anmeldung</h2>
     <Message v-if="error" severity="error" :closable="false" data-test="totp-error">{{ error }}</Message>
 
@@ -158,16 +158,8 @@ function done() {
 </template>
 
 <style scoped>
-.card {
-  padding: 1.2rem 1.4rem;
-  border-radius: 16px;
-}
-h2 {
-  margin: 0 0 0.8rem;
-  font-size: 1.1rem;
-}
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .steps {
   padding-left: 1.2rem;
@@ -176,7 +168,7 @@ h2 {
   display: block;
   background: #fff;
   padding: 6px;
-  border-radius: 10px;
+  border-radius: var(--bn-radius-xs);
 }
 .secret code {
   letter-spacing: 0.08em;
@@ -187,12 +179,6 @@ h2 {
   width: 100%;
   max-width: 14rem;
   margin: 0.2rem 0 0.8rem;
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--bn-border);
-  background: var(--bn-glass);
-  color: inherit;
-  font: inherit;
 }
 .row {
   display: flex;

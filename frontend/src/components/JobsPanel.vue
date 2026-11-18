@@ -49,9 +49,9 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
 
 <style scoped>
 .reboot {
-  border: 1px solid var(--p-orange-400, #fb923c);
-  background: color-mix(in srgb, var(--p-orange-400, #fb923c) 14%, transparent);
-  border-radius: 12px;
+  border: 1px solid var(--bn-warn);
+  background: color-mix(in srgb, var(--bn-warn) 14%, transparent);
+  border-radius: var(--bn-radius-xs);
   padding: 0.75rem 0.9rem;
   margin-bottom: 1rem;
 }
@@ -62,7 +62,7 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
   margin: 0 0 0.4rem;
 }
 .empty {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .jobs {
   list-style: none;
@@ -79,7 +79,7 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
 }
 .meta {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   margin: 0.2rem 0 0.4rem;
 }
 pre {

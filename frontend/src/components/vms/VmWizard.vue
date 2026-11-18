@@ -97,7 +97,7 @@ async function submit() {
   error.value = ''
   try {
     await store.create(spec(), start.value)
-    toast.add({ severity: 'success', summary: 'VM angelegt', detail: name.value, life: 3000 })
+    toast.add({ severity: 'success', summary: 'VM angelegt', detail: name.value, life: 4000 })
     emit('update:visible', false)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -225,7 +225,7 @@ const isImage = computed(() => iso.value.endsWith('.qcow2'))
   gap: 0.6rem;
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 .hint {
   color: var(--bn-text-soft);

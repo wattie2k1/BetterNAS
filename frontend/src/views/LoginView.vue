@@ -55,7 +55,7 @@ async function submit() {
 
 <template>
   <main class="login">
-    <form class="card glass" @submit.prevent="submit">
+    <form class="login-card glass" @submit.prevent="submit">
       <div class="logo"><i class="pi pi-server" /></div>
       <h1>BetterNAS</h1>
       <p class="tag">Melde dich an, um deinen Server zu verwalten.</p>
@@ -102,7 +102,7 @@ async function submit() {
   place-items: center;
   padding: 16px;
 }
-.card {
+.login-card {
   width: min(400px, 100%);
   display: flex;
   flex-direction: column;

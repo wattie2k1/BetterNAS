@@ -288,17 +288,12 @@ function set(type: string, n: string, v: string | null) {
   gap: 0.6rem;
 }
 .area {
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--bn-border);
-  background: var(--bn-glass);
-  color: inherit;
-  font: inherit;
+  width: 100%;
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 </style>

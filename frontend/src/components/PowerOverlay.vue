@@ -38,7 +38,7 @@ const text = computed(() => {
   text-align: center;
   padding: 2.2rem 2.6rem;
   max-width: min(480px, 92vw);
-  border-radius: 18px;
+  border-radius: var(--bn-radius-sm);
 }
 h2 {
   margin: 1rem 0 0.4rem;
@@ -51,6 +51,6 @@ p {
 }
 .off {
   font-size: 2.6rem;
-  color: var(--p-red-400, #f87171);
+  color: var(--bn-danger);
 }
 </style>

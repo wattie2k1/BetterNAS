@@ -66,7 +66,7 @@ async function act(v: VmInfo, action: VmAction) {
   busy.value = v.name
   try {
     await store.act(v.name, action)
-    toast.add({ severity: 'success', summary: done[action], detail: v.name, life: 3000 })
+    toast.add({ severity: 'success', summary: done[action], detail: v.name, life: 4000 })
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   } finally {
@@ -80,7 +80,7 @@ async function confirmRemove() {
   busy.value = v.name
   try {
     await store.remove(v.name, deleteDisks.value)
-    toast.add({ severity: 'success', summary: 'VM gelöscht', detail: v.name, life: 3000 })
+    toast.add({ severity: 'success', summary: 'VM gelöscht', detail: v.name, life: 4000 })
     removing.value = null
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
@@ -107,7 +107,7 @@ async function confirmClone() {
   cloneError.value = ''
   try {
     await store.clone(v.name, cloneName.value)
-    toast.add({ severity: 'success', summary: 'VM geklont', detail: `${v.name} → ${cloneName.value}`, life: 3000 })
+    toast.add({ severity: 'success', summary: 'VM geklont', detail: `${v.name} → ${cloneName.value}`, life: 4000 })
     cloning.value = null
   } catch (e) {
     cloneError.value = e instanceof Error ? e.message : String(e)

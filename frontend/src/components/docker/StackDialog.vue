@@ -110,10 +110,10 @@ const files = (): StackFiles => ({ name: name.value, compose: compose.value, env
   margin-bottom: 0.75rem;
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .env {
   width: 100%;

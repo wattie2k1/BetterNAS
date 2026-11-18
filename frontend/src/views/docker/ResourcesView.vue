@@ -159,7 +159,7 @@ async function confirm() {
 
 <style scoped>
 .empty {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.875rem;
 }
 .mono {

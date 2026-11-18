@@ -176,11 +176,6 @@ function save(input: PoolInput) {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
-}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -194,7 +189,7 @@ function save(input: PoolInput) {
 }
 .sub,
 .empty {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.875rem;
 }
 ul {

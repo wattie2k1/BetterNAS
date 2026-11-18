@@ -50,7 +50,7 @@ async function upload(file: File) {
   progress.value = 0
   try {
     await vmsApi.isoUpload(file, (done, total) => (progress.value = Math.round((done / total) * 100)))
-    toast.add({ severity: 'success', summary: 'Datei hochgeladen', detail: file.name, life: 3000 })
+    toast.add({ severity: 'success', summary: 'Datei hochgeladen', detail: file.name, life: 4000 })
     emit('changed')
     await load()
   } catch (e) {
@@ -71,7 +71,7 @@ async function remove(file: string) {
   error.value = ''
   try {
     await vmsApi.isoDelete(file)
-    toast.add({ severity: 'success', summary: 'Datei gelöscht', detail: file, life: 3000 })
+    toast.add({ severity: 'success', summary: 'Datei gelöscht', detail: file, life: 4000 })
     confirmDelete.value = null
     emit('changed')
     await load()

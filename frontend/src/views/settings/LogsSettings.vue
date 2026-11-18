@@ -42,7 +42,7 @@ watch([source, lines], load)
 
 <template>
   <div class="card" data-test="settings-logs">
-    <h3>Protokolle</h3>
+    <h2>Protokolle</h2>
     <div class="bar">
       <Select v-model="source" :options="sources" option-label="label" option-value="value" data-test="logs-source" />
       <Select v-model="lines" :options="lineOptions" data-test="logs-lines" />
@@ -78,12 +78,7 @@ watch([source, lines], load)
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 980px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .sub {
   margin-top: 26px;
@@ -106,7 +101,7 @@ h3 {
 .btn {
   padding: 8px 14px;
   border: 1px solid currentColor;
-  border-radius: 10px;
+  border-radius: var(--bn-radius-xs);
 }
 .soft {
   margin: 0 0 14px;
@@ -118,9 +113,9 @@ h3 {
   max-height: 460px;
   overflow: auto;
   padding: 12px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.35);
-  color: #e5e7eb;
+  border-radius: var(--bn-radius-xs);
+  background: var(--bn-terminal-bg);
+  color: var(--bn-terminal-fg);
   font: 0.78rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
   word-break: break-all;
@@ -137,9 +132,9 @@ h3 {
 }
 .table td {
   padding: 5px 8px;
-  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  border-top: 1px solid var(--bn-border-soft);
 }
 .bad {
-  color: #ef4444;
+  color: var(--bn-danger);
 }
 </style>

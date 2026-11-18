@@ -99,7 +99,7 @@ function submit() {
 
 <style scoped>
 .step {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.85rem;
 }
 .opt {

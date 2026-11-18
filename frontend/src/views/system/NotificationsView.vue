@@ -62,7 +62,7 @@ async function save() {
   try {
     await store.save(payload())
     adopt(store.config!)
-    toast.add({ severity: 'success', summary: 'Gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Gespeichert', life: 4000 })
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Speichern fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   } finally {
@@ -87,11 +87,10 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
 </script>
 
 <template>
-  <div class="toolbar" />
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
 
-  <section class="card glass">
-    <h3>Aktive Meldungen</h3>
+  <section class="card">
+    <h2>Aktive Meldungen</h2>
     <p v-if="!store.alerts.length" class="ok" data-test="alerts-none"><i class="pi pi-check-circle" /> Alles in Ordnung.</p>
     <ul v-else class="alerts">
       <li v-for="a in store.alerts" :key="a.key" data-test="alert-item">
@@ -105,9 +104,9 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
   </section>
 
   <template v-if="mail && ntfy">
-    <section class="card glass">
+    <section class="card">
       <header class="head">
-        <h3>Mail</h3>
+        <h2>Mail</h2>
         <label class="switch"><input v-model="mail.enabled" type="checkbox" data-test="mail-enabled" /> aktiv</label>
       </header>
       <div class="grid">
@@ -135,9 +134,9 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
       </div>
     </section>
 
-    <section class="card glass">
+    <section class="card">
       <header class="head">
-        <h3>ntfy</h3>
+        <h2>ntfy</h2>
         <label class="switch"><input v-model="ntfy.enabled" type="checkbox" data-test="ntfy-enabled" /> aktiv</label>
       </header>
       <div class="grid">
@@ -154,8 +153,8 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
       </div>
     </section>
 
-    <section class="card glass">
-      <h3>Schwellwerte</h3>
+    <section class="card">
+      <h2>Schwellwerte</h2>
       <div class="field narrow">
         <label for="temp-warn">Temperatur-Warnung ab (°C)</label>
         <input id="temp-warn" v-model.number="tempWarnC" type="number" min="30" max="90" />
@@ -167,8 +166,8 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
     </div>
   </template>
 
-  <section class="card glass">
-    <h3>Verlauf</h3>
+  <section class="card">
+    <h2>Verlauf</h2>
     <p v-if="!store.history.length" class="sub">Noch keine Meldungen verschickt.</p>
     <table v-else class="hist">
       <thead><tr><th>Zeit</th><th>Stufe</th><th>Meldung</th><th>Zustellung</th></tr></thead>
@@ -198,14 +197,6 @@ const channelLabel = { mail: 'Mail', ntfy: 'ntfy' } as const
 </template>
 
 <style scoped>
-.card {
-  padding: 1.1rem 1.3rem;
-  margin-bottom: 1rem;
-}
-h3 {
-  margin: 0 0 0.7rem;
-  font-size: 1rem;
-}
 .head {
   display: flex;
   align-items: center;
@@ -235,16 +226,7 @@ h3 {
 }
 .field label {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
-}
-.field input,
-.field select {
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--bn-border);
-  background: var(--bn-glass);
-  color: inherit;
-  font: inherit;
+  color: var(--bn-text-soft);
 }
 .actions {
   display: flex;
@@ -255,15 +237,15 @@ h3 {
 }
 .result {
   font-size: 0.85rem;
-  color: var(--p-green-500);
+  color: var(--bn-ok);
 }
 .result.bad,
 .res.bad {
-  color: var(--p-red-400);
+  color: var(--bn-danger);
 }
 .res {
   margin-right: 0.6rem;
-  color: var(--p-green-500);
+  color: var(--bn-ok);
   font-size: 0.85rem;
 }
 .save {
@@ -272,11 +254,11 @@ h3 {
   margin-bottom: 1rem;
 }
 .sub {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.85rem;
 }
 .ok {
-  color: var(--p-green-500);
+  color: var(--bn-ok);
   font-weight: 600;
   margin: 0;
 }
@@ -306,6 +288,6 @@ td {
 }
 th {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 </style>

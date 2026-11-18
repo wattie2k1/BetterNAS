@@ -36,7 +36,7 @@ async function save() {
   error.value = ''
   try {
     await servicesApi.setSmb({ ...form.value, workgroup: form.value.workgroup.trim(), serverName: form.value.serverName.trim() })
-    toast.add({ severity: 'success', summary: 'SMB-Einstellungen gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'SMB-Einstellungen gespeichert', life: 4000 })
     await load()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -48,7 +48,7 @@ async function save() {
 
 <template>
   <div class="card" data-test="settings-fileservices">
-    <h3>Windows- und Mac-Freigaben (SMB)</h3>
+    <h2>Windows- und Mac-Freigaben (SMB)</h2>
     <p class="soft">Globale Werte für alle Freigaben. Einzelne Freigaben legst du unter „Freigaben“ an, NFS wird dort je Freigabe aktiviert.</p>
     <Message v-if="error" severity="error" :closable="false" data-test="smb-error">{{ error }}</Message>
     <form v-if="loaded" class="grid" @submit.prevent="save">
@@ -67,12 +67,7 @@ async function save() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-}
-h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
 }
 .soft {
   margin: 0 0 14px;

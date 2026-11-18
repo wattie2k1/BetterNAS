@@ -9,6 +9,14 @@
   --bn-accent-1: #6366f1;
   --bn-accent-2: #22d3ee;
   --bn-accent-3: #e879f9;
+  --bn-radius-xs: 10px;
+
+  /* Status- und Terminalfarben: überall diese Tokens statt eigener Werte verwenden */
+  --bn-ok: #22c55e;
+  --bn-warn: #fb923c;
+  --bn-danger: #ef4444;
+  --bn-terminal-bg: #0b1020;
+  --bn-terminal-fg: #d6deeb;
 
   /* hell */
   --bn-wallpaper:
@@ -182,12 +190,12 @@ html .table-wrap td {
   border-bottom: 1px solid var(--bn-border-soft);
 }
 html .table-wrap th {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-weight: 600;
 }
 html .table-wrap .sub {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   margin-top: 0.15rem;
   overflow-wrap: anywhere;
 }
@@ -276,4 +284,48 @@ html .table-wrap td.actions > * {
   font-size: 0.9rem;
   color: #fff;
   background: linear-gradient(135deg, var(--bn-accent-1), var(--bn-accent-3));
+}
+
+/* Karte für Einstellungen und Formulare: Glas-Fläche mit einheitlichem Innenabstand */
+html .card {
+  background: var(--bn-glass);
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius);
+  box-shadow: var(--bn-shadow);
+  backdrop-filter: var(--bn-blur);
+  -webkit-backdrop-filter: var(--bn-blur);
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+html .stack > .card,
+html .profile > .card {
+  margin-bottom: 0;
+}
+html .card h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+/* Native Formularelemente sehen aus wie die PrimeVue-Eingaben */
+html input:not([class*='p-']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']),
+html select:not([class*='p-']),
+html textarea:not([class*='p-']) {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--bn-border);
+  border-radius: var(--bn-radius-sm);
+  background: var(--bn-input);
+  color: inherit;
+  font: inherit;
+}
+html input:not([class*='p-']):focus-visible,
+html select:not([class*='p-']):focus-visible,
+html textarea:not([class*='p-']):focus-visible {
+  outline: 2px solid var(--bn-accent-1);
+  outline-offset: 1px;
+}
+html input[type='checkbox'],
+html input[type='radio'] {
+  accent-color: var(--bn-accent-1);
 }

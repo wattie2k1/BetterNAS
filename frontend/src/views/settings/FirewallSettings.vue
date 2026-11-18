@@ -114,7 +114,7 @@ async function revert() {
 
 <template>
   <div class="card" data-test="settings-firewall">
-    <h3>Firewall</h3>
+    <h2>Firewall</h2>
     <Message v-if="error" severity="error" :closable="false" data-test="fw-error">{{ error }}</Message>
     <template v-if="status">
       <div v-if="status.pending" data-test="fw-pending">
@@ -169,12 +169,7 @@ async function revert() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 860px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .switch {
   display: flex;

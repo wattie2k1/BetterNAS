@@ -48,7 +48,7 @@ async function run(s: ServiceState, action: ServiceAction) {
   busy.value = s.unit
   try {
     await servicesApi.act(s.unit, action)
-    toast.add({ severity: 'success', summary: `${s.label} ${verbs[action]}`, life: 3000 })
+    toast.add({ severity: 'success', summary: `${s.label} ${verbs[action]}`, life: 4000 })
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   } finally {
@@ -61,7 +61,7 @@ async function run(s: ServiceState, action: ServiceAction) {
 
 <template>
   <div class="card" data-test="settings-services">
-    <h3>Dienste</h3>
+    <h2>Dienste</h2>
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <ul class="list">
       <li v-for="s in list" :key="s.unit" :data-test="`svc-${s.unit}`">
@@ -92,12 +92,7 @@ async function run(s: ServiceState, action: ServiceAction) {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .list {
   list-style: none;

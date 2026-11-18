@@ -116,7 +116,7 @@ function submit() {
   font: inherit;
   cursor: pointer;
   border: 1px solid var(--p-content-border-color);
-  border-radius: 10px;
+  border-radius: var(--bn-radius-xs);
   background: transparent;
 }
 .tpl:hover,
@@ -128,7 +128,7 @@ function submit() {
   color: var(--p-primary-color);
 }
 .tpl span {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.85rem;
 }
 .field {
@@ -145,9 +145,9 @@ function submit() {
   flex: 1;
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 </style>

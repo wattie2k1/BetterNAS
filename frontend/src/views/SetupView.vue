@@ -137,7 +137,7 @@ async function finish() {
 }
 .intro,
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .nav {
   display: flex;

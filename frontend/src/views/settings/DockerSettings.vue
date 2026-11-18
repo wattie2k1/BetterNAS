@@ -52,7 +52,7 @@ async function save() {
   try {
     await servicesApi.setDocker({ logMaxSize: logMaxSize.value.trim(), logMaxFile: logMaxFile.value, registryMirrors: lines(mirrors.value), liveRestore: liveRestore.value })
     needsRestart.value = true
-    toast.add({ severity: 'success', summary: 'Docker-Einstellungen gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Docker-Einstellungen gespeichert', life: 4000 })
     await load()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -66,7 +66,7 @@ async function restart() {
   try {
     await servicesApi.act('docker', 'restart')
     needsRestart.value = false
-    toast.add({ severity: 'success', summary: 'Docker neu gestartet', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Docker neu gestartet', life: 4000 })
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -78,7 +78,7 @@ async function restart() {
 
 <template>
   <div class="card" data-test="settings-docker">
-    <h3>Docker</h3>
+    <h2>Docker</h2>
     <Message v-if="error" severity="error" :closable="false" data-test="docker-error">{{ error }}</Message>
     <form v-if="loaded" class="grid" @submit.prevent="save">
       <label>Daten-Verzeichnis</label>
@@ -112,12 +112,7 @@ async function restart() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .grid {
   display: grid;

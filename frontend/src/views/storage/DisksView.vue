@@ -79,9 +79,9 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
 </script>
 
 <template>
-  <div class="toolbar" />
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
-  <div class="table-wrap">
+  <p v-if="!store.disks.length && !store.loading" class="empty">Keine Datenträger gefunden.</p>
+  <div v-else class="table-wrap">
     <table class="disks">
       <thead>
         <tr>
@@ -163,24 +163,9 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
 </template>
 
 <style scoped>
-.table-wrap {
-  overflow-x: auto;
-}
 .disks {
   width: 100%;
   border-collapse: collapse;
-}
-th,
-td {
-  text-align: left;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid var(--bn-border-soft);
-  vertical-align: top;
-}
-th {
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color);
-  font-weight: 600;
 }
 .name {
   display: flex;
@@ -189,22 +174,17 @@ th {
 }
 .sub {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   margin-top: 0.15rem;
 }
 .spin {
-  padding: 0.3rem 0.4rem;
-  border-radius: 8px;
-  border: 1px solid var(--bn-border);
-  background: var(--bn-glass);
-  color: inherit;
-  font: inherit;
+  padding: 0.3rem 0.5rem;
 }
 .standby {
   margin-left: 0.3rem;
 }
 .warn {
-  color: var(--p-orange-400);
+  color: var(--bn-warn);
 }
 .actions {
   display: flex;

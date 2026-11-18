@@ -52,10 +52,10 @@ const valid = computed(() => password.value !== '' && !tooShort.value && repeat.
   margin-top: 0.6rem;
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   margin-top: 0.6rem;
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 </style>

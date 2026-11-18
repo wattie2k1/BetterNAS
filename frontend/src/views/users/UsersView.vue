@@ -144,28 +144,13 @@ defineExpose({ openNew })
   align-items: center;
   gap: 0.75rem;
 }
-.table-wrap {
-  overflow-x: auto;
-}
 .users {
   width: 100%;
   border-collapse: collapse;
 }
-th,
-td {
-  text-align: left;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid var(--bn-border-soft);
-  vertical-align: top;
-}
-th {
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color);
-  font-weight: 600;
-}
 .sub {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   margin-top: 0.15rem;
 }
 .actions {

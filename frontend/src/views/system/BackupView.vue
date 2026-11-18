@@ -38,7 +38,7 @@ async function saveConfig() {
   try {
     await store.saveConfig({ enabled: form.value.enabled, time: form.value.time, keep: Number(form.value.keep) })
     form.value = { ...store.config }
-    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', life: 4000 })
   } catch (e) {
     error.value = msg(e)
   } finally {
@@ -55,7 +55,7 @@ async function create() {
   error.value = ''
   try {
     await store.create()
-    toast.add({ severity: 'success', summary: 'Sicherung angelegt', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Sicherung angelegt', life: 4000 })
   } catch (e) {
     error.value = msg(e)
   } finally {
@@ -128,8 +128,8 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
     Sie enthalten auch Zugangsdaten (z. B. für Mail und ntfy) – behandle sie vertraulich.
   </p>
 
-  <section class="cfg" data-test="backup-config">
-    <h3>Automatische Sicherung</h3>
+  <section class="card cfg" data-test="backup-config">
+    <h2>Automatische Sicherung</h2>
     <label class="check"><input v-model="form.enabled" type="checkbox" data-test="cfg-enabled" /> Täglich automatisch sichern</label>
     <div class="cfg-fields">
       <div class="field">
@@ -145,7 +145,7 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
     <Button label="Speichern" icon="pi pi-check" size="small" data-test="cfg-save" :loading="savingCfg" :disabled="!cfgDirty" @click="saveConfig" />
   </section>
 
-  <p v-if="!store.backups.length && !store.loading" class="sub">Noch keine Sicherung vorhanden.</p>
+  <p v-if="!store.backups.length && !store.loading" class="empty">Noch keine Sicherung vorhanden.</p>
   <div v-else class="table-wrap">
     <table class="backups">
       <thead>
@@ -207,33 +207,15 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
 .sub {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.85rem;
 }
-.table-wrap {
-  overflow-x: auto;
-}
 .cfg {
-  margin: 0 0 1.2rem;
-  padding: 1rem 1.2rem;
-  border: 1px solid var(--bn-border-soft);
-  border-radius: 12px;
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
   align-items: flex-start;
-}
-.cfg h3 {
-  margin: 0;
-  font-size: 1rem;
 }
 .cfg-fields {
   display: flex;
@@ -247,15 +229,7 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
 }
 .field label {
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
-}
-.field input {
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--bn-border);
-  background: var(--bn-glass);
-  color: inherit;
-  font: inherit;
+  color: var(--bn-text-soft);
 }
 .check {
   display: flex;
@@ -265,17 +239,6 @@ const countLabel = (c: Record<string, number>, key: string, one: string, many: s
 .backups {
   width: 100%;
   border-collapse: collapse;
-}
-th,
-td {
-  text-align: left;
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid var(--bn-border-soft);
-  vertical-align: top;
-}
-th {
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color);
 }
 .actions {
   display: flex;
@@ -298,11 +261,5 @@ th {
 }
 .confirm {
   width: 100%;
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--bn-border);
-  background: var(--bn-glass);
-  color: inherit;
-  font: inherit;
 }
 </style>

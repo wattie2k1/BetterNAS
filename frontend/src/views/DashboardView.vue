@@ -358,7 +358,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
   outline: 1px dashed var(--bn-border-soft);
 }
 .widget.crit {
-  border-color: rgb(239 68 68 / 55%);
+  border-color: color-mix(in srgb, var(--bn-danger) 55%, transparent);
 }
 .alert-list {
   list-style: none;
@@ -369,10 +369,10 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
 .alert-list li::before {
   content: '●';
   margin-right: 0.4rem;
-  color: var(--p-orange-400);
+  color: var(--bn-warn);
 }
 .alert-list li.crit::before {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 .widget.dragging {
   opacity: 0.45;
@@ -471,7 +471,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
   color: var(--bn-text-soft);
 }
 .fact.bad strong {
-  color: #f43f5e;
+  color: var(--bn-danger);
 }
 dl {
   display: grid;

@@ -91,7 +91,7 @@ async function save() {
   saving.value = true
   try {
     await vmsApi.configure(name, { vcpus: vcpus.value!, memoryMiB: ramMiB.value!, secureBoot: secureBoot.value, network: network.value, media: media.value, guestAgent: guestAgent.value })
-    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', detail: name, life: 3000 })
+    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', detail: name, life: 4000 })
     await load()
     void store.refresh()
   } catch (e) {
@@ -120,7 +120,7 @@ const back = () => router?.push('/vms')
     <span class="spacer" />
   </div>
   <Message v-if="error" severity="error" :closable="false" data-test="cfg-error">{{ error }}</Message>
-  <section v-if="cfg" class="glass card">
+  <section v-if="cfg" class="card">
     <header>
       <h2>{{ cfg.name }}</h2>
       <Tag :value="stateLabel[cfg.state] ?? cfg.state" :severity="cfg.state === 'running' ? 'success' : cfg.state === 'shutoff' ? 'secondary' : 'warn'" />
@@ -193,7 +193,6 @@ const back = () => router?.push('/vms')
   flex: 1;
 }
 .card {
-  padding: 20px 24px;
   max-width: 640px;
 }
 .card header {

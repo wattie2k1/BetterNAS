@@ -117,19 +117,19 @@ const labels = { connecting: 'Verbinde …', live: 'Live', ended: 'Beendet', err
   background: var(--p-content-hover-background);
 }
 .state.live {
-  color: var(--p-green-500);
+  color: var(--bn-ok);
 }
 .state.error {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 .logs {
   margin: 0;
   height: 460px;
   overflow: auto;
   padding: 0.75rem;
-  border-radius: 8px;
-  background: #0b1020;
-  color: #d6deeb;
+  border-radius: var(--bn-radius-xs);
+  background: var(--bn-terminal-bg);
+  color: var(--bn-terminal-fg);
   font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

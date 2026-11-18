@@ -102,7 +102,7 @@ async function submit(files: StackFiles, mode: SubmitMode) {
       return
     }
     showDialog.value = false
-    toast.add({ severity: 'success', summary: 'Stack gespeichert', detail: files.name, life: 3000 })
+    toast.add({ severity: 'success', summary: 'Stack gespeichert', detail: files.name, life: 4000 })
     busy.value = false
     if (mode === 'start') await run(files.name, 'up')
   } catch (e) {
@@ -179,13 +179,6 @@ async function remove() {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -199,7 +192,7 @@ async function remove() {
 }
 .sub,
 .empty {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.875rem;
 }
 .actions {

@@ -52,7 +52,7 @@ async function reset() {
 <template>
   <div data-test="settings-about">
     <div class="card">
-      <h3>Über BetterNAS</h3>
+      <h2>Über BetterNAS</h2>
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
       <dl v-if="info" class="facts" data-test="about-facts">
         <dt>Version</dt><dd>{{ info.version }}</dd>
@@ -65,7 +65,7 @@ async function reset() {
     </div>
 
     <div class="card danger">
-      <h3>Werkseinstellungen</h3>
+      <h2>Werkseinstellungen</h2>
       <Message v-if="done" severity="success" :closable="false" data-test="reset-done">
         Die Konfiguration wird zurückgesetzt. BetterNAS startet neu – du wirst gleich zur Anmeldung und zum Einrichtungsassistenten geleitet.
       </Message>
@@ -88,13 +88,7 @@ async function reset() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-  margin-bottom: 18px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .facts {
   display: grid;

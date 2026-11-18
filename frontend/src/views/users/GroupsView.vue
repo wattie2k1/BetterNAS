@@ -87,25 +87,11 @@ defineExpose({ openNew })
 
 <style scoped>
 .empty {
-  color: var(--p-text-muted-color);
-}
-.table-wrap {
-  overflow-x: auto;
+  color: var(--bn-text-soft);
 }
 .groups {
   width: 100%;
   border-collapse: collapse;
-}
-th,
-td {
-  text-align: left;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid var(--bn-border-soft);
-}
-th {
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color);
-  font-weight: 600;
 }
 .actions {
   display: flex;

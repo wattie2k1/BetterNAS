@@ -127,9 +127,9 @@ function submit() {
   margin-top: 1rem;
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 </style>

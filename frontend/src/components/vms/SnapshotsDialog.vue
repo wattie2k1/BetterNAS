@@ -50,7 +50,7 @@ async function run(fn: () => Promise<unknown>, ok: string) {
   error.value = ''
   try {
     await fn()
-    toast.add({ severity: 'success', summary: ok, detail: props.name ?? '', life: 3000 })
+    toast.add({ severity: 'success', summary: ok, detail: props.name ?? '', life: 4000 })
     confirmRevert.value = confirmDelete.value = null
     await load()
   } catch (e) {
@@ -119,7 +119,7 @@ const remove = (s: string) => run(() => vmsApi.snapshotDelete(props.name!, s), '
   flex: 1;
 }
 .err {
-  color: var(--p-red-500, #ef4444);
+  color: var(--bn-danger);
 }
 .empty {
   color: var(--bn-text-soft);

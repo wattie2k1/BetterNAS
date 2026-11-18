@@ -79,7 +79,7 @@ async function run(fn: () => Promise<unknown>, ok: string, detail: string) {
   busy.value = true
   try {
     await fn()
-    toast.add({ severity: 'success', summary: ok, detail, life: 3000 })
+    toast.add({ severity: 'success', summary: ok, detail, life: 4000 })
   } catch (e) {
     fail(e)
   } finally {
@@ -112,7 +112,7 @@ async function submitYaml(files: StackFiles, mode: SubmitMode) {
       return
     }
     showYaml.value = false
-    toast.add({ severity: 'success', summary: 'Stack gespeichert', detail: files.name, life: 3000 })
+    toast.add({ severity: 'success', summary: 'Stack gespeichert', detail: files.name, life: 4000 })
     if (mode === 'start') await docker.run(files.name, 'up')
   } catch (e) {
     fail(e)

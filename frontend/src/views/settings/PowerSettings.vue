@@ -44,7 +44,7 @@ async function run() {
 
 <template>
   <div class="card" data-test="settings-power">
-    <h3>Energie</h3>
+    <h2>Energie</h2>
     <Message v-if="done" severity="success" :closable="false" data-test="power-done">{{ done }}</Message>
     <p class="soft">Laufende virtuelle Maschinen und Docker-Container werden beim Neustart oder Herunterfahren vom System beendet. Aktive Dateiübertragungen brechen ab.</p>
     <div class="actions">
@@ -65,12 +65,7 @@ async function run() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .soft {
   margin: 0 0 14px;

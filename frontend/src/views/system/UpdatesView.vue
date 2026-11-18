@@ -169,15 +169,8 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
 .sub {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .channel {
   display: flex;
@@ -202,28 +195,15 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
   border-radius: var(--bn-radius);
   background: linear-gradient(135deg, rgb(16 185 129 / 18%), rgb(34 211 238 / 12%));
   border: 1px solid rgb(16 185 129 / 35%);
-  color: var(--p-green-500);
+  color: var(--bn-ok);
   font-weight: 650;
 }
 .ok i {
   font-size: 1.5rem;
 }
-.table-wrap {
-  overflow-x: auto;
-}
 .pkgs {
   width: 100%;
   border-collapse: collapse;
-}
-th,
-td {
-  text-align: left;
-  padding: 0.5rem 0.9rem;
-  border-bottom: 1px solid var(--bn-border-soft);
-}
-th {
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color);
 }
 .log-card {
   margin-top: 1rem;
@@ -240,7 +220,7 @@ th {
   gap: 0.6rem;
   padding: 0.55rem 0.9rem;
   border-bottom: 1px solid var(--bn-border-soft);
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .log-title {
   font-weight: 650;
@@ -259,7 +239,7 @@ th {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: #d6deeb;
-  background: #0d1117;
+  color: var(--bn-terminal-fg);
+  background: var(--bn-terminal-bg);
 }
 </style>

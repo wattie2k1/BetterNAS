@@ -53,7 +53,7 @@ onBeforeUnmount(() => {
 .yaml-editor {
   height: 360px;
   border: 1px solid var(--p-content-border-color);
-  border-radius: 8px;
+  border-radius: var(--bn-radius-xs);
   overflow: hidden;
 }
 </style>

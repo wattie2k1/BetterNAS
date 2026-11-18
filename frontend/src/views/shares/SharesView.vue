@@ -143,11 +143,6 @@ const smbUrl = (s: ShareView) => {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
-}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -161,7 +156,7 @@ const smbUrl = (s: ShareView) => {
 }
 .sub,
 .empty {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
   font-size: 0.875rem;
 }
 .tags {

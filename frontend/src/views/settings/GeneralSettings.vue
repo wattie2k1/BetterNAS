@@ -59,7 +59,7 @@ async function save() {
   try {
     await systemApi.update(change)
     renamed.value = change.hostname ? String(change.hostname) : ''
-    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', life: 3000 })
+    toast.add({ severity: 'success', summary: 'Einstellungen gespeichert', life: 4000 })
     fill(await systemApi.settings())
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -71,7 +71,7 @@ async function save() {
 
 <template>
   <div class="card" data-test="settings-general">
-    <h3>Allgemein</h3>
+    <h2>Allgemein</h2>
     <Message v-if="error" severity="error" :closable="false" data-test="general-error">{{ error }}</Message>
     <Message v-if="renamed" severity="warn" :closable="false" data-test="general-renamed">
       Der NAS heißt jetzt <strong>{{ renamed }}</strong> und ist unter <strong>https://{{ renamed }}.local</strong> erreichbar. Erzeuge unter „Webzugriff“ ein neues Zertifikat, damit der Name darin steht.
@@ -96,12 +96,7 @@ async function save() {
 
 <style scoped>
 .card {
-  padding: 20px 22px;
   max-width: 760px;
-}
-h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
 }
 .grid {
   display: grid;

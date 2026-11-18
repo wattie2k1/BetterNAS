@@ -87,7 +87,7 @@ const groups = [
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: 12px;
+  border-radius: var(--bn-radius-xs);
   color: var(--p-text-color);
   text-decoration: none;
 }

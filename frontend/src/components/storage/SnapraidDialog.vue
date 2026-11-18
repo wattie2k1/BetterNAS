@@ -153,6 +153,6 @@ function submit() {
   align-items: center;
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 </style>

@@ -43,7 +43,7 @@ async function changePassword() {
 
 <template>
   <div class="profile">
-    <section class="card glass">
+    <section class="card">
       <h2>Account</h2>
       <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
       <dl>
@@ -67,7 +67,7 @@ async function changePassword() {
     </Message>
     <TotpCard @changed="auth.fetchMe()" />
 
-    <section class="card glass">
+    <section class="card">
       <h2>Passwort ändern</h2>
       <form class="form" @submit.prevent="changePassword">
         <label for="profile-pw">Neues Passwort</label>
@@ -88,14 +88,6 @@ async function changePassword() {
   display: grid;
   gap: 1rem;
   max-width: 640px;
-}
-.card {
-  padding: 1.2rem 1.4rem;
-  border-radius: 16px;
-}
-h2 {
-  margin: 0 0 0.8rem;
-  font-size: 1.1rem;
 }
 dl {
   display: grid;
@@ -128,9 +120,9 @@ dd {
   margin-top: 0.8rem;
 }
 .hint {
-  color: var(--p-text-muted-color);
+  color: var(--bn-text-soft);
 }
 .err {
-  color: var(--p-red-500);
+  color: var(--bn-danger);
 }
 </style>
