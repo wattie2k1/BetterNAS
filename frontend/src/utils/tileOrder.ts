@@ -30,7 +30,7 @@ export function shiftTile(order: readonly string[], visible: readonly string[], 
 }
 
 /** Kachelreihenfolge, die im Browser (localStorage) pro Schlüssel gemerkt wird. */
-export function useTileOrder(key: () => string, defaults: readonly string[]) {
+export function useTileOrder(key: () => string, defaults: readonly string[] | (() => readonly string[])) {
   const read = (): unknown => {
     try {
       return JSON.parse(localStorage.getItem(key()) ?? 'null')
@@ -39,7 +39,7 @@ export function useTileOrder(key: () => string, defaults: readonly string[]) {
     }
   }
   const stored = ref<unknown>(read())
-  const order = computed(() => mergeOrder(stored.value, defaults))
+  const order = computed(() => mergeOrder(stored.value, typeof defaults === 'function' ? defaults() : defaults))
 
   function set(next: string[]) {
     stored.value = next

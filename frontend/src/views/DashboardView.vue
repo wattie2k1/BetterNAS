@@ -122,8 +122,17 @@ const visibleTiles = computed(() =>
 const alertsCrit = computed(() => notifications.alerts.some((a) => a.level === 'crit'))
 const customOrder = computed(() => tiles.order.value.join() !== TILES.join())
 const dragging = ref<string | null>(null)
+/** Verschieben ist nur im Bearbeiten-Modus möglich. */
+const editing = ref(false)
+const quick = ref<{ reset: () => void; isCustom: boolean } | null>(null)
+const anyCustom = computed(() => customOrder.value || !!quick.value?.isCustom)
+function resetAll() {
+  tiles.reset()
+  quick.value?.reset()
+}
 
 function onDragStart(e: DragEvent, id: string) {
+  if (!editing.value) return
   dragging.value = id
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
@@ -131,12 +140,12 @@ function onDragStart(e: DragEvent, id: string) {
   }
 }
 function onDrop(target: string) {
-  if (dragging.value) tiles.set(moveTile(tiles.order.value, dragging.value, target))
+  if (editing.value && dragging.value) tiles.set(moveTile(tiles.order.value, dragging.value, target))
   dragging.value = null
 }
 function onHandleKey(e: KeyboardEvent, id: string) {
   const delta = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 0
-  if (!delta) return
+  if (!editing.value || !delta) return
   e.preventDefault()
   tiles.set(shiftTile(tiles.order.value, visibleTiles.value, id, delta))
   // Fokus bleibt am verschobenen Griff, auch wenn Vue das Element neu einsetzt.
@@ -151,25 +160,30 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
 
 <template>
   <section class="hero">
-    <h2>{{ greeting }}</h2>
-    <p class="page-sub">
-      <template v-if="info">{{ info.hostname }} läuft seit {{ formatUptime(info.uptimeSeconds) }} · BetterNAS {{ info.version }}</template>
-      <template v-else>Verbinde …</template>
-    </p>
+    <div>
+      <h2>{{ greeting }}</h2>
+      <p class="page-sub">
+        <template v-if="info">{{ info.hostname }} läuft seit {{ formatUptime(info.uptimeSeconds) }} · BetterNAS {{ info.version }}</template>
+        <template v-else>Verbinde …</template>
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button v-if="editing && anyCustom" type="button" class="edit-btn" data-test="tiles-reset" @click="resetAll"><i class="pi pi-undo" /> Anordnung zurücksetzen</button>
+      <button type="button" class="edit-btn" :class="{ on: editing }" data-test="edit-toggle" :aria-pressed="editing" @click="editing = !editing">
+        <i :class="editing ? 'pi pi-check' : 'pi pi-pencil'" /> {{ editing ? 'Fertig' : 'Anordnen' }}
+      </button>
+    </div>
   </section>
   <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-  <div v-if="customOrder" class="reset">
-    <button type="button" data-test="tiles-reset" @click="tiles.reset()"><i class="pi pi-undo" /> Anordnung zurücksetzen</button>
-  </div>
   <div class="widgets">
     <article
       v-for="id in visibleTiles"
       :key="id"
       class="widget glass"
-      :class="{ storage: id === 'storage', dragging: dragging === id, crit: id === 'alerts' && alertsCrit }"
+      :class="{ storage: id === 'storage', dragging: dragging === id, editing, crit: id === 'alerts' && alertsCrit }"
       :data-test="`tile-${id}`"
-      draggable="true"
+      :draggable="editing"
       @dragstart="onDragStart($event, id)"
       @dragend="dragging = null"
       @dragover.prevent
@@ -179,6 +193,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
         <i :class="tileMeta[id].icon" />
         <span>{{ tileMeta[id].title }}</span>
         <button
+          v-if="editing"
           type="button"
           class="handle"
           :aria-label="`Kachel ${tileMeta[id].title} verschieben (Pfeiltasten)`"
@@ -275,10 +290,42 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
     </article>
   </div>
 
-  <QuickTiles />
+  <QuickTiles ref="quick" :editing="editing" />
 </template>
 
 <style scoped>
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.hero-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.edit-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--bn-text-soft);
+  background: var(--bn-border-soft);
+}
+.edit-btn:hover,
+.edit-btn.on {
+  color: var(--p-text-color);
+  background: var(--bn-tile-hover);
+}
+.edit-btn:focus-visible {
+  outline: 2px solid var(--bn-accent-1);
+}
 .hero h2 {
   margin: 0;
   font-size: 1.5rem;
@@ -294,7 +341,10 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
 }
 .widget {
   padding: 20px 22px;
+}
+.widget.editing {
   cursor: grab;
+  outline: 1px dashed var(--bn-border-soft);
 }
 .widget.crit {
   border-color: rgb(239 68 68 / 55%);
@@ -328,29 +378,9 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
   place-items: center;
   border-radius: 50%;
   cursor: grab;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-.widget:hover .handle,
-.handle:focus-visible {
-  opacity: 1;
 }
 .handle:focus-visible {
   outline: 2px solid var(--bn-accent-1);
-}
-.reset {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
-}
-.reset button {
-  all: unset;
-  cursor: pointer;
-  font-size: 0.8rem;
-  color: var(--bn-text-soft);
-}
-.reset button:hover {
-  color: var(--p-text-color);
 }
 .model {
   margin-top: 12px;

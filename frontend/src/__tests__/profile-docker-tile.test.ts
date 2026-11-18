@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
@@ -89,5 +89,71 @@ describe('QuickTiles', () => {
     expect(w.find('[data-test="quick-container-menu-web"]').exists()).toBe(true)
     expect(w.find('[data-test="quick-vm-menu-win11"]').exists()).toBe(true)
     expect(w.find('[data-test="quick-vm-open-win11"]').element.tagName).toBe('DIV')
+  })
+})
+
+describe('QuickTiles: sortieren', () => {
+  const containers = [
+    { id: 'a', name: 'web', image: 'nginx', state: 'running', status: 'Up', stack: 's', ports: ['0.0.0.0:8080->80/tcp'], created: '' },
+    { id: 'b', name: 'db', image: 'pg', state: 'running', status: 'Up', stack: 's', ports: [], created: '' },
+  ]
+  const vms = [{ name: 'win11', uuid: 'u1', state: 'shutoff', vcpus: 2, memoryMiB: 4096, autostart: false, disks: [] }]
+  async function mountTiles(editing: boolean) {
+    const { default: QuickTiles } = await import('@/components/QuickTiles.vue')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const body = url.includes('/docker/status')
+          ? { installed: true, active: true, version: '27' }
+          : url.includes('/vms/status')
+            ? { installed: true, active: true, kvm: true }
+            : url.includes('/containers')
+              ? containers
+              : url.includes('/vms')
+                ? vms
+                : []
+        return new Response(JSON.stringify(body), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().user = 'anna'
+    const w = mount(QuickTiles, { props: { editing }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    await flushPromises()
+    return w
+  }
+  const order = (w: Awaited<ReturnType<typeof mountTiles>>) => w.findAll('[data-test^="quick-container-"].app, [data-test^="quick-vm-"].app').map((e) => e.attributes('data-test')!.replace('quick-', ''))
+  const drag = async (w: Awaited<ReturnType<typeof mountTiles>>, from: string, to: string) => {
+    await w.find(`[data-test="quick-${from}"]`).trigger('dragstart', { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    await w.find(`[data-test="quick-${to}"]`).trigger('drop')
+  }
+  beforeEach(() => localStorage.clear())
+
+  it('ist ohne Bearbeiten-Modus nicht verschiebbar', async () => {
+    const w = await mountTiles(false)
+    expect(order(w)).toEqual(['container-db', 'container-web', 'vm-win11'])
+    expect(w.find('[data-test="quick-container-web"]').attributes('draggable')).toBe('false')
+    expect(w.find('[data-test="quick-handle-container-web"]').exists()).toBe(false)
+    await drag(w, 'vm-win11', 'container-db')
+    expect(order(w)).toEqual(['container-db', 'container-web', 'vm-win11'])
+    expect(localStorage.getItem('bn-quicktiles:anna')).toBeNull()
+  })
+
+  it('ordnet im Bearbeiten-Modus per Ziehen und Pfeiltasten um und merkt es sich', async () => {
+    const w = await mountTiles(true)
+    expect(w.find('[data-test="quick-container-web"]').attributes('draggable')).toBe('true')
+    await drag(w, 'vm-win11', 'container-db')
+    expect(order(w)).toEqual(['vm-win11', 'container-db', 'container-web'])
+    await w.find('[data-test="quick-handle-container-web"]').trigger('keydown', { key: 'ArrowLeft' })
+    expect(order(w)).toEqual(['vm-win11', 'container-web', 'container-db'])
+    expect(JSON.parse(localStorage.getItem('bn-quicktiles:anna')!)).toEqual(['v:win11', 'c:web', 'c:db'])
+    w.unmount()
+
+    const w2 = await mountTiles(false)
+    expect(order(w2)).toEqual(['vm-win11', 'container-web', 'container-db'])
+    ;(w2.vm as unknown as { reset: () => void }).reset()
+    await flushPromises()
+    expect(order(w2)).toEqual(['container-db', 'container-web', 'vm-win11'])
+    expect(localStorage.getItem('bn-quicktiles:anna')).toBeNull()
   })
 })

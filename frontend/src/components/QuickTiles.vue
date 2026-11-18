@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import Menu from 'primevue/menu'
 import { useToast } from 'primevue/usetoast'
 import ConsoleDialog from '@/components/vms/ConsoleDialog.vue'
 import LogsDialog from '@/components/docker/LogsDialog.vue'
 import StackDialog, { type SubmitMode } from '@/components/docker/StackDialog.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useDockerStore } from '@/stores/docker'
 import { useVmsStore } from '@/stores/vms'
 import type { ContainerAction, ContainerInfo, StackCheck, StackFiles } from '@/api/docker'
 import type { VmAction, VmInfo } from '@/api/vms'
+import { moveTile, shiftTile, useTileOrder } from '@/utils/tileOrder'
 
+/** Im Bearbeiten-Modus lassen sich die Kacheln verschieben; sonst sind sie nur Verknüpfungen. */
+const props = withDefaults(defineProps<{ editing?: boolean }>(), { editing: false })
+
+const auth = useAuthStore()
 const docker = useDockerStore()
 const vms = useVmsStore()
 const toast = useToast()
@@ -24,6 +30,41 @@ const check = ref<StackCheck | null>(null)
 
 const containers = computed(() => [...docker.containers].sort((a, b) => Number(b.state === 'running') - Number(a.state === 'running') || a.name.localeCompare(b.name)))
 const machines = computed(() => [...vms.vms].sort((a, b) => Number(b.state === 'running') - Number(a.state === 'running') || a.name.localeCompare(b.name)))
+// --- Reihenfolge: Standard = laufende zuerst, dann nach Name; eigene Anordnung wird im Browser gemerkt ---
+type Entry = { id: string; kind: 'c'; item: ContainerInfo } | { id: string; kind: 'v'; item: VmInfo }
+const defaultIds = computed(() => [...containers.value.map((c) => `c:${c.name}`), ...machines.value.map((v) => `v:${v.name}`)])
+const tileOrder = useTileOrder(() => `bn-quicktiles:${auth.user ?? ''}`, () => defaultIds.value)
+const entries = computed<Entry[]>(() => {
+  const byId = new Map<string, Entry>()
+  for (const c of containers.value) byId.set(`c:${c.name}`, { id: `c:${c.name}`, kind: 'c', item: c })
+  for (const v of machines.value) byId.set(`v:${v.name}`, { id: `v:${v.name}`, kind: 'v', item: v })
+  return tileOrder.order.value.flatMap((id) => byId.get(id) ?? [])
+})
+const isCustom = computed(() => tileOrder.order.value.join() !== defaultIds.value.join())
+const dragging = ref<string | null>(null)
+const slug = (id: string) => (id.startsWith('c:') ? `container-${id.slice(2)}` : `vm-${id.slice(2)}`)
+
+function onDragStart(e: DragEvent, id: string) {
+  if (!props.editing) return
+  dragging.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+function onDrop(target: string) {
+  if (props.editing && dragging.value) tileOrder.set(moveTile(tileOrder.order.value, dragging.value, target))
+  dragging.value = null
+}
+function onHandleKey(e: KeyboardEvent, id: string) {
+  const delta = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 0
+  if (!props.editing || !delta) return
+  e.preventDefault()
+  tileOrder.set(shiftTile(tileOrder.order.value, entries.value.map((x) => x.id), id, delta))
+  void nextTick(() => (document.querySelector(`[data-test="quick-handle-${slug(id)}"]`) as HTMLElement | null)?.focus())
+}
+defineExpose({ reset: () => tileOrder.reset(), isCustom })
+
 const stackNames = computed(() => docker.stacks.map((s) => s.name))
 
 onMounted(() => {
@@ -129,46 +170,74 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   <template v-if="containers.length || machines.length">
     <h3 class="section">Container &amp; virtuelle Maschinen</h3>
     <div class="apps" data-test="quick-tiles">
-      <div v-for="c in containers" :key="`c-${c.id}`" class="app glass has-menu" :data-test="`quick-container-${c.name}`">
-        <component
-          :is="containerUrl(c) ? 'a' : 'div'"
-          class="app-main"
-          :class="{ link: containerUrl(c) }"
-          :href="containerUrl(c) ?? undefined"
-          :target="containerUrl(c) ? '_blank' : undefined"
-          :rel="containerUrl(c) ? 'noopener noreferrer' : undefined"
-          :data-test="`quick-container-open-${c.name}`"
+      <template v-for="e in entries" :key="e.id">
+        <div
+          v-if="e.kind === 'c'"
+          class="app glass has-menu"
+          :class="{ editing, dragging: dragging === e.id }"
+          :data-test="`quick-container-${e.item.name}`"
+          :draggable="editing"
+          @dragstart="onDragStart($event, e.id)"
+          @dragend="dragging = null"
+          @dragover.prevent
+          @drop.prevent="onDrop(e.id)"
         >
-          <span class="app-icon" :class="{ off: c.state !== 'running' }" :style="c.state === 'running' ? { background: 'linear-gradient(135deg, #2563eb, #60a5fa)' } : {}"><i class="pi pi-box" /></span>
-          <span class="app-text">
-            <strong>{{ c.name }}</strong>
-            <small>{{ c.state === 'running' ? 'running' : 'stopped' }}<template v-if="c.status"> · {{ c.status }}</template></small>
-          </span>
-        </component>
-        <button type="button" class="dots" :data-test="`quick-container-menu-${c.name}`" :aria-label="`Container ${c.name}: Aktionen`" @click="openContainer($event, c)">
-          <i class="pi pi-ellipsis-h" />
-        </button>
-      </div>
-      <div v-for="v in machines" :key="`v-${v.uuid}`" class="app glass has-menu" :data-test="`quick-vm-${v.name}`">
-        <component
-          :is="canConsole(v) ? 'button' : 'div'"
-          class="app-main"
-          :class="{ link: canConsole(v) }"
-          :type="canConsole(v) ? 'button' : undefined"
-          :title="canConsole(v) ? 'Konsole öffnen' : undefined"
-          :data-test="`quick-vm-open-${v.name}`"
-          @click="canConsole(v) && (consoleFor = v.name)"
+          <component
+            :is="containerUrl(e.item) ? 'a' : 'div'"
+            class="app-main"
+            :class="{ link: containerUrl(e.item) }"
+            :href="containerUrl(e.item) ?? undefined"
+            :target="containerUrl(e.item) ? '_blank' : undefined"
+            :rel="containerUrl(e.item) ? 'noopener noreferrer' : undefined"
+            :data-test="`quick-container-open-${e.item.name}`"
+          >
+            <span class="app-icon" :class="{ off: e.item.state !== 'running' }" :style="e.item.state === 'running' ? { background: 'linear-gradient(135deg, #2563eb, #60a5fa)' } : {}"><i class="pi pi-box" /></span>
+            <span class="app-text">
+              <strong>{{ e.item.name }}</strong>
+              <small>{{ e.item.state === 'running' ? 'running' : 'stopped' }}<template v-if="e.item.status"> · {{ e.item.status }}</template></small>
+            </span>
+          </component>
+          <button v-if="!editing" type="button" class="dots" :data-test="`quick-container-menu-${e.item.name}`" :aria-label="`Container ${e.item.name}: Aktionen`" @click="openContainer($event, e.item)">
+            <i class="pi pi-ellipsis-h" />
+          </button>
+          <button v-else type="button" class="handle" :data-test="`quick-handle-${slug(e.id)}`" :aria-label="`Kachel ${e.item.name} verschieben (Pfeiltasten)`" title="Ziehen oder mit den Pfeiltasten verschieben" @keydown="onHandleKey($event, e.id)">
+            <i class="pi pi-arrows-alt" />
+          </button>
+        </div>
+        <div
+          v-else
+          class="app glass has-menu"
+          :class="{ editing, dragging: dragging === e.id }"
+          :data-test="`quick-vm-${e.item.name}`"
+          :draggable="editing"
+          @dragstart="onDragStart($event, e.id)"
+          @dragend="dragging = null"
+          @dragover.prevent
+          @drop.prevent="onDrop(e.id)"
         >
-          <span class="app-icon" :class="{ off: v.state !== 'running' }" :style="v.state === 'running' ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}"><i class="pi pi-desktop" /></span>
-          <span class="app-text">
-            <strong>{{ v.name }}</strong>
-            <small>VM · {{ vmLabel[v.state] ?? v.state }}</small>
-          </span>
-        </component>
-        <button type="button" class="dots" :data-test="`quick-vm-menu-${v.name}`" :aria-label="`VM ${v.name}: Aktionen`" @click="openVm($event, v)">
-          <i class="pi pi-ellipsis-h" />
-        </button>
-      </div>
+          <component
+            :is="canConsole(e.item) ? 'button' : 'div'"
+            class="app-main"
+            :class="{ link: canConsole(e.item) }"
+            :type="canConsole(e.item) ? 'button' : undefined"
+            :title="canConsole(e.item) ? 'Konsole öffnen' : undefined"
+            :data-test="`quick-vm-open-${e.item.name}`"
+            @click="canConsole(e.item) && (consoleFor = e.item.name)"
+          >
+            <span class="app-icon" :class="{ off: e.item.state !== 'running' }" :style="e.item.state === 'running' ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}"><i class="pi pi-desktop" /></span>
+            <span class="app-text">
+              <strong>{{ e.item.name }}</strong>
+              <small>VM · {{ vmLabel[e.item.state] ?? e.item.state }}</small>
+            </span>
+          </component>
+          <button v-if="!editing" type="button" class="dots" :data-test="`quick-vm-menu-${e.item.name}`" :aria-label="`VM ${e.item.name}: Aktionen`" @click="openVm($event, e.item)">
+            <i class="pi pi-ellipsis-h" />
+          </button>
+          <button v-else type="button" class="handle" :data-test="`quick-handle-${slug(e.id)}`" :aria-label="`Kachel ${e.item.name} verschieben (Pfeiltasten)`" title="Ziehen oder mit den Pfeiltasten verschieben" @keydown="onHandleKey($event, e.id)">
+            <i class="pi pi-arrows-alt" />
+          </button>
+        </div>
+      </template>
     </div>
   </template>
   <Menu ref="menu" :model="items" popup append-to="body" />
@@ -247,6 +316,32 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   background: var(--bn-tile-hover);
   color: var(--p-text-color);
   outline: none;
+}
+.app.editing {
+  cursor: grab;
+}
+.app.editing .app-main {
+  pointer-events: none; /* im Bearbeiten-Modus keine Links/Konsole, damit sich die Kachel greifen lässt */
+}
+.app.dragging {
+  opacity: 0.45;
+}
+.handle {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bn-tile-hover);
+  color: var(--p-text-color);
+  cursor: grab;
+}
+.handle:focus-visible {
+  outline: 2px solid var(--bn-accent-1);
 }
 .app:hover {
   transform: translateY(-3px);

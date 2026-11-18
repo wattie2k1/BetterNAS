@@ -29,6 +29,7 @@ function mountDash() {
   useAuthStore().user = 'anna'
   return mount(DashboardView, { global: { plugins: [pinia, PrimeVue, ToastService], stubs: { RouterLink: true } } })
 }
+const edit = (w: ReturnType<typeof mountDash>) => w.find('[data-test="edit-toggle"]').trigger('click')
 const ids = (w: ReturnType<typeof mountDash>) => w.findAll('article.widget').map((a) => a.attributes('data-test')!.replace('tile-', ''))
 
 beforeEach(() => localStorage.clear())
@@ -111,10 +112,35 @@ describe('Dashboard: Kacheln sortieren', () => {
     w.unmount()
   })
 
+  it('erlaubt das Verschieben nur im Bearbeiten-Modus', async () => {
+    stubFetch([info(1, 1)])
+    const w = mountDash()
+    await flushPromises()
+    expect(w.find('[data-test="tile-cpu"]').attributes('draggable')).toBe('false')
+    expect(w.find('[data-test="tile-cpu"] .handle').exists()).toBe(false)
+    await dragTo(w, 'system', 'storage') // ohne Modus wirkungslos
+    expect(ids(w)).toEqual(['storage', 'cpu', 'memory', 'disks', 'docker', 'system'])
+    expect(localStorage.getItem('bn-dashboard-tiles:anna')).toBeNull()
+
+    await edit(w)
+    expect(w.find('[data-test="edit-toggle"]').text()).toContain('Fertig')
+    expect(w.find('[data-test="tile-cpu"]').attributes('draggable')).toBe('true')
+    expect(w.find('[data-test="tile-cpu"] .handle').exists()).toBe(true)
+    await dragTo(w, 'system', 'storage')
+    expect(ids(w)[0]).toBe('system')
+
+    await edit(w) // Fertig
+    expect(w.find('[data-test="tile-cpu"]').attributes('draggable')).toBe('false')
+    expect(w.find('[data-test="tile-cpu"] .handle').exists()).toBe(false)
+    expect(w.find('[data-test="tiles-reset"]').exists()).toBe(false)
+    w.unmount()
+  })
+
   it('ordnet per Ziehen um, merkt es sich pro Benutzer und setzt zurück', async () => {
     stubFetch([info(1, 1)])
     const w = mountDash()
     await flushPromises()
+    await edit(w)
     await dragTo(w, 'system', 'storage')
     expect(ids(w)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks', 'docker'])
     expect(JSON.parse(localStorage.getItem('bn-dashboard-tiles:anna')!)).toContain('system')
@@ -123,6 +149,7 @@ describe('Dashboard: Kacheln sortieren', () => {
     const w2 = mountDash()
     await flushPromises()
     expect(ids(w2)).toEqual(['system', 'storage', 'cpu', 'memory', 'disks', 'docker'])
+    await edit(w2)
     await w2.find('[data-test="tiles-reset"]').trigger('click')
     expect(ids(w2)).toEqual(['storage', 'cpu', 'memory', 'disks', 'docker', 'system'])
     expect(localStorage.getItem('bn-dashboard-tiles:anna')).toBeNull()
@@ -133,6 +160,7 @@ describe('Dashboard: Kacheln sortieren', () => {
     stubFetch([info(1, 1)])
     const w = mountDash()
     await flushPromises()
+    await edit(w)
     await w.find('[data-test="tile-cpu"] .handle').trigger('keydown', { key: 'ArrowLeft' })
     expect(ids(w)).toEqual(['cpu', 'storage', 'memory', 'disks', 'docker', 'system'])
     await w.find('[data-test="tile-cpu"] .handle').trigger('keydown', { key: 'ArrowLeft' }) // schon ganz vorn
