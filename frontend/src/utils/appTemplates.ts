@@ -528,6 +528,168 @@ volumes:
       - \${DATA_DIR}:/data
 `,
   },
+  {
+    id: 'prowlarr',
+    title: 'Prowlarr',
+    description: 'Indexer-Verwaltung für alle *arr-Apps. Die Apps verbindest du in den Einstellungen mit URL und API-Key.',
+    icon: 'pi pi-search',
+    category: '*arr und Wunschliste',
+    stack: 'prowlarr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '9696' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      ...idFields,
+    ],
+    compose: `services:
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:9696"
+    volumes:
+      - \${CONFIG_DIR}:/config
+`,
+  },
+  {
+    id: 'radarr',
+    title: 'Radarr',
+    description: 'Filmverwaltung der *arr-Suite. Nutzt denselben Datenordner wie der Download-Client, damit Dateien nicht kopiert werden.',
+    icon: 'pi pi-video',
+    category: '*arr und Wunschliste',
+    stack: 'radarr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '7878' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:7878"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'sonarr',
+    title: 'Sonarr',
+    description: 'Serienverwaltung der *arr-Suite. Nutzt denselben Datenordner wie der Download-Client, damit Dateien nicht kopiert werden.',
+    icon: 'pi pi-desktop',
+    category: '*arr und Wunschliste',
+    stack: 'sonarr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8989' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8989"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'lidarr',
+    title: 'Lidarr',
+    description: 'Musikverwaltung der *arr-Suite. Nutzt denselben Datenordner wie der Download-Client, damit Dateien nicht kopiert werden.',
+    icon: 'pi pi-headphones',
+    category: '*arr und Wunschliste',
+    stack: 'lidarr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8686' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8686"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'bazarr',
+    title: 'Bazarr',
+    description: 'Untertitel für Radarr und Sonarr, ergänzt die *arr-Suite.',
+    icon: 'pi pi-comments',
+    category: '*arr und Wunschliste',
+    stack: 'bazarr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '6767' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      dataField,
+      ...idFields,
+    ],
+    compose: `services:
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:6767"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'seerr',
+    title: 'Seerr',
+    description: 'Wunschliste für Filme und Serien: Nutzer bitten um Titel, Radarr und Sonarr besorgen sie.',
+    icon: 'pi pi-star',
+    category: '*arr und Wunschliste',
+    stack: 'seerr',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '5055' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config'), hint: 'Seerr läuft als Benutzer 1000. Der Ordner muss ihm gehören (chown 1000:1000), sonst startet der Dienst nicht.' },
+    ],
+    compose: `services:
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:5055"
+    volumes:
+      - \${CONFIG_DIR}:/app/config
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */

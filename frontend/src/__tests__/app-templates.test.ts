@@ -210,3 +210,28 @@ describe('Downloader-Vorlagen', () => {
     expect(env).toContain('TORRENT_PORT=6881\n')
   })
 })
+
+describe('*arr-Vorlagen', () => {
+  const cases: [string, string, string, boolean][] = [
+    ['prowlarr', '9696', '${PORT}:9696', false],
+    ['radarr', '7878', '${PORT}:7878', true],
+    ['sonarr', '8989', '${PORT}:8989', true],
+    ['lidarr', '8686', '${PORT}:8686', true],
+    ['bazarr', '6767', '${PORT}:6767', true],
+    ['seerr', '5055', '${PORT}:5055', false],
+  ]
+  for (const [id, port, line, data] of cases) {
+    it(`rendert ${id}`, () => {
+      const { t, files, env } = tpl(id)
+      expect(t.category).toBe('*arr und Wunschliste')
+      expect(files.compose).toContain(line)
+      expect(env).toContain(`PORT=${port}\n`)
+      expect(files.compose.includes('${DATA_DIR}:/data')).toBe(data)
+    })
+  }
+
+  it('die Suche nach arr findet Prowlarr, Radarr, Sonarr, Lidarr und Bazarr', () => {
+    const ids = groupTemplates(APP_TEMPLATES, 'arr').flatMap((g) => g.items.map((t) => t.id))
+    for (const id of ['prowlarr', 'radarr', 'sonarr', 'lidarr', 'bazarr']) expect(ids).toContain(id)
+  })
+})
