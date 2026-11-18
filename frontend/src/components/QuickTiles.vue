@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import Menu from 'primevue/menu'
 import { useToast } from 'primevue/usetoast'
+import ConsoleDialog from '@/components/vms/ConsoleDialog.vue'
 import LogsDialog from '@/components/docker/LogsDialog.vue'
 import StackDialog, { type SubmitMode } from '@/components/docker/StackDialog.vue'
 import { useDockerStore } from '@/stores/docker'
@@ -16,6 +17,7 @@ const menu = ref<InstanceType<typeof Menu>>()
 const items = ref<Record<string, unknown>[]>([])
 const busy = ref(false)
 const logsFor = ref<ContainerInfo | null>(null)
+const consoleFor = ref<string | null>(null)
 const showYaml = ref(false)
 const yaml = ref<StackFiles | null>(null)
 const check = ref<StackCheck | null>(null)
@@ -104,6 +106,8 @@ function openContainer(e: Event, c: ContainerInfo) {
   menu.value?.toggle(e)
 }
 
+const canConsole = (v: VmInfo) => v.state === 'running' || v.state === 'paused'
+
 function openVm(e: Event, v: VmInfo) {
   const running = v.state === 'running'
   items.value = [
@@ -145,24 +149,30 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
           <i class="pi pi-ellipsis-h" />
         </button>
       </div>
-      <button
-        v-for="v in machines"
-        :key="`v-${v.uuid}`"
-        type="button"
-        class="app glass"
-        :data-test="`quick-vm-${v.name}`"
-        :aria-label="`VM ${v.name}: Aktionen`"
-        @click="openVm($event, v)"
-      >
-        <span class="app-icon" :class="{ off: v.state !== 'running' }" :style="v.state === 'running' ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}"><i class="pi pi-desktop" /></span>
-        <span class="app-text">
-          <strong>{{ v.name }}</strong>
-          <small>VM · {{ vmLabel[v.state] ?? v.state }}</small>
-        </span>
-      </button>
+      <div v-for="v in machines" :key="`v-${v.uuid}`" class="app glass has-menu" :data-test="`quick-vm-${v.name}`">
+        <component
+          :is="canConsole(v) ? 'button' : 'div'"
+          class="app-main"
+          :class="{ link: canConsole(v) }"
+          :type="canConsole(v) ? 'button' : undefined"
+          :title="canConsole(v) ? 'Konsole öffnen' : undefined"
+          :data-test="`quick-vm-open-${v.name}`"
+          @click="canConsole(v) && (consoleFor = v.name)"
+        >
+          <span class="app-icon" :class="{ off: v.state !== 'running' }" :style="v.state === 'running' ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}"><i class="pi pi-desktop" /></span>
+          <span class="app-text">
+            <strong>{{ v.name }}</strong>
+            <small>VM · {{ vmLabel[v.state] ?? v.state }}</small>
+          </span>
+        </component>
+        <button type="button" class="dots" :data-test="`quick-vm-menu-${v.name}`" :aria-label="`VM ${v.name}: Aktionen`" @click="openVm($event, v)">
+          <i class="pi pi-ellipsis-h" />
+        </button>
+      </div>
     </div>
   </template>
   <Menu ref="menu" :model="items" popup append-to="body" />
+  <ConsoleDialog :visible="!!consoleFor" :name="consoleFor" @update:visible="(v) => !v && (consoleFor = null)" />
   <LogsDialog :visible="!!logsFor" :container="logsFor" @update:visible="(v) => !v && (logsFor = null)" />
   <StackDialog v-model:visible="showYaml" :stack="yaml" :existing="stackNames" :busy="busy" :check="check" @submit="submitYaml" />
 </template>
@@ -206,6 +216,10 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   color: inherit;
   text-decoration: none;
   border-radius: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
 }
 .app-main.link {
   cursor: pointer;
