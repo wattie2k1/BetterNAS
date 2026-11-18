@@ -48,6 +48,8 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 		out = docker.PruneResult{Reclaimed: "1.5GB"}
 	case "stack.backupplan":
 		out = docker.BackupPlan{Sources: []docker.BackupSource{{Kind: "bind", Name: "/srv/appdata/media/c", Path: "/srv/appdata/media/c", Bytes: 1234}}, TotalBytes: 1234, FreeBytes: 99999, Possible: true}
+	case "proxy.write", "proxy.validate", "proxy.commit", "proxy.reload":
+		out = map[string]bool{"ok": true}
 	case "device.list":
 		out = []docker.HostDevice{{Kind: "gpu", Path: "/dev/dri/renderD128", Name: "Intel HD", GID: 991, Group: "render"}}
 	case "folder.create":
@@ -282,5 +284,36 @@ func TestDockerCreateFolderRoute(t *testing.T) {
 		if w := s.do("POST", "/api/v1/docker/folders", bad); w.Code != 400 {
 			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
 		}
+	}
+}
+
+func TestDockerProxyRoutes(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/docker/proxy", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":false`) || !strings.Contains(w.Body.String(), `"httpsPort":8443`) || !strings.Contains(w.Body.String(), `"sites":[]`) {
+		t.Fatalf("Standard %d %s", w.Code, w.Body)
+	}
+	body := `{"enabled":true,"email":"a@example.de","httpPort":8080,"httpsPort":8443,"sites":[{"domain":"Jf.Example.de","host":"","port":8096,"https":false,"public":false}]}`
+	w := s.do("PUT", "/api/v1/docker/proxy", body)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"domain":"jf.example.de"`) {
+		t.Fatalf("speichern %d %s", w.Code, w.Body)
+	}
+	for _, bad := range []string{
+		`{"enabled":true,"httpPort":8080,"httpsPort":443,"sites":[]}`,
+		`{"enabled":true,"httpPort":8080,"httpsPort":8443,"sites":[{"domain":"x y.de","port":1}]}`,
+		`{"enabled":true,"httpPort":8080,"httpsPort":8443,"sites":[{"domain":"a.example.de","host":"8.8.8.8","port":80}]}`,
+		`{kaputt`,
+	} {
+		if w := s.do("PUT", "/api/v1/docker/proxy", bad); w.Code != 400 {
+			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
+		}
+	}
+	// Anwenden mit ausgeschaltetem Proxy: nur ein Stack-Schritt, damit der Test schnell bleibt.
+	if w := s.do("PUT", "/api/v1/docker/proxy", `{"enabled":false,"httpPort":8080,"httpsPort":8443,"sites":[]}`); w.Code != 200 {
+		t.Fatalf("ausschalten %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/docker/proxy/apply", ""); w.Code != 202 {
+		t.Fatalf("apply %d %s", w.Code, w.Body)
+	} else {
+		s.waitJob(t, w.Body.Bytes())
 	}
 }

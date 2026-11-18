@@ -724,3 +724,135 @@ func TestDockerCreateFolder(t *testing.T) {
 		}
 	}
 }
+
+// TestDockerProxy prüft den Reverse-Proxy mit echtem Caddy: Schreiben, Prüfen, Übernehmen, Starten, Neuladen,
+// Abruf über die Domain (Caddys interne CA für .local) und Ablehnung einer kaputten Konfiguration.
+func TestDockerProxy(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("braucht root")
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker ist nicht installiert")
+	}
+	if _, err := os.Stat("/run/systemd/system"); err != nil {
+		t.Skip("braucht systemd")
+	}
+	ctx := context.Background()
+	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	if st, _ := DockerStatus(ctx, d); !st.Active {
+		t.Skip("Docker-Dienst läuft nicht")
+	}
+	if d.FS.Exists(composePath(docker.ProxyStack)) {
+		t.Skip("es gibt schon einen Stack " + docker.ProxyStack)
+	}
+	sh := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("docker", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("docker %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	t.Cleanup(func() {
+		if unit, err := RunStack(ctx, d, docker.ProxyStack, "down"); err == nil {
+			for i := 0; i < 60; i++ {
+				if st, _ := StackRunStatus(ctx, d, unit); st.State != "running" {
+					break
+				}
+				time.Sleep(time.Second)
+			}
+		}
+		_ = DeleteStack(ctx, d, docker.ProxyStack)
+		_ = exec.Command("docker", "rm", "-f", "bnasprx-a", "bnasprx-b").Run()
+		_ = os.RemoveAll(docker.ProxyDir)
+	})
+
+	// Zwei kleine Webserver als Ziele.
+	for name, port := range map[string]string{"bnasprx-a": "18081", "bnasprx-b": "18082"} {
+		sh("run", "-d", "--name", name, "-p", port+":80", "busybox:stable", "sh", "-c", "mkdir -p /www && echo antwort-von-"+name+" > /www/index.html && httpd -f -p 80 -h /www")
+	}
+	cfg := docker.ProxyConfig{Enabled: true, HTTPPort: 18080, HTTPSPort: 18443, Sites: []docker.ProxySite{
+		{Domain: "a.nas.local", Port: 18081, Public: true},
+		{Domain: "lan.nas.local", Port: 18081}, // nur Heimnetz; der Test kommt aus einem privaten Netz
+	}}
+	apply := func(c docker.ProxyConfig) {
+		t.Helper()
+		if err := ProxyWrite(ctx, d, c); err != nil {
+			t.Fatal(err)
+		}
+		runStack := func(action string) {
+			unit, err := RunStack(ctx, d, docker.ProxyStack, action)
+			if err != nil {
+				t.Fatalf("%s: %v", action, err)
+			}
+			waitRun(t, d, unit)
+		}
+		runStack("pull")
+		if err := ProxyValidate(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+		if err := ProxyCommit(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+		runStack("up")
+		var err error
+		for i := 0; i < 10; i++ {
+			if err = ProxyReload(ctx, d); err == nil {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if err != nil {
+			t.Fatalf("Reload: %v", err)
+		}
+	}
+	fetch := func(domain, port string) string {
+		var last string
+		for i := 0; i < 30; i++ {
+			out, _ := exec.Command("curl", "-sk", "-m", "5", "--resolve", domain+":"+port+":127.0.0.1", "https://"+domain+":"+port+"/").CombinedOutput()
+			last = strings.TrimSpace(string(out))
+			if last != "" {
+				return last
+			}
+			time.Sleep(time.Second)
+		}
+		return last
+	}
+
+	apply(cfg)
+	if got := fetch("a.nas.local", "18443"); got != "antwort-von-bnasprx-a" {
+		t.Fatalf("a.nas.local: %q", got)
+	}
+	if got := fetch("lan.nas.local", "18443"); got != "antwort-von-bnasprx-a" {
+		t.Fatalf("lan.nas.local aus dem Heimnetz: %q", got)
+	}
+	// Eine zweite Seite per Neuladen (ohne den Container neu zu erstellen).
+	idBefore := sh("ps", "-q", "--filter", "name="+docker.ProxyContainer)
+	cfg.Sites = append(cfg.Sites, docker.ProxySite{Domain: "b.nas.local", Port: 18082, Public: true})
+	apply(cfg)
+	if got := fetch("b.nas.local", "18443"); got != "antwort-von-bnasprx-b" {
+		t.Fatalf("b.nas.local nach Neuladen: %q", got)
+	}
+	if after := sh("ps", "-q", "--filter", "name="+docker.ProxyContainer); after != idBefore {
+		t.Fatalf("Container wurde bei reiner Seitenänderung neu erstellt: %s → %s", idBefore, after)
+	}
+	if got := fetch("a.nas.local", "18443"); got != "antwort-von-bnasprx-a" {
+		t.Fatalf("a.nas.local nach Neuladen: %q", got)
+	}
+
+	// Eine kaputte Konfiguration lehnt Caddy ab, die laufende bleibt.
+	if err := d.FS.WriteFile(proxyNew, []byte("a.nas.local {\n\tunbekannte_direktive 1\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := ProxyValidate(ctx, d)
+	if err == nil || !strings.Contains(err.Error(), "Caddy lehnt") {
+		t.Fatalf("kaputte Konfiguration akzeptiert: %v", err)
+	}
+	t.Logf("Caddy-Meldung: %v", err)
+	if d.FS.Exists(proxyNew) {
+		t.Fatal("abgelehnte Datei bleibt liegen")
+	}
+	if got := fetch("a.nas.local", "18443"); got != "antwort-von-bnasprx-a" {
+		t.Fatalf("Proxy nach abgelehnter Konfiguration: %q", got)
+	}
+}

@@ -219,6 +219,13 @@ async function remove() {
       <template #title>
         <div class="title">
           <span><i class="pi pi-clone" /> {{ s.name }}</span>
+          <Tag
+            v-if="s.name === 'reverse-proxy'"
+            data-test="managed-tag"
+            value="Reverse-Proxy"
+            severity="info"
+            title="Wird unter „Reverse-Proxy“ verwaltet; manuelle Änderungen an compose.yaml werden dort überschrieben."
+          />
           <Tag v-if="isAuto(s.name)" data-test="auto-tag" value="Auto-Update" severity="secondary" :title="`Wird täglich um ${store.autoUpdate.time} aktualisiert`" />
           <Tag v-if="outdated(s.name).length" data-test="update-tag" value="Update verfügbar" severity="info" :title="`Neue Version für: ${outdated(s.name).join(', ')}`" />
           <Tag

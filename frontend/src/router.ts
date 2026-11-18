@@ -29,6 +29,7 @@ import PoolsView from '@/views/storage/PoolsView.vue'
 import StacksView from '@/views/docker/StacksView.vue'
 import ResourcesView from '@/views/docker/ResourcesView.vue'
 import ContainersView from '@/views/docker/ContainersView.vue'
+import ProxyView from '@/views/docker/ProxyView.vue'
 import ProfileView from '@/views/ProfileView.vue'
 import VmsView from '@/views/vms/VmsView.vue'
 import VmConfigView from '@/views/vms/VmConfigView.vue'
@@ -48,6 +49,7 @@ export const router = createRouter({
         { path: 'freigaben', name: 'shares', component: SharesView, meta: { title: 'Freigaben' } },
         { path: 'docker/stacks', name: 'stacks', component: StacksView, meta: { title: 'Docker-Stacks' } },
         { path: 'docker/container', name: 'containers', component: ContainersView, meta: { title: 'Container' } },
+        { path: 'docker/proxy', name: 'proxy', component: ProxyView, meta: { title: 'Reverse-Proxy' } },
         { path: 'docker/ressourcen', name: 'resources', component: ResourcesView, meta: { title: 'Docker-Ressourcen' } },
         { path: 'vms', name: 'vms', component: VmsView, meta: { title: 'Virtuelle Maschinen' } },
         { path: 'vms/:name', name: 'vm-config', component: VmConfigView, meta: { title: 'VM-Einstellungen' } },

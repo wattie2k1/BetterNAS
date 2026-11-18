@@ -87,6 +87,27 @@ export interface UpdateInfo {
   errors: string[]
 }
 
+/** Ein Eintrag des Reverse-Proxys: Anfragen an die Domain gehen an das Ziel. */
+export interface ProxySite {
+  domain: string
+  /** Leer = dieses NAS, sonst IPv4-Adresse eines Geräts im Heimnetz. */
+  host: string
+  port: number
+  /** Das Ziel spricht selbst HTTPS (Zertifikat wird nicht geprüft). */
+  https: boolean
+  /** Auch aus dem Internet erreichbar; sonst nur aus privaten Netzen. */
+  public: boolean
+}
+
+export interface ProxyConfig {
+  enabled: boolean
+  email: string
+  /** Ports auf dem NAS, an die der Router 80 bzw. 443 weiterleitet. */
+  httpPort: number
+  httpsPort: number
+  sites: ProxySite[]
+}
+
 /** Gerät des Hosts, das an Container durchgereicht werden kann. */
 export interface HostDevice {
   kind: 'gpu' | 'serial'
@@ -193,6 +214,9 @@ export const dockerApi = {
   checkUpdates: () => api.post<{ jobId: string }>('/api/v1/docker/updates/check'),
   folders: (path: string) => api.get<FolderList>(`/api/v1/docker/folders?path=${enc(path)}`),
   createFolder: (path: string, name: string) => api.post<{ name: string; path: string }>('/api/v1/docker/folders', { path, name }),
+  proxy: () => api.get<ProxyConfig>('/api/v1/docker/proxy'),
+  setProxy: (c: ProxyConfig) => api.put<ProxyConfig>('/api/v1/docker/proxy', c),
+  applyProxy: () => api.post<{ jobId: string }>('/api/v1/docker/proxy/apply'),
   devices: () => api.get<HostDevice[]>('/api/v1/docker/devices'),
   autoUpdate: () => api.get<AutoUpdateConfig>('/api/v1/docker/autoupdate'),
   setAutoUpdate: (c: AutoUpdateConfig) => api.put<AutoUpdateConfig>('/api/v1/docker/autoupdate', c),

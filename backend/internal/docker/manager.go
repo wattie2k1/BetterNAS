@@ -41,12 +41,14 @@ type Manager struct {
 	wake          chan struct{}
 	healthSettle  time.Duration // so lange müssen alle Container ununterbrochen gesund sein
 	healthTimeout time.Duration // so lange wird auf einen gesunden Stack gewartet
+
+	proxyRetryEvery time.Duration // Pause zwischen den Versuchen, Caddy neu zu laden
 }
 
 // NewManager erzeugt den Manager.
 func NewManager(d *sql.DB, a Agent, j *jobs.Manager, hub *events.Hub) *Manager {
 	return &Manager{db: d, agent: a, jobs: j, hub: hub, pollEvery: 2 * time.Second,
-		now: time.Now, after: time.After, wake: make(chan struct{}, 1), healthSettle: time.Minute, healthTimeout: 10 * time.Minute}
+		now: time.Now, after: time.After, wake: make(chan struct{}, 1), healthSettle: time.Minute, healthTimeout: 10 * time.Minute, proxyRetryEvery: 2 * time.Second}
 }
 
 const (

@@ -76,6 +76,22 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusCreated, f)
 	})
+	mux.HandleFunc("GET /api/v1/docker/proxy", func(w http.ResponseWriter, r *http.Request) {
+		c, err := m.Proxy(r.Context())
+		reply(w, c, err)
+	})
+	mux.HandleFunc("PUT /api/v1/docker/proxy", func(w http.ResponseWriter, r *http.Request) {
+		var in docker.ProxyConfig
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		c, err := m.SetProxy(r.Context(), actor(r), in)
+		reply(w, c, err)
+	})
+	mux.HandleFunc("POST /api/v1/docker/proxy/apply", func(w http.ResponseWriter, r *http.Request) {
+		id, err := m.ApplyProxy(r.Context(), actor(r))
+		accepted(w, id, err)
+	})
 	mux.HandleFunc("GET /api/v1/docker/devices", func(w http.ResponseWriter, r *http.Request) {
 		l, err := m.HostDevices(r.Context())
 		reply(w, l, err)
