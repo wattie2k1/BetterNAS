@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PrimeVue from 'primevue/config'
 import TemplateDialog from '@/components/docker/TemplateDialog.vue'
-import { APP_TEMPLATES, defaultValues, fieldError, randomSecret, renderTemplate } from '@/utils/appTemplates'
+import { APP_TEMPLATES, TEMPLATE_CATEGORIES, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate } from '@/utils/appTemplates'
 
 describe('Vorlagen', () => {
   it('jede Vorlage hat für alle ${VARIABLEN} ein Feld und gültige Vorgaben', () => {
@@ -62,6 +62,45 @@ describe('Vorlagen', () => {
     expect(fieldError(secret, 'kurz')).not.toBe('')
     expect(fieldError(secret, randomSecret())).toBe('')
     expect(randomSecret()).not.toBe(randomSecret())
+  })
+})
+
+describe('Vorlagen: Regeln für alle', () => {
+  it('jede Vorlage hat eine gültige Kategorie', () => {
+    for (const t of APP_TEMPLATES) expect(TEMPLATE_CATEGORIES, t.id).toContain(t.category)
+  })
+
+  it('Vorlagen mit Docker-Socket, privileged oder NET_ADMIN haben einen Hinweis', () => {
+    for (const t of APP_TEMPLATES) {
+      if (/docker\.sock|privileged: true|NET_ADMIN/.test(t.compose)) expect(t.notice, t.id).toBeTruthy()
+    }
+  })
+
+  it('Vorlagen mit PUID haben auch PGID und binden den Datenordner', () => {
+    for (const t of APP_TEMPLATES) {
+      const keys = t.fields.map((f) => f.key)
+      if (!keys.includes('PUID')) continue
+      expect(keys, t.id).toContain('PGID')
+      if (keys.includes('DATA_DIR')) expect(t.compose, t.id).toMatch(/\$\{DATA_DIR\}:\/\w+/)
+    }
+  })
+
+  it('optionale Felder dürfen leer sein', () => {
+    const f = { key: 'X', label: '', kind: 'text' as const }
+    expect(fieldError({ ...f, optional: true }, '')).toBe('')
+    expect(fieldError(f, '')).toBe('Pflichtfeld')
+    const t = { id: 't', title: 't', description: '', icon: '', stack: 't', category: 'Verwaltung' as const, fields: [{ ...f, optional: true }, { key: 'Y', label: '', kind: 'port' as const }], compose: '' }
+    expect(renderTemplate(t, 't', { X: '', Y: '80' }).env).toBe('X=\nY=80\n')
+  })
+
+  it('gruppiert und filtert die Vorlagen', () => {
+    const all = groupTemplates(APP_TEMPLATES, '')
+    expect(all.flatMap((g) => g.items).length).toBe(APP_TEMPLATES.length)
+    const order = all.map((g) => TEMPLATE_CATEGORIES.indexOf(g.category))
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(all.every((g) => g.items.length > 0)).toBe(true)
+    expect(groupTemplates(APP_TEMPLATES, '  JELLY ').flatMap((g) => g.items.map((t) => t.id))).toEqual(['jellyfin'])
+    expect(groupTemplates(APP_TEMPLATES, 'xyz')).toEqual([])
   })
 })
 

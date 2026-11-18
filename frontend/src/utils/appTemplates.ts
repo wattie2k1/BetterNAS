@@ -5,10 +5,34 @@ import { deviceSnippet } from '@/utils/deviceSnippet'
 
 export type FieldKind = 'text' | 'port' | 'path' | 'secret' | 'ip'
 
+export type TemplateCategory =
+  | 'Medien'
+  | 'Downloader'
+  | '*arr und Wunschliste'
+  | 'Verwaltung'
+  | 'Netzwerk'
+  | 'Wissen und Dokumente'
+  | 'Entwicklung'
+  | 'Medien-Werkzeug'
+
+/** Anzeigereihenfolge der Kategorien im Vorlagen-Dialog. */
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
+  'Medien',
+  'Downloader',
+  '*arr und Wunschliste',
+  'Verwaltung',
+  'Netzwerk',
+  'Wissen und Dokumente',
+  'Entwicklung',
+  'Medien-Werkzeug',
+]
+
 export interface TemplateField {
   key: string
   label: string
   kind: FieldKind
+  /** Darf leer bleiben (landet als `KEY=` in der .env). */
+  optional?: boolean
   /** Vorgabe; bei Pfaden mit dem Stacknamen. */
   def?: (stack: string) => string
   hint?: string
@@ -26,6 +50,9 @@ export interface AppTemplate {
   title: string
   description: string
   icon: string
+  category: TemplateCategory
+  /** Warnhinweis im Formular (z. B. Docker-Socket, erweiterte Rechte). */
+  notice?: string
   /** Vorschlag für den Stacknamen. */
   stack: string
   fields: TemplateField[]
@@ -43,12 +70,29 @@ const DNS_HINT =
   'IPv4-Adresse des NAS im Heimnetz. Port 53 ist auf dem NAS schon von Systemdiensten belegt, deshalb bindet der Container nur an diese Adresse. Geräte tragen sie später als DNS-Server ein.'
 const MEDIA_HINT = 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Medien'
 
+/** Gemeinsamer Datenordner der Medien-Apps: Downloads und Medien liegen darin, damit Hardlinks funktionieren. */
+export const dataField: TemplateField = {
+  key: 'DATA_DIR',
+  label: 'Datenordner (Downloads und Medien)',
+  kind: 'path',
+  def: () => '/srv/pools',
+  hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Daten. Alle Medien-Apps sollten denselben Ordner nutzen, mit den Unterordnern downloads und media/filme, media/serien, media/musik. Nur so funktionieren Hardlinks, ohne Dateien zu kopieren.',
+}
+
+const IDS_HINT = 'Benutzer- und Gruppen-ID, unter der die App Dateien anlegt. Alle Medien-Apps sollten dieselben Werte nutzen.'
+/** Benutzer- und Gruppen-ID der Medien-Apps (gleiche Werte in allen Stacks, damit Berechtigungen und Hardlinks stimmen). */
+export const idFields: TemplateField[] = [
+  { key: 'PUID', label: 'Benutzer-ID (PUID)', kind: 'text', def: () => '1000', hint: IDS_HINT },
+  { key: 'PGID', label: 'Gruppen-ID (PGID)', kind: 'text', def: () => '1000' },
+]
+
 export const APP_TEMPLATES: AppTemplate[] = [
   {
     id: 'jellyfin',
     title: 'Jellyfin',
     description: 'Medienserver für Filme, Serien und Musik.',
     icon: 'pi pi-video',
+    category: 'Medien',
     stack: 'jellyfin',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8096' },
@@ -79,6 +123,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     title: 'Nextcloud',
     description: 'Eigene Cloud für Dateien, Kalender und Kontakte (mit MariaDB).',
     icon: 'pi pi-cloud',
+    category: 'Wissen und Dokumente',
     stack: 'nextcloud',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8081' },
@@ -120,7 +165,9 @@ export const APP_TEMPLATES: AppTemplate[] = [
     title: 'Home Assistant',
     description: 'Smart-Home-Zentrale (im Host-Netz, damit Geräte gefunden werden).',
     icon: 'pi pi-home',
+    category: 'Verwaltung',
     stack: 'homeassistant',
+    notice: 'Home Assistant läuft mit erweiterten Rechten (privileged) im Host-Netz, damit Geräte und Bluetooth/USB gefunden werden. Das gibt dem Container weitgehenden Zugriff auf das NAS.',
     fields: [{ key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') }],
     compose: `services:
   homeassistant:
@@ -138,6 +185,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     title: 'Vaultwarden',
     description: 'Passwortmanager, kompatibel mit Bitwarden (HTTPS über einen Reverse-Proxy nötig).',
     icon: 'pi pi-key',
+    category: 'Verwaltung',
     stack: 'vaultwarden',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8082' },
@@ -158,6 +206,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     title: 'Syncthing',
     description: 'Dateien zwischen Geräten abgleichen.',
     icon: 'pi pi-sync',
+    category: 'Wissen und Dokumente',
     stack: 'syncthing',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8384' },
@@ -183,6 +232,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     title: 'Uptime Kuma',
     description: 'Überwacht Dienste und Webseiten und benachrichtigt bei Ausfall.',
     icon: 'pi pi-heart',
+    category: 'Verwaltung',
     stack: 'uptime-kuma',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3001' },
@@ -203,6 +253,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     title: 'Immich',
     description: 'Foto- und Videoarchiv mit Gesichts- und Objekterkennung (App für Android und iOS).',
     icon: 'pi pi-images',
+    category: 'Medien',
     stack: 'immich',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '2283' },
@@ -256,6 +307,7 @@ volumes:
     title: 'Paperless-ngx',
     description: 'Dokumentenarchiv: scannt, erkennt Text (OCR) und macht Dokumente durchsuchbar.',
     icon: 'pi pi-file',
+    category: 'Wissen und Dokumente',
     stack: 'paperless',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8000' },
@@ -310,6 +362,7 @@ volumes:
     title: 'Pi-hole',
     description: 'Werbe- und Tracking-Blocker für das ganze Heimnetz, arbeitet als DNS-Server.',
     icon: 'pi pi-shield',
+    category: 'Netzwerk',
     stack: 'pihole',
     fields: [
       { key: 'DNS_IP', label: 'IP-Adresse des NAS', kind: 'ip', def: hostIp, hint: DNS_HINT },
@@ -338,6 +391,7 @@ volumes:
     title: 'AdGuard Home',
     description: 'Werbe- und Tracking-Blocker als DNS-Server (Alternative zu Pi-hole, nicht gleichzeitig verwenden).',
     icon: 'pi pi-shield',
+    category: 'Netzwerk',
     stack: 'adguardhome',
     fields: [
       { key: 'DNS_IP', label: 'IP-Adresse des NAS', kind: 'ip', def: hostIp, hint: DNS_HINT },
@@ -365,6 +419,7 @@ volumes:
     title: 'Navidrome',
     description: 'Musikserver für die eigene Sammlung, kompatibel mit vielen Subsonic-Apps.',
     icon: 'pi pi-headphones',
+    category: 'Medien',
     stack: 'navidrome',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '4533' },
@@ -387,6 +442,13 @@ volumes:
   },
 ]
 
+/** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
+export function groupTemplates(list: AppTemplate[], query: string): { category: TemplateCategory; items: AppTemplate[] }[] {
+  const q = query.trim().toLowerCase()
+  const hit = (t: AppTemplate) => !q || [t.title, t.id, t.description].some((x) => x.toLowerCase().includes(q))
+  return TEMPLATE_CATEGORIES.map((category) => ({ category, items: list.filter((t) => t.category === category && hit(t)) })).filter((g) => g.items.length > 0)
+}
+
 /** Zufälliges Geheimnis aus Buchstaben und Ziffern (in der .env ohne Quoting verwendbar). */
 export function randomSecret(len = 24): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
@@ -405,7 +467,7 @@ export function defaultValues(t: AppTemplate, stack: string): Record<string, str
 /** Prüft einen Wert; liefert eine Fehlermeldung oder ''. */
 export function fieldError(f: TemplateField, value: string): string {
   const v = value.trim()
-  if (!v) return 'Pflichtfeld'
+  if (!v) return f.optional ? '' : 'Pflichtfeld'
   switch (f.kind) {
     case 'port': {
       const n = Number(v)
