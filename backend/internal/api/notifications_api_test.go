@@ -255,3 +255,13 @@ func TestFsCheckRoute(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func TestBenchRoute(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("POST", "/api/v1/disks/d1/bench", ""); w.Code != 202 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/disks/nope/bench", ""); w.Code != 404 {
+		t.Fatalf("%d", w.Code)
+	}
+}

@@ -45,6 +45,8 @@ type fakeAgent struct {
 	selfTestBusy map[string]int // Gerät → so viele disk.smart-Abfragen lang läuft der Test noch
 	selfTestFail bool
 
+	benchCalls    int
+	benchFail     bool
 	fsChecks      []string
 	fsStatusCalls int
 	fsResult      string
@@ -108,6 +110,12 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		}
 		f.identifyDevs = append(f.identifyDevs, req["device"])
 		out = map[string]bool{"ok": true}
+	case "disk.bench":
+		f.benchCalls++
+		if f.benchFail {
+			return apierr.New(apierr.Conflict, "nicht lesbar")
+		}
+		out = map[string]any{"samples": []map[string]any{{"percent": 0, "mbps": 200.0}, {"percent": 50, "mbps": 150.0}, {"percent": 100, "mbps": 100.0}}}
 	case "disk.fscheck.start":
 		b, _ := json.Marshal(params)
 		var req map[string]string

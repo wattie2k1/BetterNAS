@@ -70,6 +70,10 @@ export const useStorageStore = defineStore('storage', () => {
       await storageApi.dismissNew(id)
       await refresh()
     },
+    startBench: async (id: string) => {
+      await storageApi.startBench(id)
+      await refresh()
+    },
     startFsCheck: async (id: string) => {
       await storageApi.startFsCheck(id)
       await refresh()

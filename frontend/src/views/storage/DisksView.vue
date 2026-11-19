@@ -77,7 +77,7 @@ function openDetail(d: DiskView) {
 }
 
 // Läuft irgendwo ein Selbsttest, den Fortschritt alle 15 s nachladen (die Werte kommen aus dem Zwischenspeicher des Servers).
-const anyTestRunning = computed(() => store.disks.some((d) => d.smart?.selfTest?.running || d.fsCheck?.running))
+const anyTestRunning = computed(() => store.disks.some((d) => d.smart?.selfTest?.running || d.fsCheck?.running || d.bench?.running))
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void store.refresh()
@@ -236,6 +236,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
               <div v-else-if="d.fsCheck?.result === 'errors'" class="sub warn" :data-test="`fscheck-errors-${d.id}`">
                 <i class="pi pi-exclamation-triangle" /> Dateisystem-Prüfung fand Fehler
               </div>
+              <div v-if="d.bench?.running" class="sub" :data-test="`bench-running-${d.id}`"><i class="pi pi-spin pi-spinner" /> Benchmark läuft</div>
               <div v-if="hasBadSectors(d)" class="sub warn" :data-test="`sectors-${d.id}`">
                 <i class="pi pi-exclamation-triangle" /> Defekte Sektoren ({{ d.smart.reallocatedSectors ?? 0 }} neu zugewiesen, {{ d.smart.pendingSectors ?? 0 }} instabil)
               </div>

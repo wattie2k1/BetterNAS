@@ -149,6 +149,17 @@ async function run(fn: () => Promise<void>, ok: string) {
   }
 }
 const start = (kind: SelfTestKind) => run(() => store.startSelfTest(props.disk!.id, kind), `${SELFTEST_KIND_LABEL[kind]} gestartet`)
+const bench = computed(() => live.value?.bench)
+const benchable = computed(() => live.value?.state === 'online' && !!live.value.device)
+const startBench = () => run(() => store.startBench(props.disk!.id), 'Benchmark gestartet')
+const benchMax = computed(() => Math.max(1, ...(bench.value?.last?.samples.map((s) => s.mbps) ?? [1])))
+const fmtMBps = (v: number) => `${Math.round(v).toLocaleString('de-DE')} MB/s`
+/** Vergleich des letzten Durchschnitts mit dem Lauf davor, in Prozent (null, wenn es keinen Vorgänger gibt). */
+const benchDelta = computed(() => {
+  const h = bench.value?.history ?? []
+  if (h.length < 2 || h[h.length - 2].avgMBps <= 0) return null
+  return Math.round((h[h.length - 1].avgMBps / h[h.length - 2].avgMBps - 1) * 100)
+})
 const fsc = computed(() => live.value?.fsCheck)
 const checkable = computed(() => {
   const d = live.value
@@ -201,6 +212,35 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         </table>
       </div>
       <p v-else class="hint" data-test="no-partitions">Keine Partitionen – die Platte ist leer oder nicht partitioniert.</p>
+
+      <template v-if="benchable">
+        <h3>Geschwindigkeit</h3>
+        <div class="selftest" data-test="bench">
+          <p v-if="bench?.running" data-test="bench-running"><i class="pi pi-spin pi-spinner" /> Der Benchmark läuft (etwa eine halbe Minute) …</p>
+          <template v-else>
+            <Button label="Benchmark starten" size="small" outlined :loading="busy" data-test="bench-start" @click="startBench" />
+            <p class="hint">Misst nur lesend die Leserate an fünf Stellen der Platte. Ein Ruhezustand wird dafür beendet; laufende Zugriffe verfälschen das Ergebnis.</p>
+          </template>
+          <Message v-if="bench?.error && !bench.running" severity="error" :closable="false" data-test="bench-error">{{ bench.error }}</Message>
+          <div v-if="bench?.last && !bench.running" data-test="bench-last">
+            <p class="last">
+              Durchschnitt {{ fmtMBps(bench.last.avgMBps) }} (langsamste Stelle {{ fmtMBps(bench.last.minMBps) }}, schnellste {{ fmtMBps(bench.last.maxMBps) }}),
+              gemessen am {{ new Date(bench.last.at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) }}
+              <span v-if="benchDelta !== null" class="sub" :class="{ bad: benchDelta <= -20 }" data-test="bench-delta">
+                · {{ benchDelta > 0 ? '+' : '' }}{{ benchDelta }} % zum vorherigen Lauf
+              </span>
+            </p>
+            <ul class="benchbars" data-test="bench-bars">
+              <li v-for="s in bench.last.samples" :key="s.percent">
+                <span class="pos">{{ s.percent }} %</span>
+                <span class="bar" :style="{ width: (s.mbps / benchMax) * 100 + '%' }" />
+                <span class="val">{{ fmtMBps(s.mbps) }}</span>
+              </li>
+            </ul>
+            <p v-if="benchDelta !== null && benchDelta <= -20" class="hint bad" data-test="bench-warn">Die Platte ist deutlich langsamer als beim letzten Lauf. Prüfe SMART-Werte und Kabel.</p>
+          </div>
+        </div>
+      </template>
 
       <template v-if="checkable">
         <h3>Dateisystem prüfen</h3>
@@ -412,6 +452,28 @@ h3 {
 .sub {
   font-size: 0.8rem;
   color: var(--bn-text-soft);
+}
+.benchbars {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.benchbars li {
+  display: grid;
+  grid-template-columns: 3rem 1fr 6rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.benchbars .bar {
+  height: 0.6rem;
+  border-radius: 3px;
+  background: var(--p-primary-color, #3b82f6);
+}
+.benchbars .val {
+  text-align: right;
 }
 .fsout {
   max-height: 14rem;

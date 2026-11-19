@@ -588,3 +588,56 @@ describe('Dateisystem-Prüfung', () => {
     expect(missing.w.find('[data-test="fscheck"]').exists()).toBe(false)
   })
 })
+
+describe('Benchmark', () => {
+  function setupBench(d: DiskView) {
+    const posts: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          posts.push(url)
+          return new Response(null, { status: 202 })
+        }
+        return new Response(url.includes('/history') ? '[]' : JSON.stringify([d]), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useStorageStore().disks = [d]
+    const w = mount(DiskDetailDialog, { props: { visible: true, disk: d }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    return { w, posts }
+  }
+  const run = (avg: number) => ({
+    at: '2026-11-19T10:00:00Z', avgMBps: avg, minMBps: avg - 20, maxMBps: avg + 20,
+    samples: [{ percent: 0, mbps: avg + 20 }, { percent: 50, mbps: avg }, { percent: 100, mbps: avg - 20 }],
+  })
+
+  it('startet den Benchmark', async () => {
+    const { w, posts } = setupBench(disk({ id: 'd1', role: 'data' }))
+    await flushPromises()
+    await w.find('[data-test="bench-start"]').trigger('click')
+    await flushPromises()
+    expect(posts).toContain('/api/v1/disks/d1/bench')
+  })
+
+  it('zeigt Balken und den Vergleich mit dem vorherigen Lauf', async () => {
+    const { w } = setupBench(disk({ id: 'd1', role: 'data', bench: { running: false, last: run(100), history: [{ at: 'a', avgMBps: 150 }, { at: 'b', avgMBps: 100 }] } }))
+    await flushPromises()
+    expect(w.findAll('[data-test="bench-bars"] li').length).toBe(3)
+    expect(w.find('[data-test="bench-last"]').text()).toContain('100 MB/s')
+    expect(w.find('[data-test="bench-delta"]').text()).toContain('-33 %')
+    expect(w.find('[data-test="bench-warn"]').exists()).toBe(true)
+  })
+
+  it('zeigt Lauf und Fehler, ohne Knopf während des Laufs', async () => {
+    const a = setupBench(disk({ id: 'd1', role: 'data', bench: { running: true } }))
+    await flushPromises()
+    expect(a.w.find('[data-test="bench-running"]').exists()).toBe(true)
+    expect(a.w.find('[data-test="bench-start"]').exists()).toBe(false)
+    a.w.unmount()
+    const b = setupBench(disk({ id: 'd1', role: 'data', bench: { running: false, error: 'Die Platte lässt sich nicht lesen.' } }))
+    await flushPromises()
+    expect(b.w.find('[data-test="bench-error"]').text()).toContain('nicht lesen')
+  })
+})

@@ -85,6 +85,23 @@ export interface FsCheck {
   output?: string
 }
 
+/** Lese-Benchmark: Leserate an Stellen der Platte (0 % = Anfang, 100 % = Ende). */
+export interface BenchRun {
+  at: string
+  avgMBps: number
+  minMBps: number
+  maxMBps: number
+  samples: { percent: number; mbps: number }[]
+}
+export interface BenchState {
+  running: boolean
+  /** Der letzte Lauf ist fehlgeschlagen. */
+  error?: string
+  last?: BenchRun
+  /** Durchschnitte früherer Läufe, ältester zuerst, inklusive des letzten. */
+  history?: { at: string; avgMBps: number }[]
+}
+
 /** Tagesstatistik des Energiezustands; day als JJJJ-MM-TT (Ortszeit des Geräts). */
 export interface PowerDay {
   day: string
@@ -161,6 +178,7 @@ export interface DiskView {
   /** Die Aktivitäts-LED blinkt gerade, damit man die Platte findet. */
   identifying?: boolean
   fsCheck?: FsCheck
+  bench?: BenchState
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
   spindown?: number
 }
@@ -291,6 +309,7 @@ export const storageApi = {
   setTuning: (id: string, t: TuningSettings) => api.put<void>(`/api/v1/disks/${enc(id)}/tuning`, t),
   setNote: (id: string, n: DiskNote) => api.put<void>(`/api/v1/disks/${enc(id)}/note`, n),
   dismissNew: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/dismiss`),
+  startBench: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/bench`),
   startFsCheck: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/fscheck`),
   startIdentify: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/identify`),
   stopIdentify: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/identify`),

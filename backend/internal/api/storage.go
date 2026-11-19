@@ -182,6 +182,13 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusAccepted)
 	})
+	mux.HandleFunc("POST /api/v1/disks/{id}/bench", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.StartBench(r.Context(), actor(r), r.PathValue("id")); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/format/preview", func(w http.ResponseWriter, r *http.Request) {
 		p, err := m.PreviewFormat(r.Context(), r.PathValue("id"))
 		if err != nil {
