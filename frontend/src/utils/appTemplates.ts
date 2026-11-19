@@ -1956,6 +1956,91 @@ volumes:
       - \${DB_DIR}:/var/lib/postgresql/data
 `,
   },
+  {
+    id: 'php-web',
+    title: 'PHP-Webserver',
+    description: 'Nginx mit PHP-FPM und Composer in einem Container, für eigene PHP-Projekte, Laravel, Symfony oder WordPress.',
+    icon: 'pi pi-code',
+    category: 'Entwicklung',
+    stack: 'php-web',
+    notice: 'Der Projektordner wird als Webwurzel eingebunden (index.php liegt direkt darin; bei Laravel und Symfony zeigt der Webserver auf den Ordner public). Der Dienst läuft mit der angegebenen Benutzer-ID: Lege den Ordner vorher an und gib ihm diese Rechte, sonst kann PHP nicht hineinschreiben. Fehlermeldungen werden im Browser angezeigt und OPcache ist aus – das ist für die Entwicklung gedacht, nicht für öffentlich erreichbare Seiten. Weitere PHP-Erweiterungen brauchen ein eigenes Image.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8110' },
+      { key: 'WEB_DIR', label: 'Projektordner (Webwurzel)', kind: 'path', def: appdata('html'), hint: 'Ordner mit deinem Projekt, z. B. /srv/pools/<Pool>/Web/meineseite.' },
+      { key: 'PHP_VERSION', label: 'PHP-Version', kind: 'text', def: () => '8.4', hint: 'z. B. 8.2, 8.3 oder 8.4' },
+      ...idFields,
+    ],
+    compose: `services:
+  php-web:
+    image: serversideup/php:\${PHP_VERSION}-fpm-nginx
+    restart: unless-stopped
+    user: "\${PUID}:\${PGID}"
+    environment:
+      UMASK: "002"
+      TZ: Europe/Berlin
+      PHP_OPCACHE_ENABLE: "0"
+      PHP_DISPLAY_ERRORS: "On"
+    ports:
+      - "\${PORT}:8080"
+    volumes:
+      - \${WEB_DIR}:/var/www/html
+`,
+  },
+  {
+    id: 'php-web-mariadb',
+    title: 'PHP-Webserver mit MariaDB',
+    description: 'Nginx mit PHP-FPM und Composer plus MariaDB-Datenbank, dazu passt Adminer zur Verwaltung.',
+    icon: 'pi pi-code',
+    category: 'Entwicklung',
+    stack: 'php-web-mariadb',
+    notice: 'Die Datenbank erreichst du aus PHP mit Host db, Datenbank php und Benutzer php (Passwort wie unten eingetragen). Die Werte stehen auch als Umgebungsvariablen DB_HOST, DB_DATABASE, DB_USERNAME und DB_PASSWORD bereit (passt zu Laravel). Der Projektordner wird als Webwurzel eingebunden (bei Laravel und Symfony zeigt der Webserver auf den Ordner public). Der Dienst läuft mit der angegebenen Benutzer-ID: Lege den Ordner vorher an und gib ihm diese Rechte. Fehlermeldungen werden im Browser angezeigt und OPcache ist aus – das ist für die Entwicklung gedacht, nicht für öffentlich erreichbare Seiten.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8111' },
+      { key: 'WEB_DIR', label: 'Projektordner (Webwurzel)', kind: 'path', def: appdata('html'), hint: 'Ordner mit deinem Projekt, z. B. /srv/pools/<Pool>/Web/meineseite.' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
+      { key: 'DB_ROOT_PASSWORD', label: 'Datenbank-Root-Passwort', kind: 'secret' },
+      { key: 'PHP_VERSION', label: 'PHP-Version', kind: 'text', def: () => '8.4', hint: 'z. B. 8.2, 8.3 oder 8.4' },
+      ...idFields,
+    ],
+    compose: `services:
+  php-web-mariadb:
+    image: serversideup/php:\${PHP_VERSION}-fpm-nginx
+    restart: unless-stopped
+    user: "\${PUID}:\${PGID}"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      UMASK: "002"
+      TZ: Europe/Berlin
+      PHP_OPCACHE_ENABLE: "0"
+      PHP_DISPLAY_ERRORS: "On"
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_DATABASE: php
+      DB_USERNAME: php
+      DB_PASSWORD: "\${DB_PASSWORD}"
+    ports:
+      - "\${PORT}:8080"
+    volumes:
+      - \${WEB_DIR}:/var/www/html
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: php
+      MARIADB_USER: php
+      MARIADB_PASSWORD: "\${DB_PASSWORD}"
+      MARIADB_ROOT_PASSWORD: "\${DB_ROOT_PASSWORD}"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      start_period: 30s
+    volumes:
+      - \${DB_DIR}:/var/lib/mysql
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
