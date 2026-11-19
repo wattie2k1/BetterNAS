@@ -61,3 +61,5 @@ less
 nano
 curl
 bash-completion
+vim
+whiptail
