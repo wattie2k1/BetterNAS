@@ -201,6 +201,8 @@ export interface DiskView {
   identifying?: boolean
   fsCheck?: FsCheck
   erase?: EraseState
+  /** Als Ersatzplatte (Hot-Spare) vorgemerkt. */
+  spare?: boolean
   bench?: BenchState
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
   spindown?: number
@@ -325,6 +327,7 @@ export const storageApi = {
   disks: () => api.get<DiskView[]>('/api/v1/disks'),
   diskIO: () => api.get<DiskIOStats>('/api/v1/disks/io'),
   pools: () => api.get<PoolView[]>('/api/v1/pools'),
+  setSpare: (id: string, spare: boolean) => api.put<void>(`/api/v1/disks/${enc(id)}/spare`, { spare }),
   previewErase: (id: string) => api.post<FormatPreview>(`/api/v1/disks/${enc(id)}/erase/preview`),
   startErase: (id: string, req: EraseRequest) => api.post<void>(`/api/v1/disks/${enc(id)}/erase`, req),
   abortErase: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/erase`),

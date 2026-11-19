@@ -253,6 +253,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
             <div class="name">
               <i :class="d.system ? 'pi pi-lock' : d.rotational ? 'pi pi-database' : 'pi pi-bolt'" />
               <strong>{{ d.model || 'Unbekannt' }}</strong>
+              <Tag v-if="d.spare" value="Ersatzplatte" severity="info" :data-test="`spare-${d.id}`" />
               <Tag v-if="d.transport === 'usb'" value="USB" severity="secondary" :data-test="`usb-${d.id}`" />
               <Tag v-if="d.note?.name" :value="d.note.name" severity="info" :data-test="`note-name-${d.id}`" />
             </div>

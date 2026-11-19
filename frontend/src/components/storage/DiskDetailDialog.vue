@@ -149,6 +149,11 @@ async function run(fn: () => Promise<void>, ok: string) {
   }
 }
 const start = (kind: SelfTestKind) => run(() => store.startSelfTest(props.disk!.id, kind), `${SELFTEST_KIND_LABEL[kind]} gestartet`)
+const spareable = computed(() => {
+  const d = live.value
+  return !!d && d.state === 'online' && !d.system && !d.pool && (d.role === 'unassigned' || d.role === 'data')
+})
+const toggleSpare = (on: boolean) => run(() => store.setSpare(props.disk!.id, on), on ? 'Als Ersatzplatte vorgemerkt' : 'Vormerkung aufgehoben')
 const bench = computed(() => live.value?.bench)
 const benchable = computed(() => live.value?.state === 'online' && !!live.value.device)
 const startBench = () => run(() => store.startBench(props.disk!.id), 'Benchmark gestartet')
@@ -212,6 +217,20 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         </table>
       </div>
       <p v-else class="hint" data-test="no-partitions">Keine Partitionen – die Platte ist leer oder nicht partitioniert.</p>
+
+      <template v-if="spareable || live?.spare">
+        <h3>Ersatzplatte</h3>
+        <div class="selftest" data-test="spare">
+          <label class="check">
+            <input type="checkbox" :checked="!!live?.spare" :disabled="busy" data-test="spare-toggle" @change="toggleSpare(($event.target as HTMLInputElement).checked)" />
+            Als Ersatzplatte (Hot-Spare) vormerken
+          </label>
+          <p class="hint">
+            Die Platte bleibt unbenutzt. Fällt eine Datenplatte aus, nennen die Meldungen diese Platte, und „Platte ersetzen“ schlägt sie zuerst vor.
+            Dafür muss sie als Datenplatte formatiert sein und mindestens so groß wie die größte Datenplatte.
+          </p>
+        </div>
+      </template>
 
       <template v-if="benchable">
         <h3>Geschwindigkeit</h3>

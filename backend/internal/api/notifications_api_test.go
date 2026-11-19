@@ -276,3 +276,29 @@ func TestDiskIORoute(t *testing.T) {
 		t.Fatalf("%s", w.Body)
 	}
 }
+
+func TestSpareRoute(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("PUT", "/api/v1/disks/d1/spare", `{"spare":true}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks", ""); !strings.Contains(w.Body.String(), `"spare":true`) {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/nope/spare", `{"spare":true}`); w.Code != 404 {
+		t.Fatalf("%d", w.Code)
+	}
+}
+
+func TestEraseRoutesGuard(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("POST", "/api/v1/disks/nope/erase/preview", ""); w.Code != 404 {
+		t.Fatalf("%d", w.Code)
+	}
+	if w := s.do("POST", "/api/v1/disks/d1/erase", `{"method":"zero","confirmSerial":"x","confirmToken":"kaputt"}`); w.Code != 409 {
+		t.Fatalf("ohne gültige Bestätigung muss abgelehnt werden: %d %s", w.Code, w.Body)
+	}
+	if w := s.do("DELETE", "/api/v1/disks/d1/erase", ""); w.Code != 409 {
+		t.Fatalf("%d", w.Code)
+	}
+}

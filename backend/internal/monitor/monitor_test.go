@@ -430,3 +430,30 @@ func TestFsCheckErrorsRaiseAlert(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+func TestAlertMentionsSpareDisk(t *testing.T) {
+	bad := healthyDisk("b")
+	bad.Role, bad.Pool = "data", "tank"
+	bad.Smart.Passed = false
+	unpooled := healthyDisk("u")
+	unpooled.Role = "data"
+	unpooled.Smart.Passed = false
+	spare := healthyDisk("s")
+	spare.Spare = true
+	src := &fakeSource{disks: []storage.DiskView{bad, unpooled, spare}, pools: []storage.PoolView{{PoolInput: storage.PoolInput{Name: "tank"}, Mounted: true}}, snap: map[string]snapraid.Status{}}
+	m, _, _ := newMon(t, src)
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]string{}
+	for _, f := range fs {
+		body[f.Key] = f.Body
+	}
+	if !strings.Contains(body["smart:b"], "Ersatzplatte bereit") {
+		t.Errorf("Hinweis fehlt: %q", body["smart:b"])
+	}
+	if strings.Contains(body["smart:u"], "Ersatzplatte") {
+		t.Errorf("Platte ohne Pool bekommt keinen Hinweis: %q", body["smart:u"])
+	}
+}

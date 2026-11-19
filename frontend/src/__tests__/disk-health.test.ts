@@ -641,3 +641,42 @@ describe('Benchmark', () => {
     expect(b.w.find('[data-test="bench-error"]').text()).toContain('nicht lesen')
   })
 })
+
+describe('Ersatzplatte', () => {
+  function setupSpare(d: DiskView) {
+    const puts: { url: string; body: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') {
+          puts.push({ url, body: init.body as string })
+          return new Response(null, { status: 204 })
+        }
+        return new Response(url.includes('/history') ? '[]' : JSON.stringify([d]), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useStorageStore().disks = [d]
+    const w = mount(DiskDetailDialog, { props: { visible: true, disk: d }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    return { w, puts }
+  }
+
+  it('merkt eine unbenutzte Platte als Ersatzplatte vor', async () => {
+    const { w, puts } = setupSpare(disk({ id: 'd9', role: 'data' }))
+    await flushPromises()
+    await w.find('[data-test="spare-toggle"]').setValue(true)
+    await flushPromises()
+    expect(puts).toEqual([{ url: '/api/v1/disks/d9/spare', body: JSON.stringify({ spare: true }) }])
+  })
+
+  it('bietet es nicht für Platten im Pool oder die Systemplatte an', async () => {
+    const pooled = setupSpare(disk({ id: 'd1', role: 'data', pool: 'media' }))
+    await flushPromises()
+    expect(pooled.w.find('[data-test="spare"]').exists()).toBe(false)
+    pooled.w.unmount()
+    const sys = setupSpare(disk({ id: 's', role: 'system', system: true }))
+    await flushPromises()
+    expect(sys.w.find('[data-test="spare"]').exists()).toBe(false)
+  })
+})

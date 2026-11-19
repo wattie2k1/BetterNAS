@@ -52,6 +52,10 @@ export const useStorageStore = defineStore('storage', () => {
     refresh,
     handleEvent,
     previewFormat: storageApi.previewFormat,
+    setSpare: async (id: string, spare: boolean) => {
+      await storageApi.setSpare(id, spare)
+      await refresh()
+    },
     previewErase: storageApi.previewErase,
     startErase: async (id: string, req: EraseRequest) => {
       await storageApi.startErase(id, req)

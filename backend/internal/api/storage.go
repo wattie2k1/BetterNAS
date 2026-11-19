@@ -223,6 +223,19 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("PUT /api/v1/disks/{id}/spare", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Spare bool `json:"spare"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetSpare(r.Context(), actor(r), r.PathValue("id"), in.Spare); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/format/preview", func(w http.ResponseWriter, r *http.Request) {
 		p, err := m.PreviewFormat(r.Context(), r.PathValue("id"))
 		if err != nil {

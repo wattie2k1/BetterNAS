@@ -15,7 +15,7 @@ const newId = ref('')
 const confirmed = ref(false)
 
 const byId = (id: string) => props.disks.find((d) => d.id === id)
-const label = (d: DiskView) => `${d.model || d.id} · ${d.serial || d.id} · ${formatBytes(d.sizeBytes)}${d.state === 'missing' ? ' – fehlt' : ''}`
+const label = (d: DiskView) => `${d.model || d.id} · ${d.serial || d.id} · ${formatBytes(d.sizeBytes)}${d.state === 'missing' ? ' – fehlt' : ''}${d.spare ? ' – Ersatzplatte' : ''}`
 
 const members = computed(() => (props.pool?.branches ?? []).map((id) => byId(id)).filter((d): d is DiskView => !!d))
 const oldDisk = computed(() => byId(oldId.value))
@@ -35,6 +35,11 @@ watch(
   },
   { immediate: true },
 )
+
+// Beim Wechsel zu Schritt 2 die vorgemerkte Ersatzplatte vorwählen, wenn sie passt.
+watch(step, (s) => {
+  if (s === 2 && !newId.value) newId.value = candidates.value.find((d) => d.spare)?.id ?? ''
+})
 
 const canNext = computed(() => (step.value === 1 ? !!oldId.value : step.value === 2 ? !!newId.value : false))
 

@@ -105,6 +105,8 @@ type DiskView struct {
 	Bench *Bench `json:"bench,omitempty"`
 	// Erase ist der Zustand eines laufenden oder gerade beendeten Löschvorgangs (sicheres Löschen).
 	Erase *Erase `json:"erase,omitempty"`
+	// Spare: die Platte ist als Ersatzplatte (Hot-Spare) vorgemerkt und wird bei einem Ausfall zum Ersetzen angeboten.
+	Spare bool `json:"spare,omitempty"`
 	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
 	Spindown int `json:"spindown"`
 }
@@ -398,6 +400,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 	seenState := m.trackNew(ctx, live)
 	fsc := m.loadFsChecks(ctx)
 	bench := m.loadBench(ctx)
+	spares := m.loadSpares(ctx)
 	notes, _ := m.loadNotes(ctx) // Notizen sind Beiwerk: ein Lesefehler soll die Plattenliste nicht verhindern
 	out := []DiskView{}
 	seen := map[string]bool{}
@@ -424,6 +427,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		v.FsCheck = fsc[d.ID]
 		v.Bench = bench[d.ID]
 		v.Erase = m.eraseView(d.ID)
+		v.Spare = spares[d.ID] && spareEligible(v.Role, v.Pool, d.System)
 		v.New = v.Role == "unassigned" && seenState[d.ID] == seenNew
 		if n, ok := notes[d.ID]; ok {
 			v.Note = &n

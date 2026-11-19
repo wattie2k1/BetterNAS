@@ -31,6 +31,16 @@ const mountDialog = (over: Record<string, unknown> = {}) =>
 
 const ids = (w: ReturnType<typeof mountDialog>, kind: 'old' | 'new') => w.findAll(`[data-test="${kind}-option"]`).map((e) => e.attributes('data-id'))
 
+describe('ReplaceDiskDialog: Ersatzplatte', () => {
+  it('wählt die vorgemerkte Ersatzplatte in Schritt 2 vor', async () => {
+    const withSpare = disks.map((d) => (d.id === 'n1' ? { ...d, spare: true } : d))
+    const w = mountDialog({ disks: withSpare })
+    await w.find('[data-test="replace-next"]').trigger('click')
+    expect((w.find('[data-test="new-option"][data-id="n1"] input').element as HTMLInputElement).checked).toBe(true)
+    expect(w.find('[data-test="new-option"][data-id="n1"]').text()).toContain('Ersatzplatte')
+  })
+})
+
 describe('ReplaceDiskDialog', () => {
   it('wählt die fehlende Platte vor und bietet als Ersatz nur passende Datenplatten an', async () => {
     const w = mountDialog()

@@ -182,10 +182,24 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		}
 		growth = g
 	}
+	spareLabel := ""
+	for _, d := range disks {
+		if d.Spare && d.State == "online" {
+			spareLabel = diskLabel(d)
+			break
+		}
+	}
+	// withSpare ergänzt bei Ausfällen einer Datenplatte den Hinweis auf die vorgemerkte Ersatzplatte.
+	withSpare := func(d storage.DiskView, body string) string {
+		if spareLabel == "" || d.Role != "data" || d.Pool == "" {
+			return body
+		}
+		return body + " Ersatzplatte bereit: " + spareLabel + " – einsetzen unter „Datenträger“ → Pool → Platte ersetzen."
+	}
 	for _, d := range disks {
 		label := diskLabel(d)
 		if d.State == "missing" {
-			add("disk-missing:"+d.ID, "crit", "Platte fehlt: "+label, "Die Platte ist nicht mehr erreichbar. Prüfe Kabel und Stromversorgung.")
+			add("disk-missing:"+d.ID, "crit", "Platte fehlt: "+label, withSpare(d, "Die Platte ist nicht mehr erreichbar. Prüfe Kabel und Stromversorgung."))
 			continue
 		}
 		if d.New {
@@ -202,7 +216,7 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		}
 		noValues := s.Standby && !s.Passed && s.TemperatureC == 0 && s.PowerOnHours == 0
 		if !s.Passed && !noValues {
-			add("smart:"+d.ID, "crit", "SMART-Fehler: "+label, "Die Platte meldet einen SMART-Fehler. Sichere die Daten und tausche die Platte aus.")
+			add("smart:"+d.ID, "crit", "SMART-Fehler: "+label, withSpare(d, "Die Platte meldet einen SMART-Fehler. Sichere die Daten und tausche die Platte aus."))
 		}
 		if s.PendingSectors > 0 || s.ReallocatedSectors > 0 {
 			add("smart-sectors:"+d.ID, "warn", "Defekte Sektoren: "+label,
@@ -210,11 +224,11 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		}
 		if g := growth[d.ID]; g >= sectorGrowthMin {
 			add("smart-growth:"+d.ID, "crit", "Defekte Sektoren nehmen zu: "+label,
-				fmt.Sprintf("In den letzten %d Tagen sind %d defekte Sektoren dazugekommen. Das deutet auf eine sterbende Platte hin – sichere die Daten und tausche sie aus.", sectorGrowthDays, g))
+				withSpare(d, fmt.Sprintf("In den letzten %d Tagen sind %d defekte Sektoren dazugekommen. Das deutet auf eine sterbende Platte hin – sichere die Daten und tausche sie aus.", sectorGrowthDays, g)))
 		}
 		if st := s.SelfTest; st != nil && st.Last != nil && st.Last.Result == "failed" {
 			add("selftest:"+d.ID, "crit", "SMART-Selbsttest fehlgeschlagen: "+label,
-				"Der letzte Selbsttest meldet: "+orDefault(st.Last.Status, "Fehler")+". Sichere die Daten und tausche die Platte aus.")
+				withSpare(d, "Der letzte Selbsttest meldet: "+orDefault(st.Last.Status, "Fehler")+". Sichere die Daten und tausche die Platte aus."))
 		}
 		if w := s.Wear; w != nil && w.PercentUsed != nil && *w.PercentUsed >= ssdWearWarnPercent {
 			add("ssd-wear:"+d.ID, "warn", "SSD fast verschlissen: "+label,
