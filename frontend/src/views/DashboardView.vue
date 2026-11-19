@@ -5,6 +5,8 @@ import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
 import { api } from '@/api/client'
 import RingGauge from '@/components/RingGauge.vue'
+import CpuTile from '@/components/CpuTile.vue'
+import MemoryTile from '@/components/MemoryTile.vue'
 import QuickTiles from '@/components/QuickTiles.vue'
 import DockerTile from '@/components/docker/DockerTile.vue'
 import UsageBar from '@/components/storage/UsageBar.vue'
@@ -38,6 +40,10 @@ const info = ref<SystemInfo | null>(null)
 const snap = ref<{ pool: PoolView; status: SnapraidStatus }[]>([])
 const error = ref('')
 const cpuPercent = ref<number | null>(null)
+/** Letzte Messungen für den Verlauf in der CPU-Kachel (bei 5 s Takt rund 5 Minuten). */
+const cpuHistory = ref<number[]>([])
+const memHistory = ref<number[]>([])
+const HISTORY_MAX = 60
 let lastTicks: { total: number; idle: number } | null = null
 let stopTimer: (() => void) | undefined
 let stopSnapTimer: (() => void) | undefined
@@ -52,6 +58,7 @@ async function load() {
     const next = await api.get<SystemInfo>('/api/v1/system/info')
     info.value = next
     updateCpu(next)
+    updateMem(next)
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -67,8 +74,16 @@ function updateCpu(i: SystemInfo) {
   if (lastTicks && total > lastTicks.total) {
     const busy = 1 - (idle - lastTicks.idle) / (total - lastTicks.total)
     cpuPercent.value = Math.max(0, Math.min(100, busy * 100))
+    cpuHistory.value = [...cpuHistory.value, cpuPercent.value].slice(-HISTORY_MAX)
   }
   lastTicks = { total, idle }
+}
+
+/** Belegung in Prozent für den Verlauf der Speicher-Kachel. */
+function updateMem(i: SystemInfo) {
+  if (!i.memTotalBytes) return
+  const used = ((i.memTotalBytes - i.memAvailableBytes) / i.memTotalBytes) * 100
+  memHistory.value = [...memHistory.value, Math.max(0, Math.min(100, used))].slice(-HISTORY_MAX)
 }
 
 async function loadSnapraid() {
@@ -99,8 +114,6 @@ onUnmounted(() => {
   clearTimeout(firstCpu)
 })
 
-const memUsed = computed(() => (info.value ? info.value.memTotalBytes - info.value.memAvailableBytes : 0))
-const memPercent = computed(() => (info.value ? Math.round((memUsed.value / info.value.memTotalBytes) * 100) : 0))
 
 
 const greeting = computed(() => {
@@ -242,26 +255,12 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
       </div>
 
       <template v-else-if="id === 'cpu'">
-        <div v-if="info" class="mem" data-test="cpu-tile">
-          <RingGauge :value="cpuPercent ?? 0" :label="cpuPercent === null ? 'misst …' : 'ausgelastet'" :size="116" from="#f59e0b" to="#ef4444" />
-          <div>
-            <p class="big" data-test="cpu-percent">{{ cpuPercent === null ? '–' : `${Math.round(cpuPercent)} %` }}</p>
-            <p class="soft">{{ info.cpuCount }} Kerne</p>
-            <p class="soft" data-test="cpu-load">Last {{ (info.load ?? []).map((l) => l.toFixed(2)).join(' · ') }}</p>
-          </div>
-        </div>
+        <CpuTile v-if="info" :percent="cpuPercent" :history="cpuHistory" :load="info.load ?? []" :cores="info.cpuCount" :model="info.cpuModel" />
         <Skeleton v-else height="7rem" />
-        <p v-if="info?.cpuModel" class="soft model">{{ info.cpuModel }}</p>
       </template>
 
       <template v-else-if="id === 'memory'">
-        <div v-if="info" class="mem">
-          <RingGauge :value="memPercent" label="belegt" :size="116" from="#e879f9" to="#6366f1" />
-          <div>
-            <p class="big">{{ formatBytes(memUsed) }}</p>
-            <p class="soft">von {{ formatBytes(info.memTotalBytes) }}</p>
-          </div>
-        </div>
+        <MemoryTile v-if="info" :total-bytes="info.memTotalBytes" :available-bytes="info.memAvailableBytes" :history="memHistory" />
         <Skeleton v-else height="7rem" />
       </template>
 
@@ -420,8 +419,7 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
   color: var(--bn-text-soft);
   font-size: 0.9rem;
 }
-.storage-body,
-.mem {
+.storage-body {
   display: flex;
   align-items: center;
   gap: 22px;

@@ -38,6 +38,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('Dashboard: Arbeitsspeicher-Kachel', () => {
+  it('zeigt Belegung, Zahlen und nach zwei Messungen den Verlauf', async () => {
+    vi.useFakeTimers()
+    stubFetch([info(1000, 800), info(2000, 1300)])
+    const w = mountDash()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(w.find('[data-test="mem-used"]').exists()).toBe(true)
+    expect(w.find('[data-test="mem-history"] svg').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(w.find('[data-test="mem-history"] svg').exists()).toBe(true)
+    expect(w.find('[data-test="mem-stats"]').text()).toContain('50 %')
+    expect(w.find('[data-test="tile-memory"]').text()).toContain('Verfügbar')
+    w.unmount()
+  })
+})
+
 describe('Dashboard: CPU-Kachel', () => {
   it('berechnet die Auslastung aus zwei Messungen und zeigt Last und Modell', async () => {
     vi.useFakeTimers()
@@ -47,8 +63,24 @@ describe('Dashboard: CPU-Kachel', () => {
     expect(w.find('[data-test="cpu-percent"]').text()).toBe('–')
     await vi.advanceTimersByTimeAsync(1600)
     expect(w.find('[data-test="cpu-percent"]').text()).toBe('50 %')
-    expect(w.find('[data-test="cpu-load"]').text()).toContain('0.50 · 0.25 · 0.10')
+    expect(w.find('[data-test="cpu-load"]').text()).toContain('0.50')
+    expect(w.find('[data-test="cpu-load"]').text()).toContain('0.25')
+    expect(w.find('[data-test="cpu-load"]').text()).toContain('0.10')
     expect(w.find('[data-test="tile-cpu"]').text()).toContain('Testprozessor')
+    w.unmount()
+  })
+
+  it('zeichnet den Verlauf und zeigt Min./Ø/Max der Messungen', async () => {
+    vi.useFakeTimers()
+    stubFetch([info(1000, 800), info(2000, 1300), info(3000, 2300)])
+    const w = mountDash()
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(w.find('[data-test="cpu-history"] svg').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(w.find('[data-test="cpu-history"] svg').exists()).toBe(true)
+    const stats = w.find('[data-test="cpu-stats"]').text()
+    expect(stats).toContain('0 %')
+    expect(stats).toContain('50 %')
     w.unmount()
   })
 
