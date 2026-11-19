@@ -8,9 +8,10 @@ import FormatDialog from '@/components/storage/FormatDialog.vue'
 import DiskDetailDialog from '@/components/storage/DiskDetailDialog.vue'
 import SelfTestScheduleDialog from '@/components/storage/SelfTestScheduleDialog.vue'
 import UsageBar from '@/components/storage/UsageBar.vue'
+import EraseDialog from '@/components/storage/EraseDialog.vue'
 import DiskBulkBar from '@/components/storage/DiskBulkBar.vue'
 import { useStorageStore } from '@/stores/storage'
-import type { DiskView, FormatPreview, FormatRequest } from '@/api/storage'
+import type { DiskView, EraseRequest, FormatPreview, FormatRequest } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
 import { ioRates, formatRate, type IORate } from '@/utils/diskio'
 import { pollWhileVisible } from '@/utils/poll'
@@ -21,6 +22,9 @@ const store = useStorageStore()
 const toast = useToast()
 const preview = ref<FormatPreview | null>(null)
 const showFormat = ref(false)
+const erasePreview = ref<FormatPreview | null>(null)
+const eraseSsd = ref(false)
+const showErase = ref(false)
 const busy = ref<string | null>(null)
 
 // Auswahl für Sammelaktionen: nur angeschlossene Platten; verschwundene werden wieder abgewählt.
@@ -80,7 +84,7 @@ function openDetail(d: DiskView) {
 }
 
 // Läuft irgendwo ein Selbsttest, den Fortschritt alle 15 s nachladen (die Werte kommen aus dem Zwischenspeicher des Servers).
-const anyTestRunning = computed(() => store.disks.some((d) => d.smart?.selfTest?.running || d.fsCheck?.running || d.bench?.running))
+const anyTestRunning = computed(() => store.disks.some((d) => d.smart?.selfTest?.running || d.fsCheck?.running || d.bench?.running || d.erase?.running))
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void store.refresh()
@@ -156,6 +160,24 @@ async function doFormat(req: FormatRequest) {
   const id = preview.value!.diskId
   if (await act(id, () => store.format(id, req), 'Datenträger formatiert')) showFormat.value = false
 }
+
+async function openErase(d: DiskView) {
+  try {
+    erasePreview.value = await store.previewErase(d.id)
+    eraseSsd.value = !d.rotational
+    showErase.value = true
+  } catch (e) {
+    fail(e)
+  }
+}
+
+async function doErase(req: EraseRequest) {
+  const id = erasePreview.value!.diskId
+  if (await act(id, () => store.startErase(id, req), 'Löschvorgang gestartet')) showErase.value = false
+}
+
+const eraseText: Record<string, string> = { done: 'Platte gelöscht', failed: 'Löschen fehlgeschlagen', aborted: 'Löschen abgebrochen (Platte teilweise überschrieben)' }
+const erasePercent = (d: DiskView) => (d.erase && d.erase.totalBytes ? Math.min(100, Math.round((d.erase.writtenBytes / d.erase.totalBytes) * 100)) : 0)
 
 const spinError = ref<Record<string, string>>({})
 
@@ -235,6 +257,13 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
               <Tag v-if="d.note?.name" :value="d.note.name" severity="info" :data-test="`note-name-${d.id}`" />
             </div>
             <div class="sub">{{ d.device || '—' }} · {{ d.serial || d.id }}</div>
+            <div v-if="d.erase?.running" class="sub warn" :data-test="`erase-running-${d.id}`">
+              <i class="pi pi-spin pi-spinner" /> Wird gelöscht<template v-if="d.erase.method === 'zero'"> ({{ erasePercent(d) }} %)</template>
+              <Button label="Abbrechen" size="small" text severity="danger" :data-test="`erase-abort-${d.id}`" @click="act(d.id, () => store.abortErase(d.id), 'Löschen abgebrochen')" />
+            </div>
+            <div v-else-if="d.erase?.result" class="sub" :class="{ warn: d.erase.result !== 'done' }" :data-test="`erase-result-${d.id}`">
+              {{ eraseText[d.erase.result] }}<template v-if="d.erase.error">: {{ d.erase.error }}</template>
+            </div>
             <div v-if="live && rateOf(d)" class="sub io" :data-test="`io-${d.id}`">
               <i class="pi pi-arrow-down" /> {{ formatRate(rateOf(d)!.readBps, formatBytes) }}
               <i class="pi pi-arrow-up" /> {{ formatRate(rateOf(d)!.writeBps, formatBytes) }}
@@ -311,6 +340,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
             />
             <template v-if="d.role === 'unassigned' && d.manageable && d.state === 'online'">
               <Button label="Formatieren" size="small" severity="danger" outlined :loading="busy === d.id" @click="openFormat(d)" />
+              <Button label="Sicher löschen" size="small" severity="danger" text :loading="busy === d.id" :disabled="d.erase?.running" :data-test="`erase-${d.id}`" @click="openErase(d)" />
               <Button
                 v-if="canImport(d)"
                 label="Übernehmen"
@@ -333,6 +363,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
       </tbody>
     </table>
   </div>
+  <EraseDialog v-model:visible="showErase" :preview="erasePreview" :ssd="eraseSsd" :busy="!!busy" @submit="doErase" />
   <FormatDialog v-model:visible="showFormat" :preview="preview" :busy="!!busy" @submit="doFormat" />
   <DiskDetailDialog v-model:visible="showDetail" :disk="detailDisk" />
   <SelfTestScheduleDialog v-model:visible="showSchedule" />

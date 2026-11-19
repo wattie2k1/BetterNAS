@@ -108,6 +108,22 @@ export interface DiskIOStats {
   devices: Record<string, { readBytes: number; writeBytes: number; busyMs: number }>
 }
 
+export type EraseMethod = 'zero' | 'discard'
+export interface EraseRequest {
+  method: EraseMethod
+  confirmSerial: string
+  confirmToken: string
+}
+/** Zustand des Löschvorgangs einer Platte (nur im Speicher des Servers). */
+export interface EraseState {
+  running: boolean
+  method: EraseMethod
+  writtenBytes: number
+  totalBytes: number
+  result?: 'done' | 'failed' | 'aborted'
+  error?: string
+}
+
 /** Tagesstatistik des Energiezustands; day als JJJJ-MM-TT (Ortszeit des Geräts). */
 export interface PowerDay {
   day: string
@@ -184,6 +200,7 @@ export interface DiskView {
   /** Die Aktivitäts-LED blinkt gerade, damit man die Platte findet. */
   identifying?: boolean
   fsCheck?: FsCheck
+  erase?: EraseState
   bench?: BenchState
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
   spindown?: number
@@ -308,6 +325,9 @@ export const storageApi = {
   disks: () => api.get<DiskView[]>('/api/v1/disks'),
   diskIO: () => api.get<DiskIOStats>('/api/v1/disks/io'),
   pools: () => api.get<PoolView[]>('/api/v1/pools'),
+  previewErase: (id: string) => api.post<FormatPreview>(`/api/v1/disks/${enc(id)}/erase/preview`),
+  startErase: (id: string, req: EraseRequest) => api.post<void>(`/api/v1/disks/${enc(id)}/erase`, req),
+  abortErase: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/erase`),
   previewFormat: (id: string) => api.post<FormatPreview>(`/api/v1/disks/${enc(id)}/format/preview`),
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),
   importDisk: (id: string, role?: 'data' | 'parity') =>

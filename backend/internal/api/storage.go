@@ -197,6 +197,32 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusAccepted)
 	})
+	mux.HandleFunc("POST /api/v1/disks/{id}/erase/preview", func(w http.ResponseWriter, r *http.Request) {
+		p, err := m.PreviewErase(r.Context(), r.PathValue("id"))
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	})
+	mux.HandleFunc("POST /api/v1/disks/{id}/erase", func(w http.ResponseWriter, r *http.Request) {
+		var in storage.EraseRequest
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.StartErase(r.Context(), actor(r), r.PathValue("id"), in); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
+	mux.HandleFunc("DELETE /api/v1/disks/{id}/erase", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.AbortErase(r.Context(), actor(r), r.PathValue("id")); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/format/preview", func(w http.ResponseWriter, r *http.Request) {
 		p, err := m.PreviewFormat(r.Context(), r.PathValue("id"))
 		if err != nil {

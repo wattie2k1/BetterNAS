@@ -45,6 +45,10 @@ type fakeAgent struct {
 	selfTestBusy map[string]int // Gerät → so viele disk.smart-Abfragen lang läuft der Test noch
 	selfTestFail bool
 
+	erases           []string
+	eraseStatusCalls int
+	eraseResult      string
+	eraseError       string
 	benchCalls    int
 	benchFail     bool
 	fsChecks      []string
@@ -109,6 +113,18 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			return apierr.New(apierr.Conflict, "nicht lesbar")
 		}
 		f.identifyDevs = append(f.identifyDevs, req["device"])
+		out = map[string]bool{"ok": true}
+	case "disk.erase.start":
+		b, _ := json.Marshal(params)
+		var req map[string]any
+		json.Unmarshal(b, &req)
+		f.erases = append(f.erases, req["device"].(string)+":"+req["method"].(string))
+		out = map[string]bool{"ok": true}
+	case "disk.erase.status":
+		f.eraseStatusCalls++
+		out = map[string]any{"known": true, "running": f.eraseStatusCalls < 2, "writtenBytes": 1000, "totalBytes": 4e12, "result": f.eraseResult, "error": f.eraseError}
+	case "disk.erase.abort":
+		f.erases = append(f.erases, "abort")
 		out = map[string]bool{"ok": true}
 	case "disk.bench":
 		f.benchCalls++

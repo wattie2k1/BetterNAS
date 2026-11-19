@@ -103,6 +103,8 @@ type DiskView struct {
 	FsCheck *FsCheck `json:"fsCheck,omitempty"`
 	// Bench ist der Zustand des Lese-Benchmarks; nil, wenn noch nie gemessen wurde.
 	Bench *Bench `json:"bench,omitempty"`
+	// Erase ist der Zustand eines laufenden oder gerade beendeten Löschvorgangs (sicheres Löschen).
+	Erase *Erase `json:"erase,omitempty"`
 	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
 	Spindown int `json:"spindown"`
 }
@@ -173,6 +175,8 @@ type Manager struct {
 	// identifying: Platten-ID → Abbruchfunktion des laufenden Blinkens (unter tmu).
 	identifying  map[string]context.CancelFunc
 	fsRunning    map[string]time.Time // Platten-ID → Start der laufenden Dateisystem-Prüfung (unter tmu)
+	erases       map[string]*Erase // Platten-ID → Löschvorgang (unter tmu)
+	erasePoll    time.Duration     // Abfrageintervall des Löschvorgangs
 	benchRunning string            // Platten-ID des laufenden Benchmarks (unter tmu)
 	benchErr     map[string]string // Platten-ID → Fehler des letzten Benchmarks (unter tmu)
 	fsPoll       time.Duration        // Abfrageintervall der Dateisystem-Prüfung
@@ -190,7 +194,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps ...DependentsFunc) *Manager {
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
-		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, benchErr: map[string]string{}, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
+		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, benchErr: map[string]string{}, erases: map[string]*Erase{}, erasePoll: 3 * time.Second, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
 		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }
@@ -419,6 +423,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		v.Identifying = m.isIdentifying(d.ID)
 		v.FsCheck = fsc[d.ID]
 		v.Bench = bench[d.ID]
+		v.Erase = m.eraseView(d.ID)
 		v.New = v.Role == "unassigned" && seenState[d.ID] == seenNew
 		if n, ok := notes[d.ID]; ok {
 			v.Note = &n

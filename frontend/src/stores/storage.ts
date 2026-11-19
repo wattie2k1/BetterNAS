@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { storageApi, type DiskNote, type DiskView, type FormatRequest, type SelfTestKind, type TuningSettings, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
+import { storageApi, type DiskNote, type DiskView, type EraseRequest, type FormatRequest, type SelfTestKind, type TuningSettings, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
 import type { EventMessage } from '@/api/ws'
 import { useJobsStore } from './jobs'
 
@@ -52,6 +52,15 @@ export const useStorageStore = defineStore('storage', () => {
     refresh,
     handleEvent,
     previewFormat: storageApi.previewFormat,
+    previewErase: storageApi.previewErase,
+    startErase: async (id: string, req: EraseRequest) => {
+      await storageApi.startErase(id, req)
+      await refresh()
+    },
+    abortErase: async (id: string) => {
+      await storageApi.abortErase(id)
+      await refresh()
+    },
     format: (id: string, req: FormatRequest) => runJob(() => storageApi.format(id, req)),
     importDisk: (id: string, role?: 'data' | 'parity') => runJob(() => storageApi.importDisk(id, role)),
     setSpindown: async (id: string, minutes: number) => {
