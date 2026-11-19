@@ -1213,10 +1213,51 @@ export function stackNameError(name: string, existing: string[]): string {
   return ''
 }
 
+/** Dienstnamen einer compose.yaml in Reihenfolge (Schlüssel auf Ebene 2 unter `services:`). */
+function serviceNames(compose: string): string[] {
+  const out: string[] = []
+  let inServices = false
+  for (const line of compose.split('\n')) {
+    if (/^services:\s*$/.test(line)) inServices = true
+    else if (/^\S/.test(line)) inServices = false
+    else if (inServices) {
+      const m = /^ {2}([A-Za-z0-9_.-]+):\s*$/.exec(line)
+      if (m) out.push(m[1])
+    }
+  }
+  return out
+}
+
+/**
+ * Container-Name eines Dienstes: ein einzelner Dienst oder der Dienst, der wie die Vorlage heißt, bekommt den
+ * Stack-Namen, alle anderen `<Stack>-<Dienst>` (z. B. `cloud` und `cloud-db`).
+ */
+function containerNameOf(services: string[], svc: string, templateStack: string, stack: string): string {
+  return services.length === 1 || svc === templateStack ? stack : `${stack}-${svc}`
+}
+
+/** Container-Namen, die ein Stack aus dieser Vorlage bekommt. */
+export function containerNamesFor(t: AppTemplate, stack: string): string[] {
+  const names = serviceNames(t.compose)
+  return names.map((s) => containerNameOf(names, s, t.stack, stack))
+}
+
+/** Meldung, wenn einer der Container-Namen schon vergeben ist (leer = alles frei). */
+export function containerNameError(t: AppTemplate, stack: string, taken: string[]): string {
+  const clash = containerNamesFor(t, stack).filter((n) => taken.includes(n))
+  if (!clash.length) return ''
+  return `Der Container-Name ${clash.map((n) => `„${n}“`).join(', ')} ist schon vergeben. Wähle einen anderen Stack-Namen.`
+}
+
 /** Erzeugt die Stack-Dateien; der Aufrufer hat vorher alle Felder geprüft. */
 export function renderTemplate(t: AppTemplate, name: string, values: Record<string, string>, devices: HostDevice[] = []): StackFiles {
   const env = t.fields.map((f) => `${f.key}=${values[f.key].trim()}`).join('\n') + '\n'
   // Der Marker `# @devices` wird durch die gewählten Geräte ersetzt oder verschwindet.
-  const compose = t.compose.replace(/^[ \t]*# @devices\n/m, deviceSnippet(devices))
+  let compose = t.compose.replace(/^[ \t]*# @devices\n/m, deviceSnippet(devices))
+  // Feste Container-Namen statt `<Stack>-<Dienst>-1`; Vergabe prüft der Dialog vorher.
+  const names = serviceNames(compose)
+  compose = compose.replace(/^ {2}([A-Za-z0-9_.-]+):[ \t]*$/gm, (line, svc: string) => {
+    return names.includes(svc) ? `${line}\n    container_name: ${containerNameOf(names, svc, t.stack, name)}` : line
+  })
   return { name, compose, env }
 }

@@ -264,7 +264,7 @@ async function remove() {
       </template>
     </Card>
   </div>
-  <TemplateDialog v-model:visible="showTemplates" :existing="names" @create="fromTemplate" />
+  <TemplateDialog v-model:visible="showTemplates" :existing="names" :containers="store.containers.map((c) => c.name)" @create="fromTemplate" />
   <StackDialog v-model:visible="showDialog" :stack="editing" :draft="draft" :existing="names" :busy="busy" :check="check" @submit="submit" />
   <AutoUpdateDialog v-model:visible="showAuto" :config="store.autoUpdate" :stacks="names" :busy="autoBusy" @save="saveAuto" @run="runAuto" />
   <UpdateDialog :visible="!!updating" :stack="updating?.name ?? ''" :plan="updatePlan" :busy="busy" @update:visible="(v) => !v && (updating = null)" @confirm="confirmUpdate" />

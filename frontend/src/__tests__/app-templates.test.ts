@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PrimeVue from 'primevue/config'
 import TemplateDialog from '@/components/docker/TemplateDialog.vue'
-import { APP_TEMPLATES, TEMPLATE_CATEGORIES, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate } from '@/utils/appTemplates'
+import { APP_TEMPLATES, TEMPLATE_CATEGORIES, containerNameError, containerNamesFor, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate } from '@/utils/appTemplates'
 
 describe('Vorlagen', () => {
   it('jede Vorlage hat für alle ${VARIABLEN} ein Feld und gültige Vorgaben', () => {
@@ -411,5 +411,24 @@ describe('Abschlussreview: Rechte, Ordner, Hinweise', () => {
 
   it('Plex und Tailscale weisen auf die BetterNAS-Firewall hin', () => {
     for (const id of ['plex', 'tailscale']) expect(APP_TEMPLATES.find((t) => t.id === id)?.notice, id).toMatch(/Firewall/)
+  })
+})
+
+describe('Container-Namen', () => {
+  it('jede Vorlage vergibt eindeutige feste Namen, alle beginnen mit dem Stack-Namen', () => {
+    for (const t of APP_TEMPLATES) {
+      const names = containerNamesFor(t, 'demo')
+      for (const n of names) expect(n === 'demo' || n.startsWith('demo-'), t.title).toBe(true)
+      expect(new Set(names).size, t.title).toBe(names.length)
+      const files = renderTemplate(t, 'demo', defaultValues(t, 'demo'))
+      for (const n of names) expect(files.compose, t.title).toContain(`container_name: ${n}\n`)
+      expect(files.compose.match(/container_name:/g)?.length, t.title).toBe(names.length)
+    }
+  })
+
+  it('meldet bereits vergebene Container-Namen', () => {
+    const t = APP_TEMPLATES.find((x) => x.stack === 'nextcloud')!
+    expect(containerNameError(t, 'cloud', ['andere'])).toBe('')
+    expect(containerNameError(t, 'cloud', ['cloud-db'])).toContain('„cloud-db“')
   })
 })

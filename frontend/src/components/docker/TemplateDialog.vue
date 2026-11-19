@@ -6,9 +6,9 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import FolderPicker from '@/components/docker/FolderPicker.vue'
 import { dockerApi, type HostDevice, type StackFiles } from '@/api/docker'
-import { APP_TEMPLATES, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
+import { APP_TEMPLATES, defaultValues, containerNameError, fieldError, groupTemplates, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
 
-const props = defineProps<{ visible: boolean; existing: string[] }>()
+const props = defineProps<{ visible: boolean; existing: string[]; containers?: string[] }>()
 const emit = defineEmits<{ 'update:visible': [boolean]; create: [files: StackFiles] }>()
 
 const picked = ref<AppTemplate | null>(null)
@@ -36,7 +36,7 @@ function pick(t: AppTemplate) {
   picked.value = t
   name.value = t.stack
   let n = 2
-  while (props.existing.includes(name.value)) name.value = `${t.stack}-${n++}`
+  while (props.existing.includes(name.value) || containerNameError(t, name.value, props.containers ?? [])) name.value = `${t.stack}-${n++}`
   values.value = defaultValues(t, name.value)
   deviceChoice.value = ''
   devices.value = []
@@ -54,7 +54,9 @@ watch(name, (n, old) => {
   }
 })
 
-const nameErr = computed(() => (picked.value ? stackNameError(name.value, props.existing) : ''))
+const nameErr = computed(() =>
+  picked.value ? stackNameError(name.value, props.existing) || containerNameError(picked.value, name.value, props.containers ?? []) : '',
+)
 const errors = computed(() => {
   const t = picked.value
   const e: Record<string, string> = {}
