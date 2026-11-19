@@ -245,3 +245,13 @@ func TestDismissRoute(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
+
+func TestFsCheckRoute(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("POST", "/api/v1/disks/d1/fscheck", ""); w.Code != 202 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/disks/nope/fscheck", ""); w.Code != 404 {
+		t.Fatalf("%d", w.Code)
+	}
+}

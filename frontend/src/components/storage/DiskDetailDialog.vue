@@ -149,6 +149,14 @@ async function run(fn: () => Promise<void>, ok: string) {
   }
 }
 const start = (kind: SelfTestKind) => run(() => store.startSelfTest(props.disk!.id, kind), `${SELFTEST_KIND_LABEL[kind]} gestartet`)
+const fsc = computed(() => live.value?.fsCheck)
+const checkable = computed(() => {
+  const d = live.value
+  if (!d || d.role === 'system' || d.state !== 'online') return false
+  return ['ext4', 'xfs', 'btrfs'].includes(d.fsType ?? d.partitions?.[0]?.fsType ?? '')
+})
+const fsResultTag = { ok: { label: 'ohne Befund', severity: 'success' }, errors: { label: 'Fehler gefunden', severity: 'danger' }, failed: { label: 'nicht durchführbar', severity: 'warn' } }
+const startFsCheck = () => run(() => store.startFsCheck(props.disk!.id), 'Dateisystem-Prüfung gestartet')
 const abort = () => run(() => store.abortSelfTest(props.disk!.id), 'Selbsttest abgebrochen')
 
 const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted: { label: 'abgebrochen', severity: 'secondary' }, failed: { label: 'fehlgeschlagen', severity: 'danger' } }
@@ -193,6 +201,30 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         </table>
       </div>
       <p v-else class="hint" data-test="no-partitions">Keine Partitionen – die Platte ist leer oder nicht partitioniert.</p>
+
+      <template v-if="checkable">
+        <h3>Dateisystem prüfen</h3>
+        <div class="selftest" data-test="fscheck">
+          <p v-if="fsc?.running" data-test="fscheck-running"><i class="pi pi-spin pi-spinner" /> Die Prüfung läuft. Das kann bei großen Platten Stunden dauern; du kannst den Dialog schließen.</p>
+          <template v-else>
+            <Button label="Prüfung starten" size="small" outlined :loading="busy" data-test="fscheck-start" @click="startFsCheck" />
+            <p class="hint">Die Prüfung liest nur und repariert nichts. Bei eingehängten Platten ist sie eine Online-Prüfung und belastet die Platte spürbar.</p>
+          </template>
+          <div v-if="fsc?.result && !fsc.running" data-test="fscheck-last">
+            <p class="last">
+              Letzte Prüfung<template v-if="fsc.finishedAt"> am {{ new Date(fsc.finishedAt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) }}</template>:
+              <Tag :value="fsResultTag[fsc.result].label" :severity="fsResultTag[fsc.result].severity" />
+            </p>
+            <p v-if="fsc.result === 'errors' && fsc.online" class="hint bad" data-test="fscheck-online-hint">
+              Das Dateisystem war eingehängt. Bei laufendem Betrieb kann die Prüfung Fehler melden, die keine sind; wiederhole sie im Zweifel bei wenig Last.
+            </p>
+            <details v-if="fsc.output">
+              <summary>Ausgabe{{ fsc.tool ? ` von ${fsc.tool}` : '' }}</summary>
+              <pre class="fsout" data-test="fscheck-output">{{ fsc.output }}</pre>
+            </details>
+          </div>
+        </div>
+      </template>
 
       <h3>Notizen</h3>
       <form class="notes" data-test="note-form" @submit.prevent="saveNote">
@@ -380,6 +412,15 @@ h3 {
 .sub {
   font-size: 0.8rem;
   color: var(--bn-text-soft);
+}
+.fsout {
+  max-height: 14rem;
+  overflow: auto;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  background: var(--p-surface-100, rgba(128, 128, 128, 0.12));
+  padding: 0.5rem;
+  border-radius: 6px;
 }
 .last {
   display: flex;

@@ -99,6 +99,8 @@ type DiskView struct {
 	New bool `json:"new,omitempty"`
 	// Identifying: die Aktivitäts-LED blinkt gerade, damit man die Platte findet.
 	Identifying bool `json:"identifying,omitempty"`
+	// FsCheck ist der Zustand der letzten oder laufenden Dateisystem-Prüfung; nil, wenn noch nie geprüft wurde.
+	FsCheck *FsCheck `json:"fsCheck,omitempty"`
 	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
 	Spindown int `json:"spindown"`
 }
@@ -167,6 +169,8 @@ type Manager struct {
 	smart     map[string]smartEntry
 	// identifying: Platten-ID → Abbruchfunktion des laufenden Blinkens (unter tmu).
 	identifying  map[string]context.CancelFunc
+	fsRunning    map[string]time.Time // Platten-ID → Start der laufenden Dateisystem-Prüfung (unter tmu)
+	fsPoll       time.Duration        // Abfrageintervall der Dateisystem-Prüfung
 	powerPrev    map[string]string // Platten-ID → zuletzt gemessener Energiezustand (unter tmu)
 	identifyFor  time.Duration     // Dauer des Blinkens
 	identifyGap  time.Duration     // Pause zwischen zwei Impulsen
@@ -181,7 +185,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps ...DependentsFunc) *Manager {
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
-		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
+		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
 		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }
@@ -383,6 +387,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 	}
 	spin, _ := m.Spindown(ctx)
 	seenState := m.trackNew(ctx, live)
+	fsc := m.loadFsChecks(ctx)
 	notes, _ := m.loadNotes(ctx) // Notizen sind Beiwerk: ein Lesefehler soll die Plattenliste nicht verhindern
 	out := []DiskView{}
 	seen := map[string]bool{}
@@ -406,6 +411,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		v.Smart = m.smartFor(ctx, d.Device)
 		v.Usage = m.usageOf(d.System, v.Role, d.ID)
 		v.Identifying = m.isIdentifying(d.ID)
+		v.FsCheck = fsc[d.ID]
 		v.New = v.Role == "unassigned" && seenState[d.ID] == seenNew
 		if n, ok := notes[d.ID]; ok {
 			v.Note = &n

@@ -73,6 +73,18 @@ export interface DiskNote {
   tempWarnC?: number
 }
 
+/** Zustand der (rein lesenden) Dateisystem-Prüfung einer Platte. */
+export interface FsCheck {
+  running: boolean
+  startedAt?: string
+  finishedAt?: string
+  result?: 'ok' | 'errors' | 'failed'
+  /** Das Dateisystem war während der Prüfung eingehängt; Meldungen können dann Fehlalarme sein. */
+  online?: boolean
+  tool?: string
+  output?: string
+}
+
 /** Tagesstatistik des Energiezustands; day als JJJJ-MM-TT (Ortszeit des Geräts). */
 export interface PowerDay {
   day: string
@@ -148,6 +160,7 @@ export interface DiskView {
   new?: boolean
   /** Die Aktivitäts-LED blinkt gerade, damit man die Platte findet. */
   identifying?: boolean
+  fsCheck?: FsCheck
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
   spindown?: number
 }
@@ -278,6 +291,7 @@ export const storageApi = {
   setTuning: (id: string, t: TuningSettings) => api.put<void>(`/api/v1/disks/${enc(id)}/tuning`, t),
   setNote: (id: string, n: DiskNote) => api.put<void>(`/api/v1/disks/${enc(id)}/note`, n),
   dismissNew: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/dismiss`),
+  startFsCheck: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/fscheck`),
   startIdentify: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/identify`),
   stopIdentify: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/identify`),
   startSelfTest: (id: string, kind: SelfTestKind) => api.post<void>(`/api/v1/disks/${enc(id)}/selftest`, { kind }),

@@ -535,3 +535,56 @@ describe('Hot-Plug: Neue Platte erkannt', () => {
   })
 
 })
+
+describe('Dateisystem-Prüfung', () => {
+  function setupFs(d: DiskView) {
+    const posts: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          posts.push(url)
+          return new Response(null, { status: 202 })
+        }
+        return new Response(url.includes('/history') ? '[]' : JSON.stringify([d]), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useStorageStore().disks = [d]
+    const w = mount(DiskDetailDialog, { props: { visible: true, disk: d }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    return { w, posts }
+  }
+
+  it('startet die Prüfung für eine Datenplatte', async () => {
+    const { w, posts } = setupFs(disk({ id: 'd2', role: 'data', fsType: 'ext4' }))
+    await flushPromises()
+    await w.find('[data-test="fscheck-start"]').trigger('click')
+    await flushPromises()
+    expect(posts).toContain('/api/v1/disks/d2/fscheck')
+  })
+
+  it('zeigt Lauf, Ergebnis mit Online-Hinweis und Ausgabe', async () => {
+    const running = setupFs(disk({ id: 'd2', role: 'data', fsType: 'xfs', fsCheck: { running: true } }))
+    await flushPromises()
+    expect(running.w.find('[data-test="fscheck-running"]').exists()).toBe(true)
+    expect(running.w.find('[data-test="fscheck-start"]').exists()).toBe(false)
+    running.w.unmount()
+
+    const done = setupFs(disk({ id: 'd2', role: 'data', fsType: 'ext4', fsCheck: { running: false, result: 'errors', online: true, tool: 'e2fsck', output: 'Inode 12 kaputt', finishedAt: '2026-11-19T10:00:00Z' } }))
+    await flushPromises()
+    expect(done.w.find('[data-test="fscheck-last"]').text()).toContain('Fehler gefunden')
+    expect(done.w.find('[data-test="fscheck-online-hint"]').exists()).toBe(true)
+    expect(done.w.find('[data-test="fscheck-output"]').text()).toContain('Inode 12 kaputt')
+  })
+
+  it('bietet die Prüfung nicht für die Systemplatte oder fehlende Platten an', async () => {
+    const sys = setupFs(disk({ id: 's', role: 'system', fsType: 'ext4' }))
+    await flushPromises()
+    expect(sys.w.find('[data-test="fscheck"]').exists()).toBe(false)
+    sys.w.unmount()
+    const missing = setupFs(disk({ id: 'm', role: 'data', fsType: 'ext4', state: 'missing' }))
+    await flushPromises()
+    expect(missing.w.find('[data-test="fscheck"]').exists()).toBe(false)
+  })
+})

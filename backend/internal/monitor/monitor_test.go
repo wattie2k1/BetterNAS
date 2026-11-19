@@ -409,3 +409,24 @@ func TestPerDiskTempLimit(t *testing.T) {
 		t.Errorf("Grenze 40 °C muss bei 41 °C warnen: %v", got)
 	}
 }
+
+func TestFsCheckErrorsRaiseAlert(t *testing.T) {
+	bad := healthyDisk("b")
+	bad.FsCheck = &storage.FsCheck{Result: "errors"}
+	running := healthyDisk("r")
+	running.FsCheck = &storage.FsCheck{Running: true, Result: "errors"}
+	good := healthyDisk("g")
+	good.FsCheck = &storage.FsCheck{Result: "ok"}
+	failed := healthyDisk("f")
+	failed.FsCheck = &storage.FsCheck{Result: "failed"}
+	src := &fakeSource{disks: []storage.DiskView{bad, running, good, failed}, snap: map[string]snapraid.Status{}}
+	m, _, _ := newMon(t, src)
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keys(fs)
+	if got["fscheck:b"] != "crit" || len(got) != 1 {
+		t.Fatalf("%v", got)
+	}
+}

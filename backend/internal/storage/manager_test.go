@@ -45,6 +45,10 @@ type fakeAgent struct {
 	selfTestBusy map[string]int // Gerät → so viele disk.smart-Abfragen lang läuft der Test noch
 	selfTestFail bool
 
+	fsChecks      []string
+	fsStatusCalls int
+	fsResult      string
+
 	identifyDevs []string // Geräte der disk.identify-Aufrufe
 	identifyFail bool
 
@@ -104,6 +108,15 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		}
 		f.identifyDevs = append(f.identifyDevs, req["device"])
 		out = map[string]bool{"ok": true}
+	case "disk.fscheck.start":
+		b, _ := json.Marshal(params)
+		var req map[string]string
+		json.Unmarshal(b, &req)
+		f.fsChecks = append(f.fsChecks, req["device"])
+		out = map[string]bool{"ok": true}
+	case "disk.fscheck.status":
+		f.fsStatusCalls++
+		out = map[string]any{"running": f.fsStatusCalls < 2, "known": true, "result": f.fsResult, "tool": "e2fsck", "output": "Ausgabe"}
 	case "disk.selftest.start", "disk.selftest.abort":
 		b, _ := json.Marshal(params)
 		var req map[string]string

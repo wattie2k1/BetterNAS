@@ -170,7 +170,7 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	}
 	disks, derr := m.src.ListDisks(ctx)
 	if derr != nil {
-		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "ssd-wear:", "disk-new:", "temp:", "disk-missing:")
+		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "ssd-wear:", "fscheck:", "disk-new:", "temp:", "disk-missing:")
 		err = errors.Join(err, fmt.Errorf("platten: %w", derr))
 	}
 	var growth map[string]int
@@ -191,6 +191,10 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		if d.New {
 			add("disk-new:"+d.ID, "info", "Neue Platte erkannt: "+label,
 				fmt.Sprintf("Eine neue Platte (%s, %s) wurde angeschlossen. Richte sie unter „Datenträger“ ein oder blende den Hinweis dort aus.", d.Device, humanBytes(d.SizeBytes)))
+		}
+		if fc := d.FsCheck; fc != nil && !fc.Running && fc.Result == "errors" {
+			add("fscheck:"+d.ID, "crit", "Dateisystemfehler: "+label,
+				"Die Dateisystem-Prüfung hat Fehler gefunden. Sichere die Daten; die Einzelheiten stehen im Detaildialog der Platte. Eine neue Prüfung ohne Befund entfernt diese Meldung.")
 		}
 		s := d.Smart
 		if s == nil {
