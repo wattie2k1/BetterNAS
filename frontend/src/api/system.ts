@@ -21,6 +21,8 @@ export interface CertInfo {
   fingerprint: string
   selfSigned: boolean
   expired: boolean
+  /** Herkunft des Zertifikats (fehlt in alten Servern). */
+  mode?: 'selfsigned' | 'localca' | 'acme' | 'custom'
 }
 
 export interface RebootStatus {

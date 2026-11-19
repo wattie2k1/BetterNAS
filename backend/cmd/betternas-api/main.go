@@ -28,6 +28,7 @@ import (
 	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/system"
+	"github.com/betternas/betternas/internal/tlsmgr"
 	"github.com/betternas/betternas/internal/users"
 	"github.com/betternas/betternas/internal/version"
 	"github.com/betternas/betternas/internal/vm"
@@ -149,7 +150,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: dm, VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
+	var tm *tlsmgr.Manager
+	if certs != nil {
+		tm = tlsmgr.New(d, cfg.TLSDir, certs, ns)
+		go tm.Run(ctx)
+	}
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: dm, VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, TLS: tm, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

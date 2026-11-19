@@ -162,6 +162,13 @@ func (s *CertStore) Info() CertInfo {
 	}
 }
 
+// Leaf liefert das aktive Server-Zertifikat.
+func (s *CertStore) Leaf() *x509.Certificate {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cur.Leaf
+}
+
 // Install prüft ein hochgeladenes Zertifikat samt Schlüssel (PEM), speichert es und aktiviert es.
 func (s *CertStore) Install(certPEM, keyPEM []byte) error {
 	pair, err := tls.X509KeyPair(certPEM, keyPEM)

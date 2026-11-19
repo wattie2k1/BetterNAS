@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CertAcme from '@/components/settings/CertAcme.vue'
+import CertLocalCa from '@/components/settings/CertLocalCa.vue'
 import { systemApi, type CertInfo } from '@/api/system'
+import { tlsApi, type TlsStatus } from '@/api/tls'
 
 const toast = useToast()
 const info = ref<CertInfo | null>(null)
+const tls = ref<TlsStatus | null>(null)
 const cert = ref('')
 const key = ref('')
 const error = ref('')
@@ -23,8 +27,29 @@ async function load() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
+  try {
+    tls.value = await tlsApi.status()
+  } catch {
+    // Ältere Server kennen die lokale CA und Let's Encrypt nicht: die Seite zeigt dann nur die Grundfunktionen.
+    tls.value = null
+  }
 }
 onMounted(load)
+
+const kind = computed(() => {
+  const i = info.value
+  if (!i) return ''
+  switch (i.mode) {
+    case 'localca':
+      return 'Lokale Zertifizierungsstelle (vertrauenswürdig, sobald das Root-Zertifikat auf dem Gerät installiert ist)'
+    case 'acme':
+      return 'Let’s Encrypt (von allen Browsern anerkannt)'
+    case 'custom':
+      return 'Eigenes Zertifikat, von einer Zertifizierungsstelle ausgestellt'
+    default:
+      return i.selfSigned ? 'Selbstsigniert (Browser warnen davor)' : 'Von einer Zertifizierungsstelle ausgestellt'
+  }
+})
 
 async function run(fn: () => Promise<CertInfo>, ok: string) {
   busy.value = true
@@ -52,7 +77,7 @@ async function run(fn: () => Promise<CertInfo>, ok: string) {
         <Message v-if="info.expired" severity="error" :closable="false">Das Zertifikat ist abgelaufen.</Message>
         <dl class="now" data-test="cert-info">
           <dt>Art</dt>
-          <dd>{{ info.selfSigned ? 'Selbstsigniert (Browser warnen davor)' : 'Von einer Zertifizierungsstelle ausgestellt' }}</dd>
+          <dd>{{ kind }}</dd>
           <dt>Ausgestellt für</dt>
           <dd>{{ [...info.dnsNames, ...info.ipAddresses].join(', ') || info.subject }}</dd>
           <dt>Gültig bis</dt>
@@ -65,6 +90,8 @@ async function run(fn: () => Promise<CertInfo>, ok: string) {
         </div>
       </template>
     </section>
+    <CertLocalCa v-if="tls" :status="tls" @changed="load" />
+    <CertAcme v-if="tls" :status="tls" @changed="load" />
     <section class="card">
       <h2>Eigenes Zertifikat verwenden</h2>
       <p class="soft">Füge Zertifikat (inklusive Zwischenzertifikaten) und privaten Schlüssel im PEM-Format ein. Der Schlüssel darf nicht passwortgeschützt sein. Bei Fehlern bleibt das bisherige Zertifikat aktiv.</p>

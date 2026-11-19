@@ -19,6 +19,7 @@ import (
 	"github.com/betternas/betternas/internal/shares"
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/system"
+	"github.com/betternas/betternas/internal/tlsmgr"
 	"github.com/betternas/betternas/internal/users"
 	"github.com/betternas/betternas/internal/vm"
 )
@@ -62,6 +63,8 @@ type Deps struct {
 	SystemSettings *system.Settings
 	// Certs ist optional (nil = keine Zertifikat-Routen).
 	Certs *CertStore
+	// TLS ist optional (nil = keine Routen für lokale CA und Let's Encrypt; setzt Certs voraus).
+	TLS *tlsmgr.Manager
 	// Monitor ist optional (nil = keine aktiven Meldungen).
 	Monitor *monitor.Monitor
 }
@@ -125,6 +128,9 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	}
 	if deps.Certs != nil {
 		s.registerWebAccess(api)
+		if deps.TLS != nil {
+			s.registerTLS(api)
+		}
 	}
 	if deps.Docker != nil {
 		s.registerDocker(api)
