@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { storageApi, type DiskNote, type DiskView, type FormatRequest, type SelfTestKind, type TuningSettings, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
 import type { EventMessage } from '@/api/ws'
 import { useJobsStore } from './jobs'
@@ -8,6 +8,9 @@ export const useStorageStore = defineStore('storage', () => {
   const disks = ref<DiskView[]>([])
   const pools = ref<PoolView[]>([])
   const loading = ref(false)
+  /** Mindestens einmal erfolgreich geladen (damit beim ersten Laden vorhandene Platten nicht als „neu angeschlossen“ gelten). */
+  const loaded = ref(false)
+  const newDisks = computed(() => disks.value.filter((d) => d.new && d.state === 'online'))
   const error = ref('')
 
   async function refresh() {
@@ -16,6 +19,7 @@ export const useStorageStore = defineStore('storage', () => {
       const [d, p] = await Promise.all([storageApi.disks(), storageApi.pools()])
       disks.value = d
       pools.value = p
+      loaded.value = true
       error.value = ''
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -42,6 +46,8 @@ export const useStorageStore = defineStore('storage', () => {
     disks,
     pools,
     loading,
+    loaded,
+    newDisks,
     error,
     refresh,
     handleEvent,
@@ -58,6 +64,10 @@ export const useStorageStore = defineStore('storage', () => {
     },
     setNote: async (id: string, n: DiskNote) => {
       await storageApi.setNote(id, n)
+      await refresh()
+    },
+    dismissNew: async (id: string) => {
+      await storageApi.dismissNew(id)
       await refresh()
     },
     startIdentify: async (id: string) => {

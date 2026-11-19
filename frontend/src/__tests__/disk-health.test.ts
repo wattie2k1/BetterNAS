@@ -476,3 +476,51 @@ describe('Standby-Statistik und APM', () => {
     expect(w.find('[data-test="tuning-form"]').exists()).toBe(true)
   })
 })
+
+describe('Hot-Plug: Neue Platte erkannt', () => {
+  const fresh = disk({ id: 'n1', device: '/dev/sdz', model: 'WD Red', serial: 'N1', sizeBytes: 8e12, role: 'unassigned', new: true })
+
+  function stub(rows: () => DiskView[]) {
+    const calls: { url: string; method: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (method !== 'GET') {
+          calls.push({ url, method })
+          return new Response(null, { status: 204 })
+        }
+        return new Response(JSON.stringify(url.includes('/disks') ? rows() : pools), { status: 200 })
+      }),
+    )
+    return calls
+  }
+
+  it('zeigt einen Hinweis mit Aktionen und blendet ihn per „Ignorieren“ aus', async () => {
+    let list = [disk({ id: 'd1', role: 'data' }), fresh]
+    const calls = stub(() => list)
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    const banner = w.find('[data-test="new-disk-n1"]')
+    expect(banner.text()).toContain('Neue Platte erkannt')
+    expect(banner.text()).toContain('WD Red')
+    expect(banner.text()).toContain('8,0 TB')
+    expect(w.find('[data-test="new-disk-d1"]').exists()).toBe(false)
+    expect(banner.find('[data-test="new-import-n1"]').exists()).toBe(false) // kein vorhandenes Dateisystem
+    list = [disk({ id: 'd1', role: 'data' }), { ...fresh, new: false }]
+    await banner.find('[data-test="new-dismiss-n1"]').trigger('click')
+    await flushPromises()
+    expect(calls).toEqual([{ url: '/api/v1/disks/n1/dismiss', method: 'POST' }])
+    expect(w.find('[data-test="new-disk-n1"]').exists()).toBe(false)
+  })
+
+  it('bietet „Übernehmen“ nur bei erkennbarem Dateisystem und „Formatieren“ immer', async () => {
+    const withFs = { ...fresh, partitions: [{ device: '/dev/sdz1', fsType: 'ext4', uuid: 'u', label: '', sizeBytes: 1, mountpoints: [] }] }
+    stub(() => [withFs])
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    expect(w.find('[data-test="new-import-n1"]').exists()).toBe(true)
+    expect(w.find('[data-test="new-format-n1"]').exists()).toBe(true)
+  })
+
+})

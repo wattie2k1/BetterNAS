@@ -235,3 +235,13 @@ func TestPowerAndTuningRoutes(t *testing.T) {
 		t.Fatalf("unzugeordnet: %d %s", w.Code, w.Body)
 	}
 }
+
+func TestDismissRoute(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("POST", "/api/v1/disks/d1/dismiss", ""); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/disks/nope/dismiss", ""); w.Code != 404 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}

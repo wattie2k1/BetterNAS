@@ -142,6 +142,8 @@ export interface DiskView {
   smart?: SmartInfo
   usage?: DiskUsage
   note?: DiskNote
+  /** Gerade angeschlossen und noch nicht eingerichtet (Hinweis „Neue Platte erkannt“). */
+  new?: boolean
   /** Die Aktivitäts-LED blinkt gerade, damit man die Platte findet. */
   identifying?: boolean
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
@@ -273,6 +275,7 @@ export const storageApi = {
   tuning: (id: string) => api.get<TuningState>(`/api/v1/disks/${enc(id)}/tuning`),
   setTuning: (id: string, t: TuningSettings) => api.put<void>(`/api/v1/disks/${enc(id)}/tuning`, t),
   setNote: (id: string, n: DiskNote) => api.put<void>(`/api/v1/disks/${enc(id)}/note`, n),
+  dismissNew: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/dismiss`),
   startIdentify: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/identify`),
   stopIdentify: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/identify`),
   startSelfTest: (id: string, kind: SelfTestKind) => api.post<void>(`/api/v1/disks/${enc(id)}/selftest`, { kind }),

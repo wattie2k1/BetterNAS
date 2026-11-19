@@ -170,7 +170,7 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	}
 	disks, derr := m.src.ListDisks(ctx)
 	if derr != nil {
-		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "ssd-wear:", "temp:", "disk-missing:")
+		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "ssd-wear:", "disk-new:", "temp:", "disk-missing:")
 		err = errors.Join(err, fmt.Errorf("platten: %w", derr))
 	}
 	var growth map[string]int
@@ -187,6 +187,10 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		if d.State == "missing" {
 			add("disk-missing:"+d.ID, "crit", "Platte fehlt: "+label, "Die Platte ist nicht mehr erreichbar. Prüfe Kabel und Stromversorgung.")
 			continue
+		}
+		if d.New {
+			add("disk-new:"+d.ID, "info", "Neue Platte erkannt: "+label,
+				fmt.Sprintf("Eine neue Platte (%s, %s) wurde angeschlossen. Richte sie unter „Datenträger“ ein oder blende den Hinweis dort aus.", d.Device, humanBytes(d.SizeBytes)))
 		}
 		s := d.Smart
 		if s == nil {
@@ -253,6 +257,17 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	unknown = append(unknown, dunknown...)
 	err = errors.Join(err, derr2)
 	return fs, unknown, err
+}
+
+// humanBytes formatiert Bytes dezimal wie Plattenhersteller (z. B. „4,0 TB“).
+func humanBytes(n uint64) string {
+	units := []string{"B", "kB", "MB", "GB", "TB", "PB"}
+	v, i := float64(n), 0
+	for v >= 1000 && i < len(units)-1 {
+		v /= 1000
+		i++
+	}
+	return strings.Replace(fmt.Sprintf("%.1f %s", v, units[i]), ".", ",", 1)
 }
 
 func orDefault(s, d string) string {
@@ -336,7 +351,9 @@ func (m *Monitor) Check(ctx context.Context) error {
 			return err
 		}
 		changed = true
-		m.n.Send(ctx, notify.Message{Level: "info", Title: "Behoben: " + a.Title, Body: "Das Problem besteht nicht mehr."})
+		if !strings.HasPrefix(a.Key, "disk-new:") { // „Neue Platte“ ist kein Problem, das „behoben“ wird
+			m.n.Send(ctx, notify.Message{Level: "info", Title: "Behoben: " + a.Title, Body: "Das Problem besteht nicht mehr."})
+		}
 	}
 	if changed && m.hub != nil {
 		m.hub.Publish(events.Message{Type: "alerts.changed"})

@@ -157,6 +157,13 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /api/v1/disks/{id}/dismiss", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.DismissNew(r.Context(), actor(r), r.PathValue("id")); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/identify", func(w http.ResponseWriter, r *http.Request) {
 		if err := m.StartIdentify(r.Context(), actor(r), r.PathValue("id")); err != nil {
 			apierr.Write(w, err)

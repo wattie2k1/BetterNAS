@@ -143,6 +143,30 @@ func main() {
 	mon := monitor.New(d, sm, ns, hub)
 	mon.SetDocker(dm)
 	mon.SetTrends(sm)
+	// Neue Platten sofort melden: bei Plattenänderungen (entprellt 3 s) prüfen, nicht erst im 5-Minuten-Takt.
+	go func() {
+		ch, cancel := hub.Subscribe()
+		defer cancel()
+		var timer *time.Timer
+		fire := make(chan struct{}, 1)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev := <-ch:
+				if ev.Type == "disks.changed" && timer == nil {
+					timer = time.AfterFunc(3*time.Second, func() { fire <- struct{}{} })
+				}
+			case <-fire:
+				timer = nil
+				cctx, cancelCheck := context.WithTimeout(ctx, time.Minute)
+				if err := mon.Check(cctx); err != nil {
+					log.Warn("überwachung", "err", err)
+				}
+				cancelCheck()
+			}
+		}
+	}()
 	go sm.RunHistory(ctx)
 	go sm.RunPower(ctx)
 	go sm.RunSelfTests(ctx)

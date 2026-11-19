@@ -354,3 +354,34 @@ func TestSSDWearFinding(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+func TestNewDiskFindingResolvesQuietly(t *testing.T) {
+	d := healthyDisk("n1")
+	d.Role = "unassigned"
+	d.New = true
+	d.Device, d.SizeBytes = "/dev/sdz", 8e12
+	src := &fakeSource{disks: []storage.DiskView{d}}
+	m, n, _ := newMon(t, src)
+	ctx := context.Background()
+	if err := m.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := m.Active(ctx)
+	if len(a) != 1 || a[0].Key != "disk-new:n1" || a[0].Level != "info" || !strings.Contains(a[0].Body, "8,0 TB") {
+		t.Fatalf("%+v", a)
+	}
+	sent := n.count()
+	if sent != 1 {
+		t.Fatalf("eine Meldung erwartet, %d gesendet", sent)
+	}
+	src.disks[0].New = false // eingerichtet oder ignoriert
+	if err := m.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := m.Active(ctx); len(a) != 0 {
+		t.Fatalf("Befund muss verschwinden: %+v", a)
+	}
+	if n.count() != sent {
+		t.Fatal("kein „Behoben“ für eine neue Platte")
+	}
+}

@@ -17,6 +17,7 @@ import { useBackupStore } from '@/stores/backup'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
 import PowerOverlay from './PowerOverlay.vue'
+import NewDiskNotice from './storage/NewDiskNotice.vue'
 
 const auth = useAuthStore()
 const jobs = useJobsStore()
@@ -134,6 +135,7 @@ async function logout() {
       </main>
     </div>
     <Toast position="bottom-right" />
+    <NewDiskNotice />
     <PowerOverlay />
     <Drawer v-model:visible="showJobs" header="Aufträge" position="right" class="jobs-drawer">
       <JobsPanel />

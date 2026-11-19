@@ -95,6 +95,8 @@ type DiskView struct {
 	Usage  *Usage     `json:"usage,omitempty"`
 	// Note enthält die eigenen Angaben des Nutzers (Bezeichnung, Notiz, Kauf, Garantie); nil, wenn keine gespeichert sind.
 	Note *DiskNote `json:"note,omitempty"`
+	// New: die Platte wurde gerade erst angeschlossen und ist noch nicht eingerichtet (Hinweis „Neue Platte erkannt“).
+	New bool `json:"new,omitempty"`
 	// Identifying: die Aktivitäts-LED blinkt gerade, damit man die Platte findet.
 	Identifying bool `json:"identifying,omitempty"`
 	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
@@ -380,6 +382,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		return nil, err
 	}
 	spin, _ := m.Spindown(ctx)
+	seenState := m.trackNew(ctx, live)
 	notes, _ := m.loadNotes(ctx) // Notizen sind Beiwerk: ein Lesefehler soll die Plattenliste nicht verhindern
 	out := []DiskView{}
 	seen := map[string]bool{}
@@ -403,6 +406,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		v.Smart = m.smartFor(ctx, d.Device)
 		v.Usage = m.usageOf(d.System, v.Role, d.ID)
 		v.Identifying = m.isIdentifying(d.ID)
+		v.New = v.Role == "unassigned" && seenState[d.ID] == seenNew
 		if n, ok := notes[d.ID]; ok {
 			v.Note = &n
 		}

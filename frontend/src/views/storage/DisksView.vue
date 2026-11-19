@@ -41,6 +41,14 @@ async function toggleIdentify(d: DiskView) {
   }
 }
 
+async function dismissNew(d: DiskView) {
+  try {
+    await store.dismissNew(d.id)
+  } catch (e) {
+    fail(e)
+  }
+}
+
 function openDetail(d: DiskView) {
   detailDisk.value = d
   showDetail.value = true
@@ -119,6 +127,20 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
 
 <template>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
+  <Message v-for="d in store.newDisks" :key="d.id" severity="info" :closable="false" class="new-disk" :data-test="`new-disk-${d.id}`">
+    <div class="new-body">
+      <div>
+        <strong>Neue Platte erkannt:</strong> {{ d.model || 'Unbekannt' }} ({{ formatBytes(d.sizeBytes) }}, {{ d.device }}).
+        <span class="sub">Richte sie ein, damit sie genutzt werden kann.</span>
+      </div>
+      <div class="new-actions">
+        <Button label="Formatieren" size="small" severity="danger" outlined :loading="busy === d.id" :data-test="`new-format-${d.id}`" @click="openFormat(d)" />
+        <Button v-if="canImport(d)" label="Übernehmen" size="small" outlined :loading="busy === d.id" :data-test="`new-import-${d.id}`" @click="act(d.id, () => store.importDisk(d.id), 'Datenträger übernommen')" />
+        <Button :label="d.identifying ? 'Stopp' : 'Finden'" size="small" text :data-test="`new-identify-${d.id}`" @click="toggleIdentify(d)" />
+        <Button label="Ignorieren" size="small" text :data-test="`new-dismiss-${d.id}`" @click="dismissNew(d)" />
+      </div>
+    </div>
+  </Message>
   <p v-if="!store.disks.length && !store.loading" class="empty">Keine Datenträger gefunden.</p>
   <div v-else class="table-wrap">
     <div class="toolbar">
@@ -247,6 +269,21 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+.new-disk {
+  margin-bottom: 0.6rem;
+}
+.new-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.new-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 .toolbar {
   display: flex;
