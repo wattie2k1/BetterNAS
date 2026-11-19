@@ -1507,6 +1507,455 @@ volumes:
       - \${WORKSPACE_DIR}:/workspace
 `,
   },
+  {
+    id: 'kavita',
+    title: 'Kavita',
+    description: 'Lesestation für Comics, Manga und E-Books im Browser, mit Lesefortschritt und Benutzerverwaltung.',
+    icon: 'pi pi-book',
+    category: 'Medien',
+    stack: 'kavita',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '5001' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'LIBRARY_DIR', label: 'Bibliothek (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Buecher. Beim ersten Aufruf legst du den Administrator an und fügst die Bibliothek unter /books hinzu.' },
+    ],
+    compose: `services:
+  kavita:
+    image: jvmilazz0/kavita:latest
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:5000"
+    volumes:
+      - \${CONFIG_DIR}:/kavita/config
+      - \${LIBRARY_DIR}:/books:ro
+`,
+  },
+  {
+    id: 'komga',
+    title: 'Komga',
+    description: 'Server für Comics, Manga und E-Books mit Weboberfläche und Anbindung an Reader-Apps.',
+    icon: 'pi pi-book',
+    category: 'Medien',
+    stack: 'komga',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '25600' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'LIBRARY_DIR', label: 'Bibliothek (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Comics. In Komga fügst du die Bibliothek unter /data hinzu.' },
+    ],
+    compose: `services:
+  komga:
+    image: gotson/komga:latest
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:25600"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${LIBRARY_DIR}:/data:ro
+`,
+  },
+  {
+    id: 'calibre-web',
+    title: 'Calibre-Web',
+    description: 'Weboberfläche für eine Calibre-Bibliothek: E-Books ansehen, herunterladen und an E-Reader senden.',
+    icon: 'pi pi-book',
+    category: 'Medien',
+    stack: 'calibre-web',
+    notice: 'Calibre-Web braucht eine vorhandene Calibre-Bibliothek (Ordner mit der Datei metadata.db). Beim ersten Aufruf (Anmeldung admin / admin123, sofort ändern) trägst du /books als Bibliothek ein.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8098' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'BOOKS_DIR', label: 'Calibre-Bibliothek', kind: 'path', def: () => '/srv/pools', pool: true, hint: 'Ordner auf einem Pool, in dem metadata.db liegt, z. B. /srv/pools/<Pool>/Calibre' },
+      ...idFields,
+    ],
+    compose: `services:
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      UMASK: "002"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8083"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${BOOKS_DIR}:/books
+`,
+  },
+  {
+    id: 'maintainerr',
+    title: 'Maintainerr',
+    description: 'Räumt selten gesehene Filme und Serien nach festen Regeln auf (für Plex und Jellyfin, mit Radarr und Sonarr).',
+    icon: 'pi pi-trash',
+    category: '*arr und Wunschliste',
+    stack: 'maintainerr',
+    notice: 'Maintainerr kann Medien über Radarr und Sonarr löschen. Teste Regeln zuerst mit langer Wartezeit und ohne automatisches Löschen.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '6246' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  maintainerr:
+    image: ghcr.io/maintainerr/maintainerr:latest
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:6246"
+    volumes:
+      - \${DATA_DIR}:/opt/data
+`,
+  },
+  {
+    id: 'jdownloader',
+    title: 'JDownloader 2',
+    description: 'Download-Manager für Hoster und Linklisten, bedienbar im Browser.',
+    icon: 'pi pi-download',
+    category: 'Downloader',
+    stack: 'jdownloader',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '5800' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'DOWNLOAD_DIR', label: 'Ordner für Downloads', kind: 'path', def: () => '/srv/pools', pool: true, hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Downloads' },
+      ...idFields,
+    ],
+    compose: `services:
+  jdownloader:
+    image: jlesage/jdownloader-2:latest
+    restart: unless-stopped
+    environment:
+      USER_ID: "\${PUID}"
+      GROUP_ID: "\${PGID}"
+      UMASK: "002"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:5800"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${DOWNLOAD_DIR}:/output
+`,
+  },
+  {
+    id: 'grafana',
+    title: 'Grafana',
+    description: 'Dashboards und Diagramme für Messwerte aus Prometheus, InfluxDB, Datenbanken und vielem mehr.',
+    icon: 'pi pi-chart-line',
+    category: 'Verwaltung',
+    stack: 'grafana',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3009' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators (Benutzer admin)', kind: 'secret' },
+    ],
+    compose: `services:
+  grafana:
+    image: grafana/grafana-oss:latest
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "\${ADMIN_PASSWORD}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:3000"
+    volumes:
+      - \${DATA_DIR}:/var/lib/grafana
+`,
+  },
+  {
+    id: 'actual-budget',
+    title: 'Actual Budget',
+    description: 'Haushaltsbuch nach dem Umschlag-Prinzip, mit Synchronisierung zwischen Geräten.',
+    icon: 'pi pi-wallet',
+    category: 'Wissen und Dokumente',
+    stack: 'actual-budget',
+    notice: 'Die Daten sind unverschlüsselt und enthalten deine Finanzen. Das Passwort legst du beim ersten Aufruf fest. Von außen nur über HTTPS erreichbar machen.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '5006' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  actual-budget:
+    image: actualbudget/actual-server:latest
+    restart: unless-stopped
+    ports:
+      - "\${PORT}:5006"
+    volumes:
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'node-red',
+    title: 'Node-RED',
+    description: 'Automatisierungen per Flussdiagramm, z. B. für MQTT, Home Assistant und Webdienste.',
+    icon: 'pi pi-share-alt',
+    category: 'Entwicklung',
+    stack: 'node-red',
+    notice: 'Der Editor ist ohne Anmeldung offen und kann Programmcode im Container ausführen. Nur im Heimnetz erreichbar lassen und bei Bedarf in der settings.js eine Anmeldung einrichten.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '1880' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  node-red:
+    image: nodered/node-red:latest
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:1880"
+    volumes:
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'minecraft',
+    title: 'Minecraft-Server',
+    description: 'Java-Edition-Server für Minecraft (Vanilla, neueste Version).',
+    icon: 'pi pi-box',
+    category: 'Entwicklung',
+    stack: 'minecraft',
+    notice: 'Der Server startet erst, wenn du die Minecraft-EULA (minecraft.net/eula) akzeptierst: Trage dazu im Feld „EULA“ den Wert TRUE ein. Für Spieler von außen leitest du den Port am Router auf das NAS weiter und öffnest ihn in der BetterNAS-Firewall.',
+    fields: [
+      { key: 'PORT', label: 'Spiel-Port', kind: 'port', def: () => '25565' },
+      { key: 'DATA_DIR', label: 'Ordner für die Welt', kind: 'path', def: appdata('data') },
+      { key: 'EULA', label: 'EULA akzeptieren (TRUE oder FALSE)', kind: 'text', def: () => 'FALSE' },
+      { key: 'MEMORY', label: 'Arbeitsspeicher für den Server', kind: 'text', def: () => '2G', hint: 'z. B. 2G oder 4G' },
+    ],
+    compose: `services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    environment:
+      EULA: "\${EULA}"
+      MEMORY: "\${MEMORY}"
+      TYPE: VANILLA
+      VERSION: LATEST
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:25565"
+    volumes:
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'adminer',
+    title: 'Adminer',
+    description: 'Datenbanken (MariaDB, PostgreSQL, SQLite …) im Browser ansehen und bearbeiten.',
+    icon: 'pi pi-table',
+    category: 'Entwicklung',
+    stack: 'adminer',
+    notice: 'Adminer hat keine eigene Anmeldung; wer die Seite erreicht, kann sich mit Zugangsdaten einer Datenbank anmelden. Nur im Heimnetz erreichbar lassen.',
+    fields: [{ key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8099' }],
+    compose: `services:
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - "\${PORT}:8080"
+`,
+  },
+  {
+    id: 'registry',
+    title: 'Docker Registry',
+    description: 'Eigene Registry für Docker-Images im Heimnetz.',
+    icon: 'pi pi-database',
+    category: 'Entwicklung',
+    stack: 'registry',
+    notice: 'Die Registry läuft ohne Anmeldung und ohne Verschlüsselung. Docker-Clients lassen sie nur zu, wenn die Adresse in deren daemon.json unter „insecure-registries“ steht. Nur im Heimnetz erreichbar lassen.',
+    fields: [
+      { key: 'PORT', label: 'Port', kind: 'port', def: () => '5000' },
+      { key: 'DATA_DIR', label: 'Ordner für Images', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      - "\${PORT}:5000"
+    volumes:
+      - \${DATA_DIR}:/var/lib/registry
+`,
+  },
+  {
+    id: 'miniflux',
+    title: 'Miniflux',
+    description: 'Schlanker RSS-Reader mit Tastatursteuerung und API (mit PostgreSQL).',
+    icon: 'pi pi-megaphone',
+    category: 'Wissen und Dokumente',
+    stack: 'miniflux',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8100' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
+      { key: 'ADMIN_USER', label: 'Name des Administrators', kind: 'text', def: () => 'admin' },
+      { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators', kind: 'secret' },
+    ],
+    compose: `services:
+  miniflux:
+    image: miniflux/miniflux:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgres://miniflux:\${DB_PASSWORD}@db/miniflux?sslmode=disable"
+      RUN_MIGRATIONS: "1"
+      CREATE_ADMIN: "1"
+      ADMIN_USERNAME: "\${ADMIN_USER}"
+      ADMIN_PASSWORD: "\${ADMIN_PASSWORD}"
+    ports:
+      - "\${PORT}:8080"
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: miniflux
+      POSTGRES_PASSWORD: "\${DB_PASSWORD}"
+      POSTGRES_DB: miniflux
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "miniflux"]
+      interval: 10s
+      start_period: 30s
+    volumes:
+      - \${DB_DIR}:/var/lib/postgresql/data
+`,
+  },
+  {
+    id: 'jellystat',
+    title: 'Jellystat',
+    description: 'Statistiken zu Wiedergaben, Nutzern und Bibliotheken von Jellyfin (mit PostgreSQL).',
+    icon: 'pi pi-chart-bar',
+    category: 'Medien-Werkzeug',
+    stack: 'jellystat',
+    notice: 'Beim ersten Aufruf legst du ein Konto an und trägst die Adresse und einen API-Schlüssel von Jellyfin ein (Jellyfin → Dashboard → API-Schlüssel).',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3010' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
+      { key: 'JWT_SECRET', label: 'Geheimer Schlüssel für Anmeldungen', kind: 'secret' },
+    ],
+    compose: `services:
+  jellystat:
+    image: cyfershepard/jellystat:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: jellystat
+      POSTGRES_PASSWORD: "\${DB_PASSWORD}"
+      POSTGRES_IP: db
+      POSTGRES_PORT: "5432"
+      JWT_SECRET: "\${JWT_SECRET}"
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:3000"
+    volumes:
+      - backup-data:/app/backend/backup-data
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jellystat
+      POSTGRES_PASSWORD: "\${DB_PASSWORD}"
+      POSTGRES_DB: jfstat
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "jellystat"]
+      interval: 10s
+      start_period: 30s
+    volumes:
+      - \${DB_DIR}:/var/lib/postgresql/data
+volumes:
+  backup-data:
+`,
+  },
+  {
+    id: 'photoprism',
+    title: 'PhotoPrism',
+    description: 'Fotoverwaltung mit Gesichts- und Objekterkennung, Karte und Alben (Alternative zu Immich).',
+    icon: 'pi pi-images',
+    category: 'Medien',
+    stack: 'photoprism',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '2342' },
+      { key: 'PHOTOS_DIR', label: 'Ordner mit Fotos und Videos', kind: 'path', def: () => '/srv/pools', pool: true, hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Fotos. PhotoPrism liest hier und kann Dateien importieren.' },
+      { key: 'STORAGE_DIR', label: 'Ordner für Datenbank, Vorschaubilder und Cache', kind: 'path', def: appdata('storage'), hint: 'Auf einer lokalen Platte; kann groß werden.' },
+      { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators (Benutzer admin)', kind: 'secret' },
+    ],
+    compose: `services:
+  photoprism:
+    image: photoprism/photoprism:latest
+    restart: unless-stopped
+    working_dir: /photoprism
+    environment:
+      PHOTOPRISM_ADMIN_USER: admin
+      PHOTOPRISM_ADMIN_PASSWORD: "\${ADMIN_PASSWORD}"
+      PHOTOPRISM_AUTH_MODE: password
+      PHOTOPRISM_DATABASE_DRIVER: sqlite
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:2342"
+    volumes:
+      - \${PHOTOS_DIR}:/photoprism/originals
+      - \${STORAGE_DIR}:/photoprism/storage
+`,
+  },
+  {
+    id: 'joplin',
+    title: 'Joplin Server',
+    description: 'Synchronisiert Notizen der Joplin-Apps über das eigene NAS (mit PostgreSQL).',
+    icon: 'pi pi-file-edit',
+    category: 'Wissen und Dokumente',
+    stack: 'joplin',
+    notice: 'Erste Anmeldung: admin@localhost mit dem Passwort admin. Ändere beides sofort. Die Basisadresse muss genau der Adresse entsprechen, unter der die Apps den Server erreichen.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '22300' },
+      { key: 'BASE_URL', label: 'Basisadresse', kind: 'text', def: () => (hostIp() ? `http://${hostIp()}:22300` : ''), hint: 'Mit Port, z. B. http://192.168.1.10:22300. Bei geändertem Port hier anpassen.' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
+    ],
+    compose: `services:
+  joplin:
+    image: joplin/server:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_PORT: "22300"
+      APP_BASE_URL: "\${BASE_URL}"
+      DB_CLIENT: pg
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: joplin
+      POSTGRES_USER: joplin
+      POSTGRES_PASSWORD: "\${DB_PASSWORD}"
+    ports:
+      - "\${PORT}:22300"
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: joplin
+      POSTGRES_PASSWORD: "\${DB_PASSWORD}"
+      POSTGRES_DB: joplin
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "joplin"]
+      interval: 10s
+      start_period: 30s
+    volumes:
+      - \${DB_DIR}:/var/lib/postgresql/data
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
