@@ -41,11 +41,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils gnupg git
+      # Hängende Mirror brechen nach kurzer Zeit ab und werden wiederholt (statt 6 Stunden zu blockieren).
+      - run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends apt-utils gnupg git
+        timeout-minutes: 5
       - run: cd frontend && npm ci --no-audit --no-fund
       - run: make test
 
@@ -62,7 +64,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
@@ -78,6 +80,7 @@ jobs:
   publish:
     needs: [meta, build]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     environment: release
     concurrency:
       group: release-publish
@@ -95,7 +98,9 @@ jobs:
         with:
           name: deb
           path: dist
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils gnupg
+      # Hängende Mirror brechen nach kurzer Zeit ab und werden wiederholt (statt 6 Stunden zu blockieren).
+      - run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends apt-utils gnupg
+        timeout-minutes: 5
       - name: APT-Repo signieren und auf gh-pages veröffentlichen
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
