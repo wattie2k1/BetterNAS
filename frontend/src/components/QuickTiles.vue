@@ -397,7 +397,7 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 7px;
+  padding: 9px;
 }
 .app-icon.img.off img {
   filter: grayscale(1);

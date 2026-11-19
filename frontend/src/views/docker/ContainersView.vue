@@ -172,9 +172,14 @@ async function act(c: ContainerInfo, action: ContainerAction) {
   text-align: right;
 }
 .ico.avatar-sm {
-  border-radius: 11px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   background: #64748b;
-  box-shadow: 0 6px 14px -6px rgb(0 0 0 / 50%);
+  box-shadow: 0 6px 14px -6px rgb(0 0 0 / 25%);
+}
+.ico.avatar-sm img {
+  padding: 6px;
 }
 .ico.avatar-sm.on {
   background: linear-gradient(135deg, #2563eb, #60a5fa);

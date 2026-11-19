@@ -135,10 +135,11 @@ li {
   gap: 10px;
 }
 .ico {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   flex: none;
-  border-radius: 11px;
+  border-radius: 12px;
+  box-shadow: 0 6px 14px -6px rgb(0 0 0 / 25%);
   display: grid;
   place-items: center;
   color: #fff;
@@ -157,7 +158,7 @@ li {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 4px;
+  padding: 6px;
 }
 .ico.img:not(.on) img {
   filter: grayscale(1);
