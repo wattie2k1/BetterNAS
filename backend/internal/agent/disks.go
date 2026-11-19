@@ -53,6 +53,23 @@ type SmartInfo struct {
 	Standby            bool `json:"standby"`
 	ReallocatedSectors int  `json:"reallocatedSectors"`
 	PendingSectors     int  `json:"pendingSectors"`
+	// SelfTest beschreibt laufenden und letzten SMART-Selbsttest (nil, wenn die Platte keinen meldet).
+	SelfTest *SelfTest `json:"selfTest,omitempty"`
+}
+
+// SelfTest ist der Zustand der SMART-Selbsttests einer Platte.
+type SelfTest struct {
+	Running          bool            `json:"running"`
+	RemainingPercent int             `json:"remainingPercent,omitempty"`
+	Last             *SelfTestResult `json:"last,omitempty"`
+}
+
+// SelfTestResult ist ein abgeschlossener Selbsttest.
+type SelfTestResult struct {
+	Type         string `json:"type"`   // short | long | other
+	Result       string `json:"result"` // passed | aborted | failed
+	Status       string `json:"status"` // Text der Platte
+	PowerOnHours int    `json:"powerOnHours,omitempty"`
 }
 
 // Smart liest SMART-Werte eines erkannten Datenträgers. Schlafende Platten werden nicht geweckt (-n standby).
@@ -64,7 +81,7 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 	if _, ok := findDisk(disks, func(x storage.Disk) bool { return x.Device == device }); !ok {
 		return SmartInfo{}, apierr.New(apierr.NotFound, "Unbekannter Datenträger")
 	}
-	base := []string{"--json", "-H", "-A", "-n", "standby"}
+	base := []string{"--json", "-H", "-A", "-c", "-l", "selftest", "-n", "standby"}
 	res, err := d.Runner.Run(ctx, nil, "smartctl", append(base, device)...)
 	if err != nil {
 		return SmartInfo{}, err
@@ -104,6 +121,26 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 				} `json:"raw"`
 			} `json:"table"`
 		} `json:"ata_smart_attributes"`
+		ATAData struct {
+			SelfTest struct {
+				Status struct {
+					Value            int  `json:"value"`
+					RemainingPercent *int `json:"remaining_percent"`
+				} `json:"status"`
+			} `json:"self_test"`
+		} `json:"ata_smart_data"`
+		ATALog struct {
+			Standard struct {
+				Table []ataTest `json:"table"`
+			} `json:"standard"`
+		} `json:"ata_smart_self_test_log"`
+		NVMeLog struct {
+			Operation struct {
+				Value int `json:"value"`
+			} `json:"current_self_test_operation"`
+			Completion *int       `json:"current_self_test_completion_percent"`
+			Table      []nvmeTest `json:"table"`
+		} `json:"nvme_self_test_log"`
 	}
 	if err := json.Unmarshal(res.Stdout, &raw); err != nil {
 		return SmartInfo{}, fmt.Errorf("smartctl-ausgabe ungültig: %w", err)
@@ -116,6 +153,10 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 		case 197:
 			info.PendingSectors = a.Raw.Value
 		}
+	}
+	info.SelfTest = ataSelfTest(raw.ATAData.SelfTest.Status.Value, raw.ATAData.SelfTest.Status.RemainingPercent, raw.ATALog.Standard.Table)
+	if info.SelfTest == nil {
+		info.SelfTest = nvmeSelfTest(raw.NVMeLog.Operation.Value, raw.NVMeLog.Completion, raw.NVMeLog.Table)
 	}
 	return info, nil
 }

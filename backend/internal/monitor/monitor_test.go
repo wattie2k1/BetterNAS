@@ -292,3 +292,49 @@ func TestRecoveryStatusErrorKeepsAlert(t *testing.T) {
 		t.Fatalf("keine 'Behoben'-Meldung bei Quellfehler erlaubt: %d", n.count())
 	}
 }
+
+type fakeTrends struct {
+	growth map[string]int
+	err    error
+}
+
+func (f fakeTrends) SectorGrowth(context.Context, int) (map[string]int, error) { return f.growth, f.err }
+
+func TestSelfTestFailureAndGrowthFindings(t *testing.T) {
+	failed := healthyDisk("d1")
+	failed.Smart.SelfTest = &storage.SelfTest{Last: &storage.SelfTestResult{Type: "long", Result: "failed", Status: "Read failure"}}
+	aborted := healthyDisk("d2")
+	aborted.Smart.SelfTest = &storage.SelfTest{Last: &storage.SelfTestResult{Type: "short", Result: "aborted"}}
+	growing := healthyDisk("d3")
+	slow := healthyDisk("d4")
+	m, _, _ := newMon(t, &fakeSource{disks: []storage.DiskView{failed, aborted, growing, slow}})
+	m.SetTrends(fakeTrends{growth: map[string]int{"d3": 8, "d4": 7}})
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keys(fs)
+	if len(got) != 2 || got["selftest:d1"] != "crit" || got["smart-growth:d3"] != "crit" {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestTrendErrorKeepsGrowthAlerts(t *testing.T) {
+	d := healthyDisk("d1")
+	m, _, _ := newMon(t, &fakeSource{disks: []storage.DiskView{d}})
+	ctx := context.Background()
+	m.SetTrends(fakeTrends{growth: map[string]int{"d1": 20}})
+	if err := m.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := m.Active(ctx); len(a) != 1 || a[0].Key != "smart-growth:d1" {
+		t.Fatalf("%v", a)
+	}
+	m.SetTrends(fakeTrends{err: errors.New("db weg")})
+	if err := m.Check(ctx); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if a, _ := m.Active(ctx); len(a) != 1 {
+		t.Fatalf("Alarm bei Quellfehler nicht stehen lassen: %v", a)
+	}
+}

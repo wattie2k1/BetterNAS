@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -35,6 +36,30 @@ type SmartInfo struct {
 	Standby            bool `json:"standby"`
 	ReallocatedSectors int  `json:"reallocatedSectors"`
 	PendingSectors     int  `json:"pendingSectors"`
+	// SelfTest beschreibt laufenden und letzten SMART-Selbsttest (nil, wenn die Platte keinen meldet).
+	SelfTest *SelfTest `json:"selfTest,omitempty"`
+}
+
+// SelfTest ist der Zustand der SMART-Selbsttests einer Platte (entspricht agent.SelfTest).
+type SelfTest struct {
+	Running          bool            `json:"running"`
+	RemainingPercent int             `json:"remainingPercent,omitempty"`
+	Last             *SelfTestResult `json:"last,omitempty"`
+}
+
+// SelfTestResult ist ein abgeschlossener Selbsttest.
+type SelfTestResult struct {
+	Type         string `json:"type"`   // short | long | other
+	Result       string `json:"result"` // passed | aborted | failed
+	Status       string `json:"status"`
+	PowerOnHours int    `json:"powerOnHours,omitempty"`
+}
+
+// Usage ist die Belegung des Dateisystems einer Platte.
+type Usage struct {
+	SizeBytes uint64 `json:"sizeBytes"`
+	UsedBytes uint64 `json:"usedBytes"`
+	FreeBytes uint64 `json:"freeBytes"`
 }
 
 // DiskView ist ein Datenträger aus Sicht der Oberfläche.
@@ -45,6 +70,7 @@ type DiskView struct {
 	Pool   string     `json:"pool,omitempty"`
 	FSType string     `json:"fsType,omitempty"`
 	Smart  *SmartInfo `json:"smart,omitempty"`
+	Usage  *Usage     `json:"usage,omitempty"`
 	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
 	Spindown int `json:"spindown"`
 }
@@ -106,14 +132,16 @@ type Manager struct {
 	hub   *events.Hub
 	deps  []DependentsFunc
 
-	mu        sync.Mutex // serialisiert alle Änderungen
-	tmu       sync.Mutex
-	tokens    map[string]formatToken
-	smart     map[string]smartEntry
-	now       func() time.Time
-	pollEvery time.Duration // Abfrageintervall der SnapRAID-Läufe
-	statfs    func(path string) (size, free uint64, err error)
-	mounted   func(path string) bool
+	mu           sync.Mutex  // serialisiert alle Änderungen
+	stRunning    atomic.Bool // ein Selbsttest-Lauf ist aktiv
+	tmu          sync.Mutex
+	tokens       map[string]formatToken
+	smart        map[string]smartEntry
+	now          func() time.Time
+	pollEvery    time.Duration // Abfrageintervall der SnapRAID-Läufe
+	selfTestPoll time.Duration // Abfrageintervall laufender Selbsttests
+	statfs       func(path string) (size, free uint64, err error)
+	mounted      func(path string) bool
 }
 
 // NewManager erzeugt einen Manager.
@@ -121,7 +149,7 @@ func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps .
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
 		tokens: map[string]formatToken{}, smart: map[string]smartEntry{},
-		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second,
+		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }
 
@@ -259,7 +287,11 @@ func (m *Manager) smartFor(ctx context.Context, device string) *SmartInfo {
 	m.tmu.Lock()
 	e, ok := m.smart[device]
 	m.tmu.Unlock()
-	if ok && m.now().Sub(e.at) < 5*time.Minute {
+	ttl := 5 * time.Minute
+	if ok && e.info != nil && e.info.SelfTest != nil && e.info.SelfTest.Running {
+		ttl = 20 * time.Second // laufenden Test zeitnah verfolgen
+	}
+	if ok && m.now().Sub(e.at) < ttl {
 		return e.info
 	}
 	var info SmartInfo
@@ -277,6 +309,29 @@ func (m *Manager) smartFor(ctx context.Context, device string) *SmartInfo {
 	m.smart[device] = smartEntry{info: res, at: m.now()}
 	m.tmu.Unlock()
 	return res
+}
+
+// usageOf liefert die Belegung einer eingehängten Daten-/Paritätsplatte (System: Wurzeldateisystem); nil, wenn sie nicht ermittelbar ist.
+func (m *Manager) usageOf(system bool, role, id string) *Usage {
+	path := ""
+	switch {
+	case system:
+		path = "/"
+	case role == RoleData:
+		path = DiskPath(id)
+	case role == RoleParity:
+		path = ParityPath(id)
+	default:
+		return nil
+	}
+	if !system && !m.mounted(path) {
+		return nil
+	}
+	size, free, err := m.statfs(path)
+	if err != nil || size == 0 {
+		return nil
+	}
+	return &Usage{SizeBytes: size, UsedBytes: size - min(free, size), FreeBytes: free}
 }
 
 // ListDisks führt erkannte Datenträger mit dem gespeicherten Zustand zusammen.
@@ -314,6 +369,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 			v.FSType = d.Partitions[0].FSType
 		}
 		v.Smart = m.smartFor(ctx, d.Device)
+		v.Usage = m.usageOf(d.System, v.Role, d.ID)
 		out = append(out, v)
 	}
 	for id, k := range known {

@@ -40,6 +40,10 @@ type fakeAgent struct {
 	spindownFail map[string]bool  // Gerät → disk.spindown schlägt fehl
 
 	smartBy map[string]SmartInfo // Antworten von disk.smart je Gerät; fehlt ein Gerät, schlägt der Aufruf fehl
+
+	selfTests    []string       // "start:<gerät>:<art>" / "abort:<gerät>"
+	selfTestBusy map[string]int // Gerät → so viele disk.smart-Abfragen lang läuft der Test noch
+	selfTestFail bool
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -58,7 +62,28 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		if !ok {
 			return apierr.New(apierr.Internal, "kein SMART")
 		}
+		if f.selfTestBusy[req["device"]] > 0 {
+			f.selfTestBusy[req["device"]]--
+			si.SelfTest = &SelfTest{Running: true, RemainingPercent: 50}
+		}
 		out = si
+	case "disk.selftest.start", "disk.selftest.abort":
+		b, _ := json.Marshal(params)
+		var req map[string]string
+		json.Unmarshal(b, &req)
+		if f.selfTestFail {
+			return apierr.New(apierr.Conflict, "läuft schon")
+		}
+		if method == "disk.selftest.start" {
+			f.selfTests = append(f.selfTests, "start:"+req["device"]+":"+req["kind"])
+			if f.selfTestBusy == nil {
+				f.selfTestBusy = map[string]int{}
+			}
+			f.selfTestBusy[req["device"]] = 1
+		} else {
+			f.selfTests = append(f.selfTests, "abort:"+req["device"])
+		}
+		out = map[string]bool{"ok": true}
 	case "disk.spindown":
 		b, _ := json.Marshal(params)
 		var req map[string]any

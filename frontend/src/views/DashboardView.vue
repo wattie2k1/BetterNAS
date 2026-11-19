@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 import RingGauge from '@/components/RingGauge.vue'
 import QuickTiles from '@/components/QuickTiles.vue'
 import DockerTile from '@/components/docker/DockerTile.vue'
+import UsageBar from '@/components/storage/UsageBar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useStorageStore } from '@/stores/storage'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -164,6 +165,7 @@ function onHandleKey(e: KeyboardEvent, id: string) {
 }
 
 const dataDisks = computed(() => store.disks.filter((d) => d.role === 'data' || d.role === 'parity'))
+const usedDisks = computed(() => dataDisks.value.filter((d) => d.usage && d.state === 'online'))
 const smartWarnings = computed(() => store.disks.filter((d) => d.smart && !d.smart.passed).length)
 const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missing').length)
 
@@ -267,6 +269,15 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
         <div class="fact"><strong>{{ dataDisks.length }}</strong><span>in Verwendung</span></div>
         <div class="fact" :class="{ bad: smartWarnings }"><strong>{{ smartWarnings }}</strong><span>SMART-Warnungen</span></div>
         <div class="fact" :class="{ bad: missingDisks }"><strong>{{ missingDisks }}</strong><span>fehlen</span></div>
+        <ul v-if="usedDisks.length" class="disk-usage" data-test="disk-usage">
+          <li v-for="d in usedDisks" :key="d.id">
+            <div class="row">
+              <strong>{{ d.model || d.id }}</strong>
+              <span class="soft">{{ d.role === 'parity' ? 'Parität' : d.pool || 'Daten' }}</span>
+            </div>
+            <UsageBar :usage="d.usage" />
+          </li>
+        </ul>
       </div>
 
       <ul v-else-if="id === 'snapraid'" class="snap" data-test="snapraid-summary">
@@ -469,6 +480,19 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
 .fact span {
   font-size: 0.75rem;
   color: var(--bn-text-soft);
+}
+.disk-usage {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.disk-usage .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
 }
 .fact.bad strong {
   color: var(--bn-danger);

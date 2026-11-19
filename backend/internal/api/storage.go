@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
@@ -52,6 +53,62 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /api/v1/disks/{id}/selftest", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Kind string `json:"kind"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.StartSelfTest(r.Context(), actor(r), r.PathValue("id"), in.Kind); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("DELETE /api/v1/disks/{id}/selftest", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.AbortSelfTest(r.Context(), actor(r), r.PathValue("id")); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/v1/disks/selftest/schedule", func(w http.ResponseWriter, r *http.Request) {
+		sc, err := m.SelfTestSchedule(r.Context())
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, sc)
+	})
+	mux.HandleFunc("PUT /api/v1/disks/selftest/schedule", func(w http.ResponseWriter, r *http.Request) {
+		var in storage.SelfTestSchedule
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetSelfTestSchedule(r.Context(), actor(r), in); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/v1/disks/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		days := 0
+		if v := r.URL.Query().Get("days"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültiger Zeitraum."))
+				return
+			}
+			days = n
+		}
+		h, err := m.History(r.Context(), r.PathValue("id"), days)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, h)
 	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/format/preview", func(w http.ResponseWriter, r *http.Request) {
 		p, err := m.PreviewFormat(r.Context(), r.PathValue("id"))

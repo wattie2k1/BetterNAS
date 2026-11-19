@@ -179,3 +179,34 @@ describe('Dashboard: Kacheln sortieren', () => {
     w.unmount()
   })
 })
+
+describe('Dashboard: Datenträger-Kachel', () => {
+  it('zeigt die Belegung der Daten- und Paritätsplatten', async () => {
+    const d = (id: string, role: string, usage?: object) => ({
+      id, device: '/dev/' + id, model: 'HDD ' + id, serial: id, sizeBytes: 4e12, role, state: 'online', pool: role === 'data' ? 'media' : undefined, partitions: [], usage,
+    })
+    const rows = [
+      d('a', 'data', { sizeBytes: 4e12, usedBytes: 3e12, freeBytes: 1e12 }),
+      d('b', 'parity', { sizeBytes: 4e12, usedBytes: 1e12, freeBytes: 3e12 }),
+      d('c', 'data'),
+      d('s', 'system', { sizeBytes: 1e11, usedBytes: 5e10, freeBytes: 5e10 }),
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        const u = String(url)
+        const body = u.includes('/system/info') ? info(1, 1) : u.endsWith('/disks') ? rows : u.includes('/docker/status') ? { installed: true, active: true, version: '27' } : []
+        return new Response(JSON.stringify(body), { status: 200 })
+      }),
+    )
+    const w = mountDash()
+    await flushPromises()
+    const list = w.find('[data-test="disk-usage"]')
+    expect(list.findAll('li').length).toBe(2)
+    expect(list.text()).toContain('HDD a')
+    expect(list.text()).toContain('Parität')
+    expect(list.text()).not.toContain('HDD c')
+    expect(list.text()).not.toContain('HDD s')
+    w.unmount()
+  })
+})

@@ -31,6 +31,18 @@ type DockerSource interface {
 	ListContainers(ctx context.Context) ([]docker.Container, error)
 }
 
+// TrendSource liefert den SMART-Verlauf (implementiert von storage.Manager).
+type TrendSource interface {
+	// SectorGrowth: Zunahme defekter Sektoren je Platte innerhalb der letzten days Tage.
+	SectorGrowth(ctx context.Context, days int) (map[string]int, error)
+}
+
+// Ab dieser Zunahme innerhalb von sectorGrowthDays Tagen gilt eine Platte als im Verfall.
+const (
+	sectorGrowthDays = 7
+	sectorGrowthMin  = 8
+)
+
 // Notifier verschickt Meldungen (implementiert von notify.Service).
 type Notifier interface {
 	Send(ctx context.Context, m notify.Message) []notify.Result
@@ -63,6 +75,7 @@ type Monitor struct {
 	hub *events.Hub
 
 	docker DockerSource // optional
+	trends TrendSource  // optional
 	mu     sync.Mutex
 	seen   map[string]int // Befund → Zahl aufeinanderfolgender Beobachtungen (nur mit Confirm > 1)
 }
@@ -74,6 +87,9 @@ func New(d *sql.DB, src Source, n Notifier, hub *events.Hub) *Monitor {
 
 // SetDocker schaltet die Überwachung der Docker-Container zu (optional, vor dem Start von Run aufrufen).
 func (m *Monitor) SetDocker(d DockerSource) { m.docker = d }
+
+// SetTrends schaltet die Auswertung des SMART-Verlaufs zu (optional, vor dem Start von Run aufrufen).
+func (m *Monitor) SetTrends(t TrendSource) { m.trends = t }
 
 // dockerFindings meldet Container mit fehlschlagendem Healthcheck und solche in einer Neustart-Schleife.
 // Absichtlich gestoppte oder beendete Container sind kein Befund.
@@ -151,8 +167,17 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	}
 	disks, derr := m.src.ListDisks(ctx)
 	if derr != nil {
-		unknown = append(unknown, "smart:", "smart-sectors:", "temp:", "disk-missing:")
+		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "temp:", "disk-missing:")
 		err = errors.Join(err, fmt.Errorf("platten: %w", derr))
+	}
+	var growth map[string]int
+	if m.trends != nil && derr == nil {
+		g, gerr := m.trends.SectorGrowth(ctx, sectorGrowthDays)
+		if gerr != nil {
+			unknown = append(unknown, "smart-growth:")
+			err = errors.Join(err, fmt.Errorf("smart-verlauf: %w", gerr))
+		}
+		growth = g
 	}
 	for _, d := range disks {
 		label := diskLabel(d)
@@ -171,6 +196,14 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		if s.PendingSectors > 0 || s.ReallocatedSectors > 0 {
 			add("smart-sectors:"+d.ID, "warn", "Defekte Sektoren: "+label,
 				fmt.Sprintf("Neu zugewiesene Sektoren: %d, instabile Sektoren: %d. Beobachte die Platte und plane einen Austausch.", s.ReallocatedSectors, s.PendingSectors))
+		}
+		if g := growth[d.ID]; g >= sectorGrowthMin {
+			add("smart-growth:"+d.ID, "crit", "Defekte Sektoren nehmen zu: "+label,
+				fmt.Sprintf("In den letzten %d Tagen sind %d defekte Sektoren dazugekommen. Das deutet auf eine sterbende Platte hin – sichere die Daten und tausche sie aus.", sectorGrowthDays, g))
+		}
+		if st := s.SelfTest; st != nil && st.Last != nil && st.Last.Result == "failed" {
+			add("selftest:"+d.ID, "crit", "SMART-Selbsttest fehlgeschlagen: "+label,
+				"Der letzte Selbsttest meldet: "+orDefault(st.Last.Status, "Fehler")+". Sichere die Daten und tausche die Platte aus.")
 		}
 		if s.TemperatureC > 0 && s.TemperatureC >= cfg.TempWarnC {
 			add("temp:"+d.ID, "warn", "Platte zu warm: "+label, fmt.Sprintf("Die Platte ist %d °C warm (Schwelle %d °C). Prüfe die Belüftung.", s.TemperatureC, cfg.TempWarnC))

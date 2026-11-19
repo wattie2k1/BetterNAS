@@ -8,7 +8,7 @@ import (
 	"github.com/betternas/betternas/internal/sysexec"
 )
 
-const smartCall = "smartctl --json -H -A -n standby /dev/sda"
+const smartCall = "smartctl --json -H -A -c -l selftest -n standby /dev/sda"
 
 func TestSmartStandbyDoesNotFail(t *testing.T) {
 	d, f, _ := storageEnv(t)
@@ -34,7 +34,7 @@ func TestSmartStandbyDoesNotFail(t *testing.T) {
 func TestSmartFallsBackToSat(t *testing.T) {
 	d, f, _ := storageEnv(t)
 	f.Responses[smartCall] = sysexec.Result{ExitCode: 1}
-	f.Responses["smartctl --json -H -A -n standby -d sat /dev/sda"] = sysexec.Result{Stdout: []byte(smartJSON)}
+	f.Responses["smartctl --json -H -A -c -l selftest -n standby -d sat /dev/sda"] = sysexec.Result{Stdout: []byte(smartJSON)}
 	s, err := Smart(context.Background(), d, "/dev/sda")
 	if err != nil || !s.Passed || s.TemperatureC != 34 {
 		t.Fatalf("%+v %v", s, err)

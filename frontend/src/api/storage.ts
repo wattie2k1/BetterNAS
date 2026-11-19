@@ -16,7 +16,47 @@ export interface SmartInfo {
   standby?: boolean
   reallocatedSectors?: number
   pendingSectors?: number
+  selfTest?: SelfTest
 }
+
+export interface SelfTestResult {
+  type: 'short' | 'long' | 'other'
+  result: 'passed' | 'aborted' | 'failed'
+  status: string
+  powerOnHours?: number
+}
+
+export interface SelfTest {
+  running: boolean
+  remainingPercent?: number
+  last?: SelfTestResult
+}
+
+/** Belegung des Dateisystems einer Platte. */
+export interface DiskUsage {
+  sizeBytes: number
+  usedBytes: number
+  freeBytes: number
+}
+
+export type SelfTestKind = 'short' | 'long'
+
+export interface SelfTestSchedule {
+  short: 'off' | 'weekly' | 'monthly'
+  long: 'off' | 'monthly' | 'quarterly'
+  hour: number
+}
+
+/** Messpunkt im SMART-Verlauf; ts in Unix-Sekunden. */
+export interface HistoryPoint {
+  ts: number
+  temperatureC: number
+  reallocatedSectors: number
+  pendingSectors: number
+  powerOnHours: number
+}
+
+export const SELFTEST_KIND_LABEL: Record<string, string> = { short: 'Kurztest', long: 'Langtest', other: 'Test' }
 
 /** Erlaubte Ruhezeiten in Minuten (0 = aus). */
 export const SPINDOWN_CHOICES = [0, 5, 10, 20, 30, 60, 120, 240] as const
@@ -40,6 +80,7 @@ export interface DiskView {
   pool?: string
   fsType?: string
   smart?: SmartInfo
+  usage?: DiskUsage
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
   spindown?: number
 }
@@ -165,6 +206,11 @@ export const storageApi = {
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),
   importDisk: (id: string, role?: 'data' | 'parity') =>
     api.post<JobRef>(`/api/v1/disks/${enc(id)}/import`, role ? { role } : undefined),
+  startSelfTest: (id: string, kind: SelfTestKind) => api.post<void>(`/api/v1/disks/${enc(id)}/selftest`, { kind }),
+  abortSelfTest: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/selftest`),
+  selfTestSchedule: () => api.get<SelfTestSchedule>('/api/v1/disks/selftest/schedule'),
+  saveSelfTestSchedule: (s: SelfTestSchedule) => api.put<void>('/api/v1/disks/selftest/schedule', s),
+  history: (id: string, days: number) => api.get<HistoryPoint[]>(`/api/v1/disks/${enc(id)}/history?days=${days}`),
   setSpindown: (id: string, minutes: number) => api.put<void>(`/api/v1/disks/${enc(id)}/spindown`, { minutes }),
   release: (id: string) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/release`),
   createPool: (p: PoolInput) => api.post<JobRef>('/api/v1/pools', p),

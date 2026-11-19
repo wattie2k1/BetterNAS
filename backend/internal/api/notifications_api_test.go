@@ -143,3 +143,40 @@ func TestSpindownRoute(t *testing.T) {
 		t.Fatal("kein Audit-Eintrag")
 	}
 }
+
+func TestSelfTestAndHistoryRoutes(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("POST", "/api/v1/disks/d1/selftest", `{"kind":"short"}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/disks/d1/selftest", `{"kind":"x"}`); w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/disks/nope/selftest", `{"kind":"long"}`); w.Code != 404 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("DELETE", "/api/v1/disks/d1/selftest", ""); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/selftest/schedule", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"short":"off"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/selftest/schedule", `{"short":"weekly","long":"monthly","hour":3}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/selftest/schedule", ""); !strings.Contains(w.Body.String(), `"long":"monthly"`) || !strings.Contains(w.Body.String(), `"hour":3`) {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/selftest/schedule", `{"short":"hourly","long":"off","hour":3}`); w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/d1/history?days=7", ""); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/d1/history?days=abc", ""); w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/d1/history?days=0", ""); w.Code != 200 {
+		t.Fatalf("Standardzeitraum: %d %s", w.Code, w.Body)
+	}
+}

@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import FormatDialog from '@/components/storage/FormatDialog.vue'
+import DiskDetailDialog from '@/components/storage/DiskDetailDialog.vue'
+import SelfTestScheduleDialog from '@/components/storage/SelfTestScheduleDialog.vue'
+import UsageBar from '@/components/storage/UsageBar.vue'
 import { useStorageStore } from '@/stores/storage'
 import type { DiskView, FormatPreview, FormatRequest } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
-import { SPINDOWN_CHOICES, spindownLabel } from '@/api/storage'
+import { SELFTEST_KIND_LABEL, SPINDOWN_CHOICES, spindownLabel } from '@/api/storage'
 
 const store = useStorageStore()
 const toast = useToast()
@@ -16,7 +19,25 @@ const preview = ref<FormatPreview | null>(null)
 const showFormat = ref(false)
 const busy = ref<string | null>(null)
 
-onMounted(() => store.refresh())
+const detailDisk = ref<DiskView | null>(null)
+const showDetail = ref(false)
+const showSchedule = ref(false)
+
+function openDetail(d: DiskView) {
+  detailDisk.value = d
+  showDetail.value = true
+}
+
+// Läuft irgendwo ein Selbsttest, den Fortschritt alle 15 s nachladen (die Werte kommen aus dem Zwischenspeicher des Servers).
+const anyTestRunning = computed(() => store.disks.some((d) => d.smart?.selfTest?.running))
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  void store.refresh()
+  timer = setInterval(() => {
+    if (anyTestRunning.value) void store.refresh()
+  }, 15000)
+})
+onBeforeUnmount(() => clearInterval(timer))
 
 const roleLabel: Record<string, { label: string; severity: string }> = {
   system: { label: 'System', severity: 'secondary' },
@@ -82,6 +103,9 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <p v-if="!store.disks.length && !store.loading" class="empty">Keine Datenträger gefunden.</p>
   <div v-else class="table-wrap">
+    <div class="toolbar">
+      <Button label="Selbsttests planen" icon="pi pi-calendar" size="small" outlined data-test="open-schedule" @click="showSchedule = true" />
+    </div>
     <table class="disks">
       <thead>
         <tr>
@@ -103,7 +127,10 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
             </div>
             <div class="sub">{{ d.device || '—' }} · {{ d.serial || d.id }}</div>
           </td>
-          <td>{{ formatBytes(d.sizeBytes) }}<div class="sub">{{ d.rotational ? 'HDD' : 'SSD' }}</div></td>
+          <td>
+            {{ formatBytes(d.sizeBytes) }}<div class="sub">{{ d.rotational ? 'HDD' : 'SSD' }}</div>
+            <UsageBar v-if="d.usage" :usage="d.usage" compact class="usage" />
+          </td>
           <td>
             <Tag :value="roleLabel[d.role].label" :severity="roleLabel[d.role].severity" />
             <div v-if="d.pool" class="sub">Pool {{ d.pool }}</div>
@@ -119,6 +146,12 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
               <Tag :value="d.smart.passed ? 'OK' : 'Warnung'" :severity="d.smart.passed ? 'success' : 'danger'" />
               <Tag v-if="d.smart.standby" value="schläft" severity="secondary" class="standby" />
               <div v-if="d.smart.temperatureC" class="sub">{{ d.smart.temperatureC }} °C</div>
+              <div v-if="d.smart.selfTest?.running" class="sub" :data-test="`selftest-running-${d.id}`">
+                <i class="pi pi-spin pi-spinner" /> Selbsttest läuft ({{ 100 - (d.smart.selfTest.remainingPercent ?? 0) }} %)
+              </div>
+              <div v-else-if="d.smart.selfTest?.last?.result === 'failed'" class="sub warn" :data-test="`selftest-failed-${d.id}`">
+                <i class="pi pi-exclamation-triangle" /> {{ SELFTEST_KIND_LABEL[d.smart.selfTest.last.type] }} fehlgeschlagen
+              </div>
               <div v-if="hasBadSectors(d)" class="sub warn" :data-test="`sectors-${d.id}`">
                 <i class="pi pi-exclamation-triangle" /> Defekte Sektoren ({{ d.smart.reallocatedSectors ?? 0 }} neu zugewiesen, {{ d.smart.pendingSectors ?? 0 }} instabil)
               </div>
@@ -135,6 +168,14 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
             <span v-else class="sub">—</span>
           </td>
           <td class="actions">
+            <Button
+              v-if="d.smart && d.state === 'online'"
+              label="Details"
+              size="small"
+              text
+              :data-test="`details-${d.id}`"
+              @click="openDetail(d)"
+            />
             <template v-if="d.role === 'unassigned' && d.manageable && d.state === 'online'">
               <Button label="Formatieren" size="small" severity="danger" outlined :loading="busy === d.id" @click="openFormat(d)" />
               <Button
@@ -160,6 +201,8 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
     </table>
   </div>
   <FormatDialog v-model:visible="showFormat" :preview="preview" :busy="!!busy" @submit="doFormat" />
+  <DiskDetailDialog v-model:visible="showDetail" :disk="detailDisk" />
+  <SelfTestScheduleDialog v-model:visible="showSchedule" />
 </template>
 
 <style scoped>
@@ -171,6 +214,14 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.6rem;
+}
+.usage {
+  margin-top: 0.4rem;
 }
 .sub {
   font-size: 0.8rem;

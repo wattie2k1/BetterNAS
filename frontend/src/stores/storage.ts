@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { storageApi, type DiskView, type FormatRequest, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
+import { storageApi, type DiskView, type FormatRequest, type SelfTestKind, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
 import type { EventMessage } from '@/api/ws'
 import { useJobsStore } from './jobs'
 
@@ -50,6 +50,14 @@ export const useStorageStore = defineStore('storage', () => {
     importDisk: (id: string, role?: 'data' | 'parity') => runJob(() => storageApi.importDisk(id, role)),
     setSpindown: async (id: string, minutes: number) => {
       await storageApi.setSpindown(id, minutes)
+      await refresh()
+    },
+    startSelfTest: async (id: string, kind: SelfTestKind) => {
+      await storageApi.startSelfTest(id, kind)
+      await refresh()
+    },
+    abortSelfTest: async (id: string) => {
+      await storageApi.abortSelfTest(id)
       await refresh()
     },
     release: (id: string) => runJob(() => storageApi.release(id)),

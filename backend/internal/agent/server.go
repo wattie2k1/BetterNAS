@@ -261,6 +261,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerVMLive(s, d)
 	registerVMPCI(s, d)
 	registerSpindown(s, d)
+	registerSelfTest(s, d)
 	registerSystem(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State
