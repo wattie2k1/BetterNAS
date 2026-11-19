@@ -63,6 +63,14 @@ export interface DiskUsage {
   freeBytes: number
 }
 
+/** Eigene Angaben des Nutzers zu einer Platte; Datumsfelder als JJJJ-MM-TT oder leer. */
+export interface DiskNote {
+  name: string
+  notes: string
+  purchased: string
+  warrantyUntil: string
+}
+
 export type SelfTestKind = 'short' | 'long'
 
 export interface SelfTestSchedule {
@@ -105,6 +113,7 @@ export interface DiskView {
   fsType?: string
   smart?: SmartInfo
   usage?: DiskUsage
+  note?: DiskNote
   /** Die Aktivitäts-LED blinkt gerade, damit man die Platte findet. */
   identifying?: boolean
   /** Eingestellte Ruhezeit in Minuten (0 = aus). */
@@ -232,6 +241,7 @@ export const storageApi = {
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),
   importDisk: (id: string, role?: 'data' | 'parity') =>
     api.post<JobRef>(`/api/v1/disks/${enc(id)}/import`, role ? { role } : undefined),
+  setNote: (id: string, n: DiskNote) => api.put<void>(`/api/v1/disks/${enc(id)}/note`, n),
   startIdentify: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/identify`),
   stopIdentify: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/identify`),
   startSelfTest: (id: string, kind: SelfTestKind) => api.post<void>(`/api/v1/disks/${enc(id)}/selftest`, { kind }),

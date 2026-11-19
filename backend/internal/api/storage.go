@@ -110,6 +110,17 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, h)
 	})
+	mux.HandleFunc("PUT /api/v1/disks/{id}/note", func(w http.ResponseWriter, r *http.Request) {
+		var in storage.DiskNote
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetNote(r.Context(), actor(r), r.PathValue("id"), in); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/identify", func(w http.ResponseWriter, r *http.Request) {
 		if err := m.StartIdentify(r.Context(), actor(r), r.PathValue("id")); err != nil {
 			apierr.Write(w, err)

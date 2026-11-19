@@ -193,7 +193,7 @@ describe('DisksView: Belegung und Selbsttest', () => {
     expect(w.find('[data-test="disk-d2"] [data-test="usage-bar"]').exists()).toBe(false)
     expect(w.find('[data-test="selftest-running-d1"]').text()).toContain('75 %')
     expect(w.find('[data-test="selftest-failed-d2"]').text()).toContain('Kurztest fehlgeschlagen')
-    expect(w.find('[data-test="details-d3"]').exists()).toBe(false)
+    expect(w.find('[data-test="details-d3"]').exists()).toBe(true) // Partitionen und Notizen gibt es auch ohne SMART
   })
 
   it('öffnet Details und den Zeitplan', async () => {
@@ -298,5 +298,83 @@ describe('DisksView: Platte finden', () => {
     await w.find('[data-test="identify-d9"]').trigger('click')
     await flushPromises()
     expect(w.find('[data-test="identify-d9"]').text()).toContain('Finden')
+  })
+})
+
+describe('Notizen und Partitionen', () => {
+  const parts = [
+    { device: '/dev/sdb1', fsType: 'ext4', uuid: 'u', label: 'bnas-1', sizeBytes: 2e12, mountpoints: ['/srv/disks/d2'] },
+    { device: '/dev/sdb2', fsType: '', uuid: '', label: '', sizeBytes: 5e9, mountpoints: [] },
+  ]
+  function setup(d: DiskView, put: () => Response = () => new Response(null, { status: 204 })) {
+    const puts: { url: string; body: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'PUT') {
+          puts.push({ url, body: init.body as string })
+          return put()
+        }
+        return new Response(url.includes('/history') ? '[]' : JSON.stringify([d]), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useStorageStore().disks = [d]
+    const w = mount(DiskDetailDialog, { props: { visible: true, disk: d }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    return { w, puts }
+  }
+
+  it('listet die Partitionen auch ohne SMART-Werte', async () => {
+    const { w } = setup(disk({ id: 'd2', role: 'data', partitions: parts }))
+    await flushPromises()
+    expect(w.findAll('[data-test="partitions"] tbody tr').length).toBe(2)
+    expect(w.find('[data-test="part-/dev/sdb1"]').text()).toContain('/srv/disks/d2')
+    expect(w.find('[data-test="part-/dev/sdb2"]').text()).toContain('5,0 GB')
+    expect(w.find('[data-test="no-smart"]').exists()).toBe(true)
+  })
+
+  it('sagt, wenn die Platte keine Partitionen hat', async () => {
+    const { w } = setup(disk({ id: 'd3', role: 'unassigned', partitions: [] }))
+    await flushPromises()
+    expect(w.find('[data-test="no-partitions"]').exists()).toBe(true)
+  })
+
+  it('füllt das Formular mit gespeicherten Angaben und speichert nur bei Änderungen', async () => {
+    const { w, puts } = setup(disk({ id: 'd2', role: 'data', note: { name: 'Schacht 2', notes: 'gebraucht', purchased: '2024-03-01', warrantyUntil: '2999-01-01' } }))
+    await flushPromises()
+    expect((w.find('[data-test="note-name"]').element as HTMLInputElement).value).toBe('Schacht 2')
+    expect(w.find('[data-test="note-save"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-test="warranty-hint"]').text()).toContain('Garantie läuft bis')
+    await w.find('[data-test="note-name"]').setValue('Schacht 4')
+    await w.find('[data-test="note-notes"]').setValue('')
+    expect(w.find('[data-test="note-save"]').attributes('disabled')).toBeUndefined()
+    await w.find('[data-test="note-form"]').trigger('submit')
+    await flushPromises()
+    expect(puts).toEqual([{ url: '/api/v1/disks/d2/note', body: JSON.stringify({ name: 'Schacht 4', notes: '', purchased: '2024-03-01', warrantyUntil: '2999-01-01' }) }])
+  })
+
+  it('markiert abgelaufene Garantie', async () => {
+    const { w } = setup(disk({ id: 'd2', role: 'data', note: { name: '', notes: '', purchased: '', warrantyUntil: '2020-01-01' } }))
+    await flushPromises()
+    const h = w.find('[data-test="warranty-hint"]')
+    expect(h.text()).toContain('abgelaufen')
+    expect(h.classes()).toContain('bad')
+  })
+
+  it('zeigt die Ablehnung der API im Formular', async () => {
+    const { w } = setup(disk({ id: 'd2', role: 'data' }), () => new Response(JSON.stringify({ error: { code: 'invalid_params', message: 'Datumsangaben müssen das Format JJJJ-MM-TT haben.' } }), { status: 400 }))
+    await flushPromises()
+    await w.find('[data-test="note-name"]').setValue('x')
+    await w.find('[data-test="note-form"]').trigger('submit')
+    await flushPromises()
+    expect(w.find('[data-test="note-error"]').text()).toContain('JJJJ-MM-TT')
+  })
+
+  it('zeigt die Bezeichnung in der Tabelle', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(url.includes('/disks') ? [disk({ id: 'd1', role: 'data', note: { name: 'Schacht 3', notes: '', purchased: '', warrantyUntil: '' } })] : pools), { status: 200 })))
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    expect(w.find('[data-test="note-name-d1"]').text()).toBe('Schacht 3')
   })
 })

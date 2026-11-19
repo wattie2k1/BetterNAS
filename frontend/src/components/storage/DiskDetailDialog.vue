@@ -7,7 +7,7 @@ import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import TrendChart from './TrendChart.vue'
 import UsageBar from './UsageBar.vue'
-import { SELFTEST_KIND_LABEL, SSD_WEAR_WARN_PERCENT, storageApi, type DiskView, type HistoryPoint, type SelfTestKind } from '@/api/storage'
+import { SELFTEST_KIND_LABEL, SSD_WEAR_WARN_PERCENT, storageApi, type DiskNote, type DiskView, type HistoryPoint, type SelfTestKind } from '@/api/storage'
 import { useStorageStore } from '@/stores/storage'
 import { formatBytes } from '@/utils/format'
 
@@ -47,6 +47,43 @@ watch(() => [props.visible, props.disk?.id, days.value], loadHistory, { immediat
 // NVMe-Werte haben keine Attribut-IDs; dann entfallen die Spalten für ID und Normwerte.
 const hasIds = computed(() => (smart.value?.attributes ?? []).some((a) => a.id > 0))
 
+// Notizen: Formular mit den gespeicherten Angaben der Platte füllen, sobald der Dialog aufgeht oder die Platte wechselt.
+const emptyNote = (): DiskNote => ({ name: '', notes: '', purchased: '', warrantyUntil: '' })
+const form = ref<DiskNote>(emptyNote())
+const noteError = ref('')
+watch(
+  () => [props.visible, props.disk?.id],
+  () => {
+    form.value = { ...emptyNote(), ...(live.value?.note ?? {}) }
+    noteError.value = ''
+  },
+  { immediate: true },
+)
+const noteChanged = computed(() => JSON.stringify(form.value) !== JSON.stringify({ ...emptyNote(), ...(live.value?.note ?? {}) }))
+
+async function saveNote() {
+  busy.value = true
+  noteError.value = ''
+  try {
+    await store.setNote(props.disk!.id, { ...form.value })
+    toast.add({ severity: 'success', summary: 'Notizen gespeichert', life: 4000 })
+  } catch (e) {
+    noteError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** Hinweis zur Garantie: abgelaufen oder noch gültig (Datum als lokaler Kalendertag). */
+const warranty = computed(() => {
+  const w = live.value?.note?.warrantyUntil
+  if (!w) return null
+  const end = new Date(`${w}T23:59:59`)
+  if (Number.isNaN(end.getTime())) return null
+  const text = end.toLocaleDateString('de-DE', { dateStyle: 'medium' })
+  return end.getTime() < Date.now() ? { expired: true, text: `Garantie seit ${text} abgelaufen.` } : { expired: false, text: `Garantie läuft bis ${text}.` }
+})
+
 const times = computed(() => history.value.map((p) => p.ts))
 const temps = computed(() => history.value.map((p) => p.temperatureC))
 const sectors = computed(() => history.value.map((p) => p.reallocatedSectors + p.pendingSectors))
@@ -73,11 +110,55 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
     :visible="visible"
     modal
     append-to="self"
-    :header="disk ? `${disk.model || disk.id} (${disk.device})` : 'Datenträger'"
+    :header="disk ? `${live?.note?.name || disk.model || disk.id} (${disk.device})` : 'Datenträger'"
     :style="{ width: 'min(640px, 95vw)' }"
     @update:visible="emit('update:visible', $event)"
   >
-    <template v-if="live && smart">
+    <template v-if="live">
+      <dl class="facts">
+        <dt>Größe</dt>
+        <dd>{{ formatBytes(live.sizeBytes) }} · {{ live.rotational ? 'HDD' : 'SSD' }}<template v-if="live.transport"> · {{ live.transport }}</template></dd>
+        <dt>Seriennummer</dt>
+        <dd>{{ live.serial || '–' }}</dd>
+        <template v-if="live.usage">
+          <dt>Belegung</dt>
+          <dd><UsageBar :usage="live.usage" /></dd>
+        </template>
+      </dl>
+
+      <h3>Partitionen</h3>
+      <div v-if="live.partitions.length" class="table-wrap">
+        <table class="plain" data-test="partitions">
+          <thead>
+            <tr><th>Gerät</th><th>Dateisystem</th><th>Bezeichnung</th><th>Größe</th><th>Eingehängt unter</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in live.partitions" :key="p.device" :data-test="`part-${p.device}`">
+              <td>{{ p.device }}</td>
+              <td>{{ p.fsType || '–' }}</td>
+              <td>{{ p.label || '–' }}</td>
+              <td>{{ formatBytes(p.sizeBytes) }}</td>
+              <td>{{ p.mountpoints?.length ? p.mountpoints.join(', ') : '–' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="hint" data-test="no-partitions">Keine Partitionen – die Platte ist leer oder nicht partitioniert.</p>
+
+      <h3>Notizen</h3>
+      <form class="notes" data-test="note-form" @submit.prevent="saveNote">
+        <label>Bezeichnung<input v-model="form.name" maxlength="60" placeholder="z. B. Schacht 3" data-test="note-name" /></label>
+        <div class="dates">
+          <label>Gekauft am<input v-model="form.purchased" type="date" data-test="note-purchased" /></label>
+          <label>Garantie bis<input v-model="form.warrantyUntil" type="date" data-test="note-warranty" /></label>
+        </div>
+        <p v-if="warranty" class="hint" :class="{ bad: warranty.expired }" data-test="warranty-hint">{{ warranty.text }}</p>
+        <label>Notiz<textarea v-model="form.notes" rows="3" maxlength="1000" placeholder="z. B. gebraucht gekauft, Händler, Einbaudatum" data-test="note-notes" /></label>
+        <Message v-if="noteError" severity="error" :closable="false" data-test="note-error">{{ noteError }}</Message>
+        <Button type="submit" label="Speichern" size="small" :loading="busy" :disabled="!noteChanged" data-test="note-save" />
+      </form>
+
+      <template v-if="smart">
       <dl class="facts">
         <dt>Status</dt>
         <dd><Tag :value="smart.passed ? 'OK' : 'Warnung'" :severity="smart.passed ? 'success' : 'danger'" /></dd>
@@ -89,12 +170,6 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         <dd :class="{ bad: (smart.reallocatedSectors ?? 0) + (smart.pendingSectors ?? 0) > 0 }">
           {{ smart.reallocatedSectors ?? 0 }} neu zugewiesen, {{ smart.pendingSectors ?? 0 }} instabil
         </dd>
-        <template v-if="live.usage">
-          <dt>Belegung</dt>
-          <dd><UsageBar :usage="live.usage" /></dd>
-        </template>
-        <dt>Größe</dt>
-        <dd>{{ formatBytes(live.sizeBytes) }}</dd>
       </dl>
 
       <template v-if="smart.wear">
@@ -187,8 +262,9 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         <TrendChart title="Temperatur" unit="°C" :values="temps" :times="times" :warn-at="50" />
         <TrendChart title="Defekte Sektoren" :values="sectors" :times="times" :warn-at="1" />
       </div>
+      </template>
+      <p v-else class="hint" data-test="no-smart">Für diese Platte liegen keine SMART-Werte vor (häufig bei USB-Gehäusen).</p>
     </template>
-    <p v-else>Für diese Platte liegen keine SMART-Werte vor.</p>
   </Dialog>
 </template>
 
@@ -268,6 +344,41 @@ h3 {
 }
 .attrs tr.failing td {
   color: var(--bn-danger);
+}
+.plain {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.plain th,
+.plain td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--bn-border-soft);
+}
+.notes {
+  display: grid;
+  gap: 0.6rem;
+}
+.notes label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--bn-text-soft);
+}
+.notes input,
+.notes textarea {
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  color: var(--bn-text);
+}
+.dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.hint.bad {
+  color: var(--bn-warn);
 }
 .charts {
   display: grid;

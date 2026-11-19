@@ -196,3 +196,19 @@ func TestIdentifyRoutes(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
+
+func TestNoteRoute(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("PUT", "/api/v1/disks/d1/note", `{"name":"Schacht 1","notes":"","purchased":"2024-01-02","warrantyUntil":""}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks", ""); !strings.Contains(w.Body.String(), `"note":{"name":"Schacht 1"`) {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/d1/note", `{"purchased":"gestern"}`); w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/nope/note", `{"name":"x"}`); w.Code != 404 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
