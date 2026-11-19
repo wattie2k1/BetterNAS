@@ -218,7 +218,12 @@ async function remove() {
     <Card v-for="s in store.stacks" :key="s.name" :data-test="`stack-${s.name}`">
       <template #title>
         <div class="title">
-          <span class="name"><i class="pi pi-clone" /> <span class="name-text">{{ s.name }}</span></span>
+          <span class="name">
+            <span class="stack-icon" :class="{ img: !!store.iconUrlOf(s.name) }" :data-test="`stack-icon-${s.name}`" aria-hidden="true">
+              <img v-if="store.iconUrlOf(s.name)" :src="store.iconUrlOf(s.name)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+              <i v-else class="pi pi-clone" />
+            </span>
+            <span class="name-text">{{ s.name }}</span></span>
           <Tag
             class="status"
             :value="s.total ? `${s.running} von ${s.total} laufen` : 'Nicht gestartet'"
@@ -291,6 +296,24 @@ async function remove() {
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+}
+.stack-icon {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.stack-icon.img {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border-soft);
+}
+.stack-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .name-text {
   overflow: hidden;
