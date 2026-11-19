@@ -212,3 +212,26 @@ func TestNoteRoute(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
+
+func TestPowerAndTuningRoutes(t *testing.T) {
+	s := newStorageAPI(t)
+	s.formatAs(t, "d1", "S1", "data")
+	if w := s.do("GET", "/api/v1/disks/d1/power?days=7", ""); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/d1/power?days=x", ""); w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/d1/tuning", `{"apm":128,"writeCache":"on"}`); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks/d1/tuning", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"saved":{"apm":128,"writeCache":"on"}`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/d1/tuning", `{"apm":999}`); w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/disks/d2/tuning", `{"apm":128}`); w.Code != 409 {
+		t.Fatalf("unzugeordnet: %d %s", w.Code, w.Body)
+	}
+}

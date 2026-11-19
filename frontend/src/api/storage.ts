@@ -71,6 +71,34 @@ export interface DiskNote {
   warrantyUntil: string
 }
 
+/** Tagesstatistik des Energiezustands; day als JJJJ-MM-TT (Ortszeit des Geräts). */
+export interface PowerDay {
+  day: string
+  activeMin: number
+  standbyMin: number
+  spinups: number
+}
+
+/** APM-Stufen für `hdparm -B` (0 = nicht ändern, 255 = APM aus). */
+export const APM_CHOICES = [
+  { value: 0, label: 'Unverändert' },
+  { value: 64, label: 'Sparsam (64)' },
+  { value: 128, label: 'Ausgewogen (128)' },
+  { value: 192, label: 'Leistung (192)' },
+  { value: 254, label: 'Maximale Leistung (254)' },
+  { value: 255, label: 'Aus (255)' },
+] as const
+
+export interface TuningSettings {
+  apm: number
+  writeCache: '' | 'on' | 'off'
+}
+
+export interface TuningState {
+  saved: TuningSettings
+  current: { standby?: boolean; apm?: number; writeCache?: boolean }
+}
+
 export type SelfTestKind = 'short' | 'long'
 
 export interface SelfTestSchedule {
@@ -241,6 +269,9 @@ export const storageApi = {
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),
   importDisk: (id: string, role?: 'data' | 'parity') =>
     api.post<JobRef>(`/api/v1/disks/${enc(id)}/import`, role ? { role } : undefined),
+  powerStats: (id: string, days: number) => api.get<PowerDay[]>(`/api/v1/disks/${enc(id)}/power?days=${days}`),
+  tuning: (id: string) => api.get<TuningState>(`/api/v1/disks/${enc(id)}/tuning`),
+  setTuning: (id: string, t: TuningSettings) => api.put<void>(`/api/v1/disks/${enc(id)}/tuning`, t),
   setNote: (id: string, n: DiskNote) => api.put<void>(`/api/v1/disks/${enc(id)}/note`, n),
   startIdentify: (id: string) => api.post<void>(`/api/v1/disks/${enc(id)}/identify`),
   stopIdentify: (id: string) => api.del<void>(`/api/v1/disks/${enc(id)}/identify`),

@@ -263,6 +263,7 @@ func Register(s *rpc.Server, d Deps) {
 	registerSpindown(s, d)
 	registerSelfTest(s, d)
 	registerIdentify(s, d)
+	registerPower(s, d)
 	registerSystem(s, d)
 	s.Handle("storage.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st storage.State

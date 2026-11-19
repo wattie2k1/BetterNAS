@@ -98,7 +98,7 @@ func main() {
 		for _, step := range []struct {
 			name string
 			fn   func(context.Context) error
-		}{{"mount-units", sm.Reconcile}, {"freigaben", shm.Reconcile}, {"ruhezustand", sm.ReconcileSpindown}} {
+		}{{"mount-units", sm.Reconcile}, {"freigaben", shm.Reconcile}, {"ruhezustand", sm.ReconcileSpindown}, {"apm", sm.ReconcileTuning}} {
 			name, fn := step.name, step.fn
 			ok := false
 			for i := 0; i < 10 && !ok; i++ {
@@ -131,6 +131,9 @@ func main() {
 				if err := sm.ReconcileSpindown(ctx); err != nil {
 					log.Warn("ruhezustand", "err", err)
 				}
+				if err := sm.ReconcileTuning(ctx); err != nil {
+					log.Warn("apm", "err", err)
+				}
 			}
 		}
 	}()
@@ -141,6 +144,7 @@ func main() {
 	mon.SetDocker(dm)
 	mon.SetTrends(sm)
 	go sm.RunHistory(ctx)
+	go sm.RunPower(ctx)
 	go sm.RunSelfTests(ctx)
 	go mon.Run(ctx)
 	bm := backup.NewManager(d, agent, filepath.Join(stateDir, "backups"), version.Version, hub)

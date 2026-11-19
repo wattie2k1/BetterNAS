@@ -47,6 +47,11 @@ type fakeAgent struct {
 
 	identifyDevs []string // Geräte der disk.identify-Aufrufe
 	identifyFail bool
+
+	powerStates map[string]string // Gerät → Energiezustand für disk.powerstate
+	tuning      TuningCurrent
+	tuneReqs    []map[string]any
+	tuneFail    bool
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -70,6 +75,26 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			si.SelfTest = &SelfTest{Running: true, RemainingPercent: 50}
 		}
 		out = si
+	case "disk.powerstate":
+		b, _ := json.Marshal(params)
+		var req struct{ Devices []string }
+		json.Unmarshal(b, &req)
+		res := map[string]string{}
+		for _, d := range req.Devices {
+			res[d] = f.powerStates[d]
+		}
+		out = res
+	case "disk.tuning":
+		out = f.tuning
+	case "disk.tune":
+		b, _ := json.Marshal(params)
+		var req map[string]any
+		json.Unmarshal(b, &req)
+		if f.tuneFail {
+			return apierr.New(apierr.Conflict, "nicht unterstützt")
+		}
+		f.tuneReqs = append(f.tuneReqs, req)
+		out = map[string]bool{"ok": true}
 	case "disk.identify":
 		b, _ := json.Marshal(params)
 		var req map[string]string

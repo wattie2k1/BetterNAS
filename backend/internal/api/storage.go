@@ -121,6 +121,42 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("GET /api/v1/disks/{id}/power", func(w http.ResponseWriter, r *http.Request) {
+		days := 0
+		if v := r.URL.Query().Get("days"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				apierr.Write(w, apierr.New(apierr.InvalidParams, "Ungültiger Zeitraum."))
+				return
+			}
+			days = n
+		}
+		st, err := m.PowerStats(r.Context(), r.PathValue("id"), days)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
+	})
+	mux.HandleFunc("GET /api/v1/disks/{id}/tuning", func(w http.ResponseWriter, r *http.Request) {
+		t, err := m.Tuning(r.Context(), r.PathValue("id"))
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, t)
+	})
+	mux.HandleFunc("PUT /api/v1/disks/{id}/tuning", func(w http.ResponseWriter, r *http.Request) {
+		var in storage.TuningSettings
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetTuning(r.Context(), actor(r), r.PathValue("id"), in); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/disks/{id}/identify", func(w http.ResponseWriter, r *http.Request) {
 		if err := m.StartIdentify(r.Context(), actor(r), r.PathValue("id")); err != nil {
 			apierr.Write(w, err)

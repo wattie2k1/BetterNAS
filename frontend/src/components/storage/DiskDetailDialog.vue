@@ -6,8 +6,9 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import TrendChart from './TrendChart.vue'
+import StandbyChart from './StandbyChart.vue'
 import UsageBar from './UsageBar.vue'
-import { SELFTEST_KIND_LABEL, SSD_WEAR_WARN_PERCENT, storageApi, type DiskNote, type DiskView, type HistoryPoint, type SelfTestKind } from '@/api/storage'
+import { SELFTEST_KIND_LABEL, SSD_WEAR_WARN_PERCENT, storageApi, APM_CHOICES, type DiskNote, type DiskView, type HistoryPoint, type PowerDay, type SelfTestKind, type TuningSettings, type TuningState } from '@/api/storage'
 import { useStorageStore } from '@/stores/storage'
 import { formatBytes } from '@/utils/format'
 
@@ -42,7 +43,55 @@ async function loadHistory() {
     historyError.value = e instanceof Error ? e.message : String(e)
   }
 }
-watch(() => [props.visible, props.disk?.id, days.value], loadHistory, { immediate: true })
+const power = ref<PowerDay[]>([])
+async function loadPower() {
+  if (!props.visible || !props.disk || !live.value?.rotational) {
+    power.value = []
+    return
+  }
+  try {
+    power.value = (await storageApi.powerStats(props.disk.id, days.value)) ?? []
+  } catch {
+    power.value = []
+  }
+}
+watch(() => [props.visible, props.disk?.id, days.value], () => Promise.all([loadHistory(), loadPower()]), { immediate: true })
+
+// APM und Schreibcache gibt es nur für Daten-/Paritätsplatten; die aktuellen Werte liest der Server, ohne schlafende Platten zu wecken.
+const tunable = computed(() => !!live.value && (live.value.role === 'data' || live.value.role === 'parity') && live.value.state === 'online')
+const tuning = ref<TuningState | null>(null)
+const tuneForm = ref<TuningSettings>({ apm: 0, writeCache: '' })
+const tuneError = ref('')
+async function loadTuning() {
+  tuning.value = null
+  tuneError.value = ''
+  if (!props.visible || !props.disk || !tunable.value) return
+  try {
+    const t = await storageApi.tuning(props.disk.id)
+    // Unvollständige Antworten abfangen, damit der Dialog nie an fehlenden Feldern scheitert.
+    tuning.value = { saved: { apm: t?.saved?.apm ?? 0, writeCache: t?.saved?.writeCache ?? '' }, current: t?.current ?? {} }
+    tuneForm.value = { ...tuning.value.saved }
+  } catch (e) {
+    tuneError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+watch(() => [props.visible, props.disk?.id], loadTuning, { immediate: true })
+const tuneChanged = computed(() => !!tuning.value && JSON.stringify(tuneForm.value) !== JSON.stringify(tuning.value.saved))
+const apmLabel = (v?: number) => (v === undefined ? 'unbekannt' : v === 255 ? 'aus' : String(v))
+
+async function saveTuning() {
+  busy.value = true
+  tuneError.value = ''
+  try {
+    await store.setTuning(props.disk!.id, { ...tuneForm.value })
+    toast.add({ severity: 'success', summary: 'Einstellungen übernommen', life: 4000 })
+    await loadTuning()
+  } catch (e) {
+    tuneError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = false
+  }
+}
 
 // NVMe-Werte haben keine Attribut-IDs; dann entfallen die Spalten für ID und Normwerte.
 const hasIds = computed(() => (smart.value?.attributes ?? []).some((a) => a.id > 0))
@@ -158,6 +207,35 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         <Button type="submit" label="Speichern" size="small" :loading="busy" :disabled="!noteChanged" data-test="note-save" />
       </form>
 
+      <template v-if="tunable">
+        <h3>Energie und Cache</h3>
+        <form class="notes" data-test="tuning-form" @submit.prevent="saveTuning">
+          <p v-if="tuning?.current.standby" class="hint" data-test="tuning-standby">Die Platte schläft; ihre aktuellen Werte werden nicht gelesen, damit sie nicht aufwacht.</p>
+          <p v-else-if="tuning" class="hint" data-test="tuning-current">
+            Aktuell an der Platte: APM {{ apmLabel(tuning.current.apm) }}, Schreibcache
+            {{ tuning.current.writeCache === undefined ? 'unbekannt' : tuning.current.writeCache ? 'an' : 'aus' }}.
+          </p>
+          <label>
+            APM (Energieverwaltung)
+            <select v-model.number="tuneForm.apm" :disabled="!tuning" data-test="tuning-apm">
+              <option v-for="c in APM_CHOICES" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+          </label>
+          <p class="hint">Niedrige Werte sparen Strom, parken aber die Köpfe oft und können die Platte schneller verschleißen. 128 erlaubt den Ruhezustand.</p>
+          <label>
+            Schreibcache
+            <select v-model="tuneForm.writeCache" :disabled="!tuning" data-test="tuning-cache">
+              <option value="">Unverändert</option>
+              <option value="on">An</option>
+              <option value="off">Aus</option>
+            </select>
+          </label>
+          <p class="hint">Ohne Schreibcache gehen bei Stromausfall weniger Daten verloren, die Platte schreibt aber deutlich langsamer.</p>
+          <Message v-if="tuneError" severity="error" :closable="false" data-test="tuning-error">{{ tuneError }}</Message>
+          <Button type="submit" label="Übernehmen" size="small" :loading="busy" :disabled="!tuneChanged" data-test="tuning-save" />
+        </form>
+      </template>
+
       <template v-if="smart">
       <dl class="facts">
         <dt>Status</dt>
@@ -259,6 +337,7 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
       </div>
       <Message v-if="historyError" severity="error" :closable="false">{{ historyError }}</Message>
       <div class="charts">
+        <StandbyChart v-if="live.rotational" :days="power" :range="days" />
         <TrendChart title="Temperatur" unit="°C" :values="temps" :times="times" :warn-at="50" />
         <TrendChart title="Defekte Sektoren" :values="sectors" :times="times" :warn-at="1" />
       </div>

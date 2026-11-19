@@ -165,8 +165,9 @@ type Manager struct {
 	smart     map[string]smartEntry
 	// identifying: Platten-ID → Abbruchfunktion des laufenden Blinkens (unter tmu).
 	identifying  map[string]context.CancelFunc
-	identifyFor  time.Duration // Dauer des Blinkens
-	identifyGap  time.Duration // Pause zwischen zwei Impulsen
+	powerPrev    map[string]string // Platten-ID → zuletzt gemessener Energiezustand (unter tmu)
+	identifyFor  time.Duration     // Dauer des Blinkens
+	identifyGap  time.Duration     // Pause zwischen zwei Impulsen
 	now          func() time.Time
 	pollEvery    time.Duration // Abfrageintervall der SnapRAID-Läufe
 	selfTestPoll time.Duration // Abfrageintervall laufender Selbsttests
@@ -178,7 +179,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps ...DependentsFunc) *Manager {
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
-		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
+		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
 		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }

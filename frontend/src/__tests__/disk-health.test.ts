@@ -5,6 +5,7 @@ import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import DiskDetailDialog from '@/components/storage/DiskDetailDialog.vue'
 import SelfTestScheduleDialog from '@/components/storage/SelfTestScheduleDialog.vue'
+import StandbyChart from '@/components/storage/StandbyChart.vue'
 import TrendChart from '@/components/storage/TrendChart.vue'
 import UsageBar from '@/components/storage/UsageBar.vue'
 import DisksView from '@/views/storage/DisksView.vue'
@@ -376,5 +377,102 @@ describe('Notizen und Partitionen', () => {
     const w = mount(DisksView, { global: { plugins: plugins() } })
     await flushPromises()
     expect(w.find('[data-test="note-name-d1"]').text()).toBe('Schacht 3')
+  })
+})
+
+describe('Standby-Statistik und APM', () => {
+  const today = new Date()
+  const key = (back: number) => {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  it('StandbyChart summiert Anteil und Anläufe und zeigt je Tag einen Balken', () => {
+    const w = mount(StandbyChart, {
+      props: { range: 7, days: [{ day: key(0), activeMin: 60, standbyMin: 180, spinups: 3 }, { day: key(1), activeMin: 120, standbyMin: 0, spinups: 1 }] },
+    })
+    expect(w.findAll('.col').length).toBe(7)
+    expect(w.find('[data-test="standby-share"]').text()).toBe('50 %') // 180 von 360 Minuten
+    expect(w.find('[data-test="standby-sum"]').text()).toContain('4 Anläufe')
+  })
+
+  it('StandbyChart fasst lange Zeiträume zu höchstens 30 Balken zusammen und meldet fehlende Daten', () => {
+    expect(mount(StandbyChart, { props: { range: 365, days: [] } }).find('[data-test="standby-empty"]').exists()).toBe(true)
+    const w = mount(StandbyChart, { props: { range: 365, days: [{ day: key(0), activeMin: 1, standbyMin: 1, spinups: 0 }] } })
+    expect(w.findAll('.col').length).toBeLessThanOrEqual(30)
+  })
+
+  function setup(d: DiskView, tuning: unknown, put: () => Response = () => new Response(null, { status: 204 })) {
+    const calls: { url: string; method: string; body?: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        calls.push({ url, method, body: init?.body as string | undefined })
+        if (method === 'PUT') return put()
+        if (url.includes('/tuning')) return new Response(JSON.stringify(tuning), { status: 200 })
+        if (url.includes('/power')) return new Response(JSON.stringify([{ day: key(0), activeMin: 10, standbyMin: 30, spinups: 2 }]), { status: 200 })
+        if (url.includes('/history')) return new Response('[]', { status: 200 })
+        return new Response(JSON.stringify([d]), { status: 200 })
+      }),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useStorageStore().disks = [d]
+    const w = mount(DiskDetailDialog, { props: { visible: true, disk: d }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    return { w, calls }
+  }
+
+  it('lädt die Statistik für drehende Platten, nicht für SSDs', async () => {
+    const hdd = setup(disk({ id: 'h', role: 'data', smart }), { saved: { apm: 0, writeCache: '' }, current: {} })
+    await flushPromises()
+    expect(hdd.calls.some((c) => c.url === '/api/v1/disks/h/power?days=30')).toBe(true)
+    expect(hdd.w.find('[data-test="standby-share"]').text()).toBe('75 %')
+    const ssd = setup(disk({ id: 's', rotational: false, role: 'data', smart }), { saved: { apm: 0, writeCache: '' }, current: {} })
+    await flushPromises()
+    expect(ssd.calls.some((c) => c.url.includes('/power'))).toBe(false)
+    expect(ssd.w.find('[data-test="standby-chart"]').exists()).toBe(false)
+  })
+
+  it('zeigt aktuelle Werte, speichert Änderungen per PUT', async () => {
+    const { w, calls } = setup(disk({ id: 'h', role: 'data', smart }), { saved: { apm: 128, writeCache: '' }, current: { apm: 128, writeCache: true } })
+    await flushPromises()
+    expect(w.find('[data-test="tuning-current"]').text()).toContain('APM 128')
+    expect(w.find('[data-test="tuning-current"]').text()).toContain('Schreibcache an')
+    expect((w.find('[data-test="tuning-apm"]').element as HTMLSelectElement).value).toBe('128')
+    expect(w.find('[data-test="tuning-save"]').attributes('disabled')).toBeDefined()
+    await w.find('[data-test="tuning-apm"]').setValue('192')
+    await w.find('[data-test="tuning-cache"]').setValue('off')
+    await w.find('[data-test="tuning-form"]').trigger('submit')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([{ url: '/api/v1/disks/h/tuning', method: 'PUT', body: JSON.stringify({ apm: 192, writeCache: 'off' }) }])
+  })
+
+  it('weckt keine schlafende Platte und zeigt den Hinweis', async () => {
+    const { w } = setup(disk({ id: 'h', role: 'data', smart }), { saved: { apm: 0, writeCache: '' }, current: { standby: true } })
+    await flushPromises()
+    expect(w.find('[data-test="tuning-standby"]').text()).toContain('schläft')
+    expect(w.find('[data-test="tuning-current"]').exists()).toBe(false)
+  })
+
+  it('bietet APM nicht für nicht zugewiesene Platten an und zeigt Ablehnungen', async () => {
+    const un = setup(disk({ id: 'u', role: 'unassigned', smart }), {})
+    await flushPromises()
+    expect(un.w.find('[data-test="tuning-form"]').exists()).toBe(false)
+    expect(un.calls.some((c) => c.url.includes('/tuning'))).toBe(false)
+    const { w } = setup(disk({ id: 'h', role: 'data', smart }), { saved: { apm: 0, writeCache: '' }, current: {} }, () =>
+      new Response(JSON.stringify({ error: { code: 'conflict', message: 'Diese Platte unterstützt die Einstellung nicht' } }), { status: 409 }),
+    )
+    await flushPromises()
+    await w.find('[data-test="tuning-apm"]').setValue('64')
+    await w.find('[data-test="tuning-form"]').trigger('submit')
+    await flushPromises()
+    expect(w.find('[data-test="tuning-error"]').text()).toContain('unterstützt die Einstellung nicht')
+  })
+
+  it('übersteht unvollständige Antworten', async () => {
+    const { w } = setup(disk({ id: 'h', role: 'data', smart }), [])
+    await flushPromises()
+    expect(w.find('[data-test="tuning-form"]').exists()).toBe(true)
   })
 })
