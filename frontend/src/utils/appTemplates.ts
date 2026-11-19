@@ -1158,6 +1158,52 @@ volumes:
       - \${STATE_DIR}:/var/lib/tailscale
 `,
   },
+  {
+    id: 'cloudflared',
+    title: 'Cloudflare Tunnel',
+    description: 'Macht Dienste im Heimnetz über einen Cloudflare-Tunnel von außen erreichbar, ohne Port-Freigabe am Router.',
+    icon: 'pi pi-cloud-upload',
+    category: 'Netzwerk',
+    stack: 'cloudflared',
+    notice: 'Der Tunnel hat keine eigene Oberfläche. Lege ihn in der Cloudflare-Verwaltung (Zero Trust → Netzwerke → Tunnels) an, kopiere den Token und trage dort unter „Öffentliche Hostnamen“ die Ziele ein, z. B. http://<NAS-IP>:8096. Was du freigibst, ist danach aus dem Internet erreichbar: schütze es mit Cloudflare Access oder der Anmeldung der App. Der Token steht im Klartext in der .env.',
+    fields: [
+      { key: 'TUNNEL_TOKEN', label: 'Tunnel-Token von Cloudflare', kind: 'text', def: () => '', hint: 'Beginnt mit „eyJ“ und steht in der Cloudflare-Verwaltung beim Anlegen des Tunnels hinter „cloudflared service install“.' },
+    ],
+    compose: `services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: "\${TUNNEL_TOKEN}"
+`,
+  },
+  {
+    id: 'recyclarr',
+    title: 'Recyclarr',
+    description: 'Gleicht die Qualitätsprofile und Benennungsregeln (TRaSH-Guides) von Radarr und Sonarr automatisch ab. Läuft täglich im Hintergrund.',
+    icon: 'pi pi-sync',
+    category: '*arr und Wunschliste',
+    stack: 'recyclarr',
+    notice: 'Recyclarr hat keine Oberfläche. Beim ersten Start legt es im Einstellungsordner eine Beispieldatei recyclarr.yml an. Trage darin die Adressen und API-Schlüssel deiner Radarr- und Sonarr-Instanzen ein und wähle die gewünschten Profile (Anleitung: recyclarr.dev). Danach prüft es täglich, bei Bedarf manuell mit „docker exec recyclarr recyclarr sync“.',
+    fields: [
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      ...idFields,
+    ],
+    compose: `services:
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:latest
+    restart: unless-stopped
+    user: "\${PUID}:\${PGID}"
+    environment:
+      TZ: Europe/Berlin
+      UMASK: "002"
+      CRON_SCHEDULE: "@daily"
+      RECYCLARR_CREATE_CONFIG: "true"
+    volumes:
+      - \${CONFIG_DIR}:/config
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
