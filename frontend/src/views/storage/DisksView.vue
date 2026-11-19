@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
@@ -8,6 +8,7 @@ import FormatDialog from '@/components/storage/FormatDialog.vue'
 import DiskDetailDialog from '@/components/storage/DiskDetailDialog.vue'
 import SelfTestScheduleDialog from '@/components/storage/SelfTestScheduleDialog.vue'
 import UsageBar from '@/components/storage/UsageBar.vue'
+import DiskBulkBar from '@/components/storage/DiskBulkBar.vue'
 import { useStorageStore } from '@/stores/storage'
 import type { DiskView, FormatPreview, FormatRequest } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
@@ -18,6 +19,27 @@ const toast = useToast()
 const preview = ref<FormatPreview | null>(null)
 const showFormat = ref(false)
 const busy = ref<string | null>(null)
+
+// Auswahl für Sammelaktionen: nur angeschlossene Platten; verschwundene werden wieder abgewählt.
+const selected = ref<Set<string>>(new Set())
+const selectable = computed(() => store.disks.filter((d) => d.state === 'online'))
+const selectedDisks = computed(() => selectable.value.filter((d) => selected.value.has(d.id)))
+const allSelected = computed(() => selectable.value.length > 0 && selectedDisks.value.length === selectable.value.length)
+const someSelected = computed(() => selectedDisks.value.length > 0 && !allSelected.value)
+function toggle(id: string, on: boolean) {
+  const next = new Set(selected.value)
+  if (on) next.add(id)
+  else next.delete(id)
+  selected.value = next
+}
+function toggleAll(on: boolean) {
+  selected.value = on ? new Set(selectable.value.map((d) => d.id)) : new Set()
+}
+watch(selectable, (list) => {
+  const ids = new Set(list.map((d) => d.id))
+  const kept = [...selected.value].filter((id) => ids.has(id))
+  if (kept.length !== selected.value.size) selected.value = new Set(kept)
+})
 
 const detailDisk = ref<DiskView | null>(null)
 const showDetail = ref(false)
@@ -143,12 +165,16 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
   </Message>
   <p v-if="!store.disks.length && !store.loading" class="empty">Keine Datenträger gefunden.</p>
   <div v-else class="table-wrap">
+    <DiskBulkBar v-if="selectedDisks.length" :disks="selectedDisks" @clear="toggleAll(false)" />
     <div class="toolbar">
       <Button label="Selbsttests planen" icon="pi pi-calendar" size="small" outlined data-test="open-schedule" @click="showSchedule = true" />
     </div>
     <table class="disks">
       <thead>
         <tr>
+          <th class="check">
+            <input type="checkbox" :checked="allSelected" :indeterminate="someSelected" aria-label="Alle Platten auswählen" data-test="select-all" @change="toggleAll(($event.target as HTMLInputElement).checked)" />
+          </th>
           <th>Datenträger</th>
           <th>Größe</th>
           <th>Rolle</th>
@@ -160,6 +186,16 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
       </thead>
       <tbody>
         <tr v-for="d in store.disks" :key="d.id" :data-test="`disk-${d.id}`">
+          <td class="check">
+            <input
+              v-if="d.state === 'online'"
+              type="checkbox"
+              :checked="selected.has(d.id)"
+              :aria-label="`${d.model || d.id} auswählen`"
+              :data-test="`select-${d.id}`"
+              @change="toggle(d.id, ($event.target as HTMLInputElement).checked)"
+            />
+          </td>
           <td>
             <div class="name">
               <i :class="d.system ? 'pi pi-lock' : d.rotational ? 'pi pi-database' : 'pi pi-bolt'" />
@@ -269,6 +305,9 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+.check {
+  width: 2rem;
 }
 .new-disk {
   margin-bottom: 0.6rem;
