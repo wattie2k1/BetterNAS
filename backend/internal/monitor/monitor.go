@@ -41,6 +41,9 @@ type TrendSource interface {
 const (
 	sectorGrowthDays = 7
 	sectorGrowthMin  = 8
+
+	// ssdWearWarnPercent: ab diesem Verschleiß einer SSD wird gewarnt.
+	ssdWearWarnPercent = 90
 )
 
 // Notifier verschickt Meldungen (implementiert von notify.Service).
@@ -167,7 +170,7 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	}
 	disks, derr := m.src.ListDisks(ctx)
 	if derr != nil {
-		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "temp:", "disk-missing:")
+		unknown = append(unknown, "smart:", "smart-sectors:", "smart-growth:", "selftest:", "ssd-wear:", "temp:", "disk-missing:")
 		err = errors.Join(err, fmt.Errorf("platten: %w", derr))
 	}
 	var growth map[string]int
@@ -204,6 +207,10 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 		if st := s.SelfTest; st != nil && st.Last != nil && st.Last.Result == "failed" {
 			add("selftest:"+d.ID, "crit", "SMART-Selbsttest fehlgeschlagen: "+label,
 				"Der letzte Selbsttest meldet: "+orDefault(st.Last.Status, "Fehler")+". Sichere die Daten und tausche die Platte aus.")
+		}
+		if w := s.Wear; w != nil && w.PercentUsed != nil && *w.PercentUsed >= ssdWearWarnPercent {
+			add("ssd-wear:"+d.ID, "warn", "SSD fast verschlissen: "+label,
+				fmt.Sprintf("Die SSD hat %d %% ihrer Lebensdauer verbraucht. Plane einen Austausch, bevor sie ausfällt.", *w.PercentUsed))
 		}
 		if s.TemperatureC > 0 && s.TemperatureC >= cfg.TempWarnC {
 			add("temp:"+d.ID, "warn", "Platte zu warm: "+label, fmt.Sprintf("Die Platte ist %d °C warm (Schwelle %d °C). Prüfe die Belüftung.", s.TemperatureC, cfg.TempWarnC))

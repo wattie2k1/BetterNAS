@@ -206,3 +206,54 @@ describe('DisksView: Belegung und Selbsttest', () => {
     expect(w.find('[data-test="sched-save"]').exists()).toBe(true)
   })
 })
+
+describe('SSD-Verschleiß und SMART-Attribute', () => {
+  const ssdSmart = {
+    ...smart,
+    wear: { percentUsed: 93, bytesWritten: 2e14, spareLeftPercent: 98 },
+    attributes: [
+      { id: 5, name: 'Reallocated_Sector_Ct', value: 100, worst: 100, threshold: 10, raw: '0', prefail: true },
+      { id: 194, name: 'Temperature_Celsius', value: 70, worst: 60, threshold: 0, raw: '30', failing: true },
+    ],
+  }
+  const mountDetail = async (d: DiskView) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => new Response(url.includes('/history') ? '[]' : JSON.stringify([d]), { status: 200 })))
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useStorageStore().disks = [d]
+    const w = mount(DiskDetailDialog, { props: { visible: true, disk: d }, global: { plugins: [pinia, PrimeVue, ToastService] } })
+    await flushPromises()
+    return w
+  }
+
+  it('zeigt Verschleiß mit Warnung ab 90 %', async () => {
+    const w = await mountDetail(disk({ id: 's', rotational: false, role: 'data', smart: ssdSmart }))
+    const t = w.find('[data-test="wear"]')
+    expect(t.text()).toContain('93 % der Lebensdauer verbraucht')
+    expect(t.text()).toContain('Austausch')
+    expect(t.classes()).toContain('bad')
+    expect(w.find('[data-test="wear-written"]').text()).toContain('200,0 TB')
+  })
+
+  it('zeigt keinen Verschleiß bei HDDs, aber die Attributtabelle mit markierten Fehlern', async () => {
+    const w = await mountDetail(disk({ id: 'h', role: 'data', smart: { ...ssdSmart, wear: undefined } }))
+    expect(w.find('[data-test="wear"]').exists()).toBe(false)
+    expect(w.find('[data-test="attr-5"]').text()).toContain('Vorwarnung')
+    expect(w.find('[data-test="attr-194"]').classes()).toContain('failing')
+    expect(w.find('[data-test="attributes"]').text()).toContain('SMART-Attribute (2)')
+  })
+
+  it('lässt bei NVMe die Spalten ohne Attribut-IDs weg', async () => {
+    const w = await mountDetail(disk({ id: 'n', rotational: false, role: 'data', smart: { ...smart, wear: { percentUsed: 3 }, attributes: [{ id: 0, name: 'Medienfehler', value: 0, worst: 0, threshold: 0, raw: '0' }] } }))
+    expect(w.find('[data-test="attributes"] th').text()).toBe('Name')
+    expect(w.find('[data-test="wear"]').classes()).not.toContain('bad')
+  })
+
+  it('zeigt den Verschleiß in der Tabelle', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(url.includes('/disks') ? [disk({ id: 's', rotational: false, role: 'data', smart: ssdSmart })] : pools), { status: 200 })))
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    expect(w.find('[data-test="wear-s"]').text()).toContain('Verschleiß 93 %')
+    expect(w.find('[data-test="wear-s"]').classes()).toContain('warn')
+  })
+})

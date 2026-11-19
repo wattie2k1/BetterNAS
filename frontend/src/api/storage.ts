@@ -17,7 +17,31 @@ export interface SmartInfo {
   reallocatedSectors?: number
   pendingSectors?: number
   selfTest?: SelfTest
+  attributes?: SmartAttr[]
+  wear?: SsdWear
 }
+
+/** SMART-Attribut (ATA) bzw. Gesundheitswert (NVMe: id 0, nur Name und Rohwert). */
+export interface SmartAttr {
+  id: number
+  name: string
+  value: number
+  worst: number
+  threshold: number
+  raw: string
+  prefail?: boolean
+  failing?: boolean
+}
+
+/** Verschleiß einer SSD; Felder fehlen, wenn die SSD sie nicht meldet. */
+export interface SsdWear {
+  percentUsed?: number
+  spareLeftPercent?: number
+  bytesWritten?: number
+}
+
+/** Ab diesem Verschleiß warnt auch das Backend. */
+export const SSD_WEAR_WARN_PERCENT = 90
 
 export interface SelfTestResult {
   type: 'short' | 'long' | 'other'

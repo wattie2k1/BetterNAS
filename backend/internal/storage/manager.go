@@ -38,6 +38,28 @@ type SmartInfo struct {
 	PendingSectors     int  `json:"pendingSectors"`
 	// SelfTest beschreibt laufenden und letzten SMART-Selbsttest (nil, wenn die Platte keinen meldet).
 	SelfTest *SelfTest `json:"selfTest,omitempty"`
+	// Attributes und Wear entsprechen agent.SmartInfo.
+	Attributes []SmartAttr `json:"attributes,omitempty"`
+	Wear       *Wear       `json:"wear,omitempty"`
+}
+
+// SmartAttr ist ein SMART-Attribut bzw. NVMe-Gesundheitswert.
+type SmartAttr struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Value     int    `json:"value"`
+	Worst     int    `json:"worst"`
+	Threshold int    `json:"threshold"`
+	Raw       string `json:"raw"`
+	Prefail   bool   `json:"prefail,omitempty"`
+	Failing   bool   `json:"failing,omitempty"`
+}
+
+// Wear ist der Verschleiß einer SSD.
+type Wear struct {
+	PercentUsed  *int   `json:"percentUsed,omitempty"`
+	SpareLeft    *int   `json:"spareLeftPercent,omitempty"`
+	BytesWritten uint64 `json:"bytesWritten,omitempty"`
 }
 
 // SelfTest ist der Zustand der SMART-Selbsttests einer Platte (entspricht agent.SelfTest).

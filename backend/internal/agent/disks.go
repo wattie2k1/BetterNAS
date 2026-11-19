@@ -55,6 +55,10 @@ type SmartInfo struct {
 	PendingSectors     int  `json:"pendingSectors"`
 	// SelfTest beschreibt laufenden und letzten SMART-Selbsttest (nil, wenn die Platte keinen meldet).
 	SelfTest *SelfTest `json:"selfTest,omitempty"`
+	// Attributes sind die SMART-Attribute (ATA) bzw. Gesundheitswerte (NVMe) im Rohformat der Platte.
+	Attributes []SmartAttr `json:"attributes,omitempty"`
+	// Wear beschreibt den Verschleiß einer SSD (nil bei HDDs und wenn die SSD ihn nicht meldet).
+	Wear *Wear `json:"wear,omitempty"`
 }
 
 // SelfTest ist der Zustand der SMART-Selbsttests einer Platte.
@@ -114,14 +118,11 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 			Hours int `json:"hours"`
 		} `json:"power_on_time"`
 		ATA struct {
-			Table []struct {
-				ID  int `json:"id"`
-				Raw struct {
-					Value int `json:"value"`
-				} `json:"raw"`
-			} `json:"table"`
+			Table []ataAttr `json:"table"`
 		} `json:"ata_smart_attributes"`
-		ATAData struct {
+		BlockSize  int         `json:"logical_block_size"`
+		NVMeHealth *nvmeHealth `json:"nvme_smart_health_information_log"`
+		ATAData    struct {
 			SelfTest struct {
 				Status struct {
 					Value            int  `json:"value"`
@@ -154,6 +155,7 @@ func Smart(ctx context.Context, d Deps, device string) (SmartInfo, error) {
 			info.PendingSectors = a.Raw.Value
 		}
 	}
+	info.Attributes, info.Wear = smartExtras(raw.ATA.Table, raw.NVMeHealth, raw.BlockSize)
 	info.SelfTest = ataSelfTest(raw.ATAData.SelfTest.Status.Value, raw.ATAData.SelfTest.Status.RemainingPercent, raw.ATALog.Standard.Table)
 	if info.SelfTest == nil {
 		info.SelfTest = nvmeSelfTest(raw.NVMeLog.Operation.Value, raw.NVMeLog.Completion, raw.NVMeLog.Table)

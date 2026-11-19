@@ -81,7 +81,6 @@ func TestHistoryDropsOldAndDownsamples(t *testing.T) {
 	}
 }
 
-
 func TestDiskUsage(t *testing.T) {
 	e := newEnv(t)
 	e.twoDataDisks(t)

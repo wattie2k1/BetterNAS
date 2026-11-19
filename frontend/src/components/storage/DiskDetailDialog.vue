@@ -7,7 +7,7 @@ import Message from 'primevue/message'
 import { useToast } from 'primevue/usetoast'
 import TrendChart from './TrendChart.vue'
 import UsageBar from './UsageBar.vue'
-import { SELFTEST_KIND_LABEL, storageApi, type DiskView, type HistoryPoint, type SelfTestKind } from '@/api/storage'
+import { SELFTEST_KIND_LABEL, SSD_WEAR_WARN_PERCENT, storageApi, type DiskView, type HistoryPoint, type SelfTestKind } from '@/api/storage'
 import { useStorageStore } from '@/stores/storage'
 import { formatBytes } from '@/utils/format'
 
@@ -43,6 +43,9 @@ async function loadHistory() {
   }
 }
 watch(() => [props.visible, props.disk?.id, days.value], loadHistory, { immediate: true })
+
+// NVMe-Werte haben keine Attribut-IDs; dann entfallen die Spalten für ID und Normwerte.
+const hasIds = computed(() => (smart.value?.attributes ?? []).some((a) => a.id > 0))
 
 const times = computed(() => history.value.map((p) => p.ts))
 const temps = computed(() => history.value.map((p) => p.temperatureC))
@@ -94,6 +97,23 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
         <dd>{{ formatBytes(live.sizeBytes) }}</dd>
       </dl>
 
+      <template v-if="smart.wear">
+        <h3>SSD-Verschleiß</h3>
+        <div class="wear" :class="{ bad: (smart.wear.percentUsed ?? 0) >= SSD_WEAR_WARN_PERCENT }" data-test="wear">
+          <template v-if="smart.wear.percentUsed !== undefined">
+            <div class="progress" role="progressbar" :aria-valuenow="smart.wear.percentUsed" aria-valuemin="0" aria-valuemax="100" :aria-label="`${smart.wear.percentUsed} % verbraucht`">
+              <div class="bar" :style="{ width: smart.wear.percentUsed + '%' }" />
+            </div>
+            <p>
+              {{ smart.wear.percentUsed }} % der Lebensdauer verbraucht, etwa {{ 100 - smart.wear.percentUsed }} % übrig.
+              <span v-if="smart.wear.percentUsed >= SSD_WEAR_WARN_PERCENT">Plane einen Austausch.</span>
+            </p>
+          </template>
+          <p v-if="smart.wear.bytesWritten" class="sub" data-test="wear-written">Insgesamt geschrieben: {{ formatBytes(smart.wear.bytesWritten) }}</p>
+          <p v-if="smart.wear.spareLeftPercent !== undefined" class="sub">Reserve-Speicher: {{ smart.wear.spareLeftPercent }} %</p>
+        </div>
+      </template>
+
       <h3>Selbsttest</h3>
       <div class="selftest" data-test="selftest">
         <template v-if="test?.running">
@@ -120,6 +140,34 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
           <p v-else class="hint">Bisher wurde kein Selbsttest protokolliert.</p>
         </template>
       </div>
+
+      <details v-if="smart.attributes?.length" class="attrs" data-test="attributes">
+        <summary>SMART-Attribute ({{ smart.attributes.length }})</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th v-if="hasIds">ID</th>
+                <th>Name</th>
+                <th v-if="hasIds">Wert</th>
+                <th v-if="hasIds">Schlechtester</th>
+                <th v-if="hasIds">Schwelle</th>
+                <th>Rohwert</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(a, i) in smart.attributes" :key="a.id || i" :class="{ failing: a.failing }" :data-test="`attr-${a.id || i}`">
+                <td v-if="hasIds">{{ a.id }}</td>
+                <td>{{ a.name }}<span v-if="a.prefail" class="sub" title="Fällt dieses Attribut unter die Schwelle, droht der Ausfall"> · Vorwarnung</span></td>
+                <td v-if="hasIds">{{ a.value }}</td>
+                <td v-if="hasIds">{{ a.worst }}</td>
+                <td v-if="hasIds">{{ a.threshold }}</td>
+                <td>{{ a.raw }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       <h3>Verlauf</h3>
       <div class="ranges" role="group" aria-label="Zeitraum">
@@ -192,6 +240,34 @@ h3 {
   height: 100%;
   background: linear-gradient(90deg, var(--bn-accent-1), var(--bn-accent-2));
   transition: width 0.5s;
+}
+.wear.bad .bar {
+  background: var(--bn-warn);
+}
+.wear.bad > p:first-of-type {
+  color: var(--bn-warn);
+}
+.attrs {
+  margin-top: 1rem;
+}
+.attrs summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.attrs table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+.attrs th,
+.attrs td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--bn-border-soft);
+}
+.attrs tr.failing td {
+  color: var(--bn-danger);
 }
 .charts {
   display: grid;

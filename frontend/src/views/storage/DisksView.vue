@@ -11,7 +11,7 @@ import UsageBar from '@/components/storage/UsageBar.vue'
 import { useStorageStore } from '@/stores/storage'
 import type { DiskView, FormatPreview, FormatRequest } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
-import { SELFTEST_KIND_LABEL, SPINDOWN_CHOICES, spindownLabel } from '@/api/storage'
+import { SELFTEST_KIND_LABEL, SPINDOWN_CHOICES, SSD_WEAR_WARN_PERCENT, spindownLabel } from '@/api/storage'
 
 const store = useStorageStore()
 const toast = useToast()
@@ -146,6 +146,9 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
               <Tag :value="d.smart.passed ? 'OK' : 'Warnung'" :severity="d.smart.passed ? 'success' : 'danger'" />
               <Tag v-if="d.smart.standby" value="schläft" severity="secondary" class="standby" />
               <div v-if="d.smart.temperatureC" class="sub">{{ d.smart.temperatureC }} °C</div>
+              <div v-if="d.smart.wear?.percentUsed !== undefined" class="sub" :class="{ warn: d.smart.wear.percentUsed >= SSD_WEAR_WARN_PERCENT }" :data-test="`wear-${d.id}`">
+                Verschleiß {{ d.smart.wear.percentUsed }} %
+              </div>
               <div v-if="d.smart.selfTest?.running" class="sub" :data-test="`selftest-running-${d.id}`">
                 <i class="pi pi-spin pi-spinner" /> Selbsttest läuft ({{ 100 - (d.smart.selfTest.remainingPercent ?? 0) }} %)
               </div>

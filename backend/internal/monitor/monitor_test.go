@@ -298,7 +298,9 @@ type fakeTrends struct {
 	err    error
 }
 
-func (f fakeTrends) SectorGrowth(context.Context, int) (map[string]int, error) { return f.growth, f.err }
+func (f fakeTrends) SectorGrowth(context.Context, int) (map[string]int, error) {
+	return f.growth, f.err
+}
 
 func TestSelfTestFailureAndGrowthFindings(t *testing.T) {
 	failed := healthyDisk("d1")
@@ -336,5 +338,19 @@ func TestTrendErrorKeepsGrowthAlerts(t *testing.T) {
 	}
 	if a, _ := m.Active(ctx); len(a) != 1 {
 		t.Fatalf("Alarm bei Quellfehler nicht stehen lassen: %v", a)
+	}
+}
+
+func TestSSDWearFinding(t *testing.T) {
+	pct := func(n int) *storage.Wear { return &storage.Wear{PercentUsed: &n} }
+	worn, fine, unknown := healthyDisk("w"), healthyDisk("f"), healthyDisk("u")
+	worn.Smart.Wear, fine.Smart.Wear, unknown.Smart.Wear = pct(92), pct(89), &storage.Wear{BytesWritten: 5}
+	m, _, _ := newMon(t, &fakeSource{disks: []storage.DiskView{worn, fine, unknown}})
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := keys(fs); len(got) != 1 || got["ssd-wear:w"] != "warn" {
+		t.Fatalf("%v", got)
 	}
 }
