@@ -218,7 +218,14 @@ async function remove() {
     <Card v-for="s in store.stacks" :key="s.name" :data-test="`stack-${s.name}`">
       <template #title>
         <div class="title">
-          <span><i class="pi pi-clone" /> {{ s.name }}</span>
+          <span class="name"><i class="pi pi-clone" /> <span class="name-text">{{ s.name }}</span></span>
+          <Tag
+            class="status"
+            :value="s.total ? `${s.running} von ${s.total} laufen` : 'Nicht gestartet'"
+            :severity="s.total && s.running === s.total ? 'success' : s.running ? 'warn' : 'secondary'"
+          />
+        </div>
+        <div v-if="s.name === 'reverse-proxy' || isAuto(s.name) || outdated(s.name).length" class="badges">
           <Tag
             v-if="s.name === 'reverse-proxy'"
             data-test="managed-tag"
@@ -226,12 +233,8 @@ async function remove() {
             severity="info"
             title="Wird unter „Reverse-Proxy“ verwaltet; manuelle Änderungen an compose.yaml werden dort überschrieben."
           />
-          <Tag v-if="isAuto(s.name)" data-test="auto-tag" value="Auto-Update" severity="secondary" :title="`Wird täglich um ${store.autoUpdate.time} aktualisiert`" />
-          <Tag v-if="outdated(s.name).length" data-test="update-tag" value="Update verfügbar" severity="info" :title="`Neue Version für: ${outdated(s.name).join(', ')}`" />
-          <Tag
-            :value="s.total ? `${s.running} von ${s.total} laufen` : 'Nicht gestartet'"
-            :severity="s.total && s.running === s.total ? 'success' : s.running ? 'warn' : 'secondary'"
-          />
+          <Tag v-if="isAuto(s.name)" data-test="auto-tag" icon="pi pi-clock" value="Auto-Update" severity="secondary" :title="`Wird täglich um ${store.autoUpdate.time} aktualisiert`" />
+          <Tag v-if="outdated(s.name).length" data-test="update-tag" icon="pi pi-arrow-circle-up" value="Update verfügbar" severity="info" :title="`Neue Version für: ${outdated(s.name).join(', ')}`" />
         </div>
       </template>
       <template #footer>
@@ -282,6 +285,27 @@ async function remove() {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+}
+.name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
 }
 .sub,
 .empty {
