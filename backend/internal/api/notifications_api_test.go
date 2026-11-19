@@ -265,3 +265,14 @@ func TestBenchRoute(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func TestDiskIORoute(t *testing.T) {
+	s := newStorageAPI(t)
+	w := s.do("GET", "/api/v1/disks/io", "")
+	if w.Code != 200 && w.Code != 500 { // 500 nur ohne /proc/diskstats (nicht Linux)
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w.Code == 200 && !strings.Contains(w.Body.String(), `"devices"`) {
+		t.Fatalf("%s", w.Body)
+	}
+}

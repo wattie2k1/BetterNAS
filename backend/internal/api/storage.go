@@ -74,6 +74,14 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("GET /api/v1/disks/io", func(w http.ResponseWriter, r *http.Request) {
+		st, err := m.DiskIO()
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
+	})
 	mux.HandleFunc("GET /api/v1/disks/selftest/schedule", func(w http.ResponseWriter, r *http.Request) {
 		sc, err := m.SelfTestSchedule(r.Context())
 		if err != nil {

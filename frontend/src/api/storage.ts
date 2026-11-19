@@ -102,6 +102,12 @@ export interface BenchState {
   history?: { at: string; avgMBps: number }[]
 }
 
+/** Aufsummierte I/O-Zähler aller Blockgeräte (Name ohne /dev/); Raten bildet die Oberfläche aus zwei Messungen. */
+export interface DiskIOStats {
+  at: string
+  devices: Record<string, { readBytes: number; writeBytes: number; busyMs: number }>
+}
+
 /** Tagesstatistik des Energiezustands; day als JJJJ-MM-TT (Ortszeit des Geräts). */
 export interface PowerDay {
   day: string
@@ -299,6 +305,7 @@ const enc = encodeURIComponent
 
 export const storageApi = {
   disks: () => api.get<DiskView[]>('/api/v1/disks'),
+  diskIO: () => api.get<DiskIOStats>('/api/v1/disks/io'),
   pools: () => api.get<PoolView[]>('/api/v1/pools'),
   previewFormat: (id: string) => api.post<FormatPreview>(`/api/v1/disks/${enc(id)}/format/preview`),
   format: (id: string, req: FormatRequest) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/format`, req),

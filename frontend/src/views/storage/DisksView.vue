@@ -12,6 +12,9 @@ import DiskBulkBar from '@/components/storage/DiskBulkBar.vue'
 import { useStorageStore } from '@/stores/storage'
 import type { DiskView, FormatPreview, FormatRequest } from '@/api/storage'
 import { formatBytes } from '@/utils/format'
+import { ioRates, formatRate, type IORate } from '@/utils/diskio'
+import { pollWhileVisible } from '@/utils/poll'
+import { storageApi, type DiskIOStats } from '@/api/storage'
 import { SELFTEST_KIND_LABEL, SPINDOWN_CHOICES, SSD_WEAR_WARN_PERCENT, spindownLabel } from '@/api/storage'
 
 const store = useStorageStore()
@@ -86,6 +89,33 @@ onMounted(() => {
   }, 15000)
 })
 onBeforeUnmount(() => clearInterval(timer))
+
+// Live-I/O: solange der Schalter an ist, alle 2 s die Zähler holen und daraus Raten pro Platte bilden.
+const live = ref(false)
+const rates = ref<Record<string, IORate>>({})
+let prevIO: DiskIOStats | null = null
+let stopLive: (() => void) | undefined
+async function sampleIO() {
+  try {
+    const cur = await storageApi.diskIO()
+    if (prevIO) rates.value = ioRates(prevIO, cur)
+    prevIO = cur
+  } catch {
+    // eine ausgefallene Messung lässt die letzten Werte stehen
+  }
+}
+watch(live, (on) => {
+  stopLive?.()
+  stopLive = undefined
+  prevIO = null
+  rates.value = {}
+  if (on) {
+    void sampleIO()
+    stopLive = pollWhileVisible(() => void sampleIO(), 2000)
+  }
+})
+onBeforeUnmount(() => stopLive?.())
+const rateOf = (d: DiskView): IORate | undefined => (d.device ? rates.value[d.device.replace('/dev/', '')] : undefined)
 
 const roleLabel: Record<string, { label: string; severity: string }> = {
   system: { label: 'System', severity: 'secondary' },
@@ -167,6 +197,7 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
   <div v-else class="table-wrap">
     <DiskBulkBar v-if="selectedDisks.length" :disks="selectedDisks" @clear="toggleAll(false)" />
     <div class="toolbar">
+      <label class="live"><input v-model="live" type="checkbox" data-test="live-toggle" /> Live-I/O</label>
       <Button label="Selbsttests planen" icon="pi pi-calendar" size="small" outlined data-test="open-schedule" @click="showSchedule = true" />
     </div>
     <table class="disks">
@@ -203,6 +234,11 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
               <Tag v-if="d.note?.name" :value="d.note.name" severity="info" :data-test="`note-name-${d.id}`" />
             </div>
             <div class="sub">{{ d.device || '—' }} · {{ d.serial || d.id }}</div>
+            <div v-if="live && rateOf(d)" class="sub io" :data-test="`io-${d.id}`">
+              <i class="pi pi-arrow-down" /> {{ formatRate(rateOf(d)!.readBps, formatBytes) }}
+              <i class="pi pi-arrow-up" /> {{ formatRate(rateOf(d)!.writeBps, formatBytes) }}
+              · {{ Math.round(rateOf(d)!.busyPct) }} % ausgelastet
+            </div>
           </td>
           <td>
             {{ formatBytes(d.sizeBytes) }}<div class="sub">{{ d.rotational ? 'HDD' : 'SSD' }}</div>
@@ -332,7 +368,19 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
 .toolbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
   margin-bottom: 0.6rem;
+}
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.io {
+  font-variant-numeric: tabular-nums;
 }
 .usage {
   margin-top: 0.4rem;
