@@ -23,6 +23,18 @@ type Info struct {
 	Load              [3]float64 `json:"load"` // 1, 5 und 15 Minuten
 	MemTotalBytes     uint64     `json:"memTotalBytes"`
 	MemAvailableBytes uint64     `json:"memAvailableBytes"`
+	// Net enthält die kumulierten Byte-Zähler je Netzwerkkarte (nur Hardware, ohne Loopback, Bridges,
+	// Docker-, VM- und VPN-Geräte); die Rate ergibt sich aus der Differenz zweier Abfragen.
+	Net []NetIface `json:"net"`
+}
+
+// NetIface sind Zähler und Verbindungsdaten einer Netzwerkschnittstelle.
+type NetIface struct {
+	Name      string `json:"name"`
+	RxBytes   uint64 `json:"rxBytes"`
+	TxBytes   uint64 `json:"txBytes"`
+	Up        bool   `json:"up"`
+	SpeedMbps int    `json:"speedMbps"` // 0 = unbekannt
 }
 
 func (d Deps) readTrim(p string) string {
@@ -75,6 +87,19 @@ func SystemInfo(d Deps) (Info, error) {
 			}
 		}
 	}
+	for _, n := range parseNetDev(d.readTrim("/proc/net/dev")) {
+		base := "/sys/class/net/" + n.Name + "/"
+		// Nur echte Karten (haben ein device): Bridges, VM-/Container-Geräte und VLANs melden eine
+		// Fantasie-Geschwindigkeit (br0: 10000) und würden den Verkehr der Karte doppelt zählen.
+		if !d.FS.Exists(base + "device") {
+			continue
+		}
+		n.Up = d.readTrim(base+"operstate") == "up"
+		if v, err := strconv.Atoi(d.readTrim(base + "speed")); err == nil && v > 0 {
+			n.SpeedMbps = v // bei getrennten Karten steht dort -1
+		}
+		info.Net = append(info.Net, n)
+	}
 	if osr, err := d.FS.ReadFile("/etc/os-release"); err == nil {
 		for _, line := range strings.Split(string(osr), "\n") {
 			if v, ok := strings.CutPrefix(line, "PRETTY_NAME="); ok {
@@ -104,4 +129,33 @@ func parseCPUStat(stat string) (total, idle uint64) {
 		}
 	}
 	return total, idle
+}
+
+// virtualNet sind Schnittstellen, die keine echte Netzwerkkarte des NAS sind.
+var virtualNet = []string{"lo", "docker", "veth", "br-", "virbr", "vnet", "tap", "tun", "wg", "ifb", "dummy"}
+
+// parseNetDev liest /proc/net/dev (Empfangs-Bytes in Spalte 1, Sende-Bytes in Spalte 9 nach dem Namen).
+func parseNetDev(s string) []NetIface {
+	var out []NetIface
+	for _, line := range strings.Split(s, "\n") {
+		name, rest, ok := strings.Cut(line, ":")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			continue
+		}
+		virtual := false
+		for _, p := range virtualNet {
+			if name == p || (p != "lo" && strings.HasPrefix(name, p)) {
+				virtual = true
+			}
+		}
+		f := strings.Fields(rest)
+		if virtual || len(f) < 9 {
+			continue
+		}
+		rx, _ := strconv.ParseUint(f[0], 10, 64)
+		tx, _ := strconv.ParseUint(f[8], 10, 64)
+		out = append(out, NetIface{Name: name, RxBytes: rx, TxBytes: tx})
+	}
+	return out
 }

@@ -7,6 +7,8 @@ import { api } from '@/api/client'
 import RingGauge from '@/components/RingGauge.vue'
 import CpuTile from '@/components/CpuTile.vue'
 import MemoryTile from '@/components/MemoryTile.vue'
+import NetTile from '@/components/NetTile.vue'
+import { netRates, type NetIface, type NetRates } from '@/utils/netRate'
 import QuickTiles from '@/components/QuickTiles.vue'
 import DockerTile from '@/components/docker/DockerTile.vue'
 import UsageBar from '@/components/storage/UsageBar.vue'
@@ -30,6 +32,7 @@ interface SystemInfo {
   cpuCount: number
   memTotalBytes: number
   memAvailableBytes: number
+  net?: NetIface[]
   version: string
 }
 
@@ -43,6 +46,10 @@ const cpuPercent = ref<number | null>(null)
 /** Letzte Messungen für den Verlauf in der CPU-Kachel (bei 5 s Takt rund 5 Minuten). */
 const cpuHistory = ref<number[]>([])
 const memHistory = ref<number[]>([])
+const netNow = ref<NetRates | null>(null)
+const netRx = ref<number[]>([])
+const netTx = ref<number[]>([])
+let lastNet: { at: number; net: NetIface[] } | null = null
 const HISTORY_MAX = 60
 let lastTicks: { total: number; idle: number } | null = null
 let stopTimer: (() => void) | undefined
@@ -59,6 +66,7 @@ async function load() {
     info.value = next
     updateCpu(next)
     updateMem(next)
+    updateNet(next)
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -84,6 +92,18 @@ function updateMem(i: SystemInfo) {
   if (!i.memTotalBytes) return
   const used = ((i.memTotalBytes - i.memAvailableBytes) / i.memTotalBytes) * 100
   memHistory.value = [...memHistory.value, Math.max(0, Math.min(100, used))].slice(-HISTORY_MAX)
+}
+
+/** Datenrate aus den Byte-Zählern der Netzwerkkarten seit der letzten Abfrage. */
+function updateNet(i: SystemInfo) {
+  if (!i.net?.length) return
+  const cur = { at: Date.now(), net: i.net }
+  const r = netRates(lastNet, cur)
+  lastNet = cur
+  if (!r) return
+  netNow.value = r
+  netRx.value = [...netRx.value, r.rx].slice(-HISTORY_MAX)
+  netTx.value = [...netTx.value, r.tx].slice(-HISTORY_MAX)
 }
 
 async function loadSnapraid() {
@@ -129,12 +149,13 @@ const storagePercent = computed(() => (storageTotal.value ? (storageUsed.value /
 const poolPercent = (p: PoolView) => (p.sizeBytes ? Math.round(((p.sizeBytes - p.freeBytes) / p.sizeBytes) * 100) : 0)
 
 // --- Kacheln: vom Nutzer sortierbar, Reihenfolge wird im Browser gemerkt ---
-const TILES = ['alerts', 'storage', 'cpu', 'memory', 'disks', 'snapraid', 'docker', 'system'] as const
+const TILES = ['alerts', 'storage', 'cpu', 'memory', 'network', 'disks', 'snapraid', 'docker', 'system'] as const
 const tileMeta: Record<string, { icon: string; title: string }> = {
   alerts: { icon: 'pi pi-bell', title: 'Meldungen' },
   storage: { icon: 'pi pi-database', title: 'Speicher' },
   cpu: { icon: 'pi pi-bolt', title: 'Prozessor' },
   memory: { icon: 'pi pi-microchip', title: 'Arbeitsspeicher' },
+  network: { icon: 'pi pi-arrow-right-arrow-left', title: 'Netzwerk' },
   disks: { icon: 'pi pi-server', title: 'Datenträger' },
   snapraid: { icon: 'pi pi-shield', title: 'SnapRAID' },
   docker: { icon: 'pi pi-box', title: 'Docker-Container' },
@@ -142,7 +163,7 @@ const tileMeta: Record<string, { icon: string; title: string }> = {
 }
 const tiles = useTileOrder(() => `bn-dashboard-tiles:${auth.user ?? ''}`, TILES)
 const visibleTiles = computed(() =>
-  tiles.order.value.filter((id) => (id !== 'snapraid' || snap.value.length > 0) && (id !== 'alerts' || notifications.alerts.length > 0)),
+  tiles.order.value.filter((id) => (id !== 'snapraid' || snap.value.length > 0) && (id !== 'network' || !!info.value?.net?.length) && (id !== 'alerts' || notifications.alerts.length > 0)),
 )
 const alertsCrit = computed(() => notifications.alerts.some((a) => a.level === 'crit'))
 const customOrder = computed(() => tiles.order.value.join() !== TILES.join())
@@ -263,6 +284,8 @@ const missingDisks = computed(() => store.disks.filter((d) => d.state === 'missi
         <MemoryTile v-if="info" :total-bytes="info.memTotalBytes" :available-bytes="info.memAvailableBytes" :history="memHistory" />
         <Skeleton v-else height="7rem" />
       </template>
+
+      <NetTile v-else-if="id === 'network'" :current="netNow" :rx="netRx" :tx="netTx" />
 
       <div v-else-if="id === 'disks'" class="facts">
         <div class="fact"><strong>{{ dataDisks.length }}</strong><span>in Verwendung</span></div>

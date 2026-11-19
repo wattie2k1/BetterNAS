@@ -24,6 +24,9 @@ func TestSysinfoParsesProc(t *testing.T) {
 	if info.CPUTotalTicks != 22820 || info.CPUIdleTicks != 16770 {
 		t.Fatalf("cpu ticks %+v", info)
 	}
+	if len(info.Net) != 1 || info.Net[0] != (NetIface{Name: "eno1", RxBytes: 123456789, TxBytes: 987654321, Up: true, SpeedMbps: 1000}) {
+		t.Fatalf("net %+v", info.Net)
+	}
 	if info.Load != [3]float64{0.52, 0.34, 0.21} || info.CPUModel != "Intel(R) Core(TM) i5-8500T CPU @ 2.10GHz" {
 		t.Fatalf("load/model %+v", info)
 	}
@@ -37,5 +40,13 @@ func TestParseCPUStatIgnoresGarbage(t *testing.T) {
 	}
 	if total, idle := parseCPUStat("cpu  1 2 3 4 5 6 7 8 9 10\n"); total != 36 || idle != 9 {
 		t.Errorf("guest darf nicht doppelt zählen: %d %d", total, idle)
+	}
+}
+
+func TestParseNetDevSkipsVirtual(t *testing.T) {
+	in := "Inter-|   Receive\n face |bytes packets\n    lo: 1 1 0 0 0 0 0 0 2 1 0 0 0 0 0 0\ndocker0: 5 1 0 0 0 0 0 0 6 1 0 0 0 0 0 0\n veth1a: 5 1 0 0 0 0 0 0 6 1 0 0 0 0 0 0\n  eno1: 10 1 0 0 0 0 0 0 20 1 0 0 0 0 0 0\n"
+	got := parseNetDev(in)
+	if len(got) != 1 || got[0].Name != "eno1" || got[0].RxBytes != 10 || got[0].TxBytes != 20 {
+		t.Fatalf("%+v", got)
 	}
 }
