@@ -113,6 +113,7 @@ type FormatPreview struct {
 	Device       string      `json:"device"`
 	Model        string      `json:"model"`
 	Serial       string      `json:"serial"`
+	Transport    string      `json:"transport,omitempty"`
 	SizeBytes    uint64      `json:"sizeBytes"`
 	Partitions   []Partition `json:"partitions"`
 	ConfirmToken string      `json:"confirmToken"`
@@ -539,7 +540,7 @@ func (m *Manager) PreviewFormat(ctx context.Context, id string) (FormatPreview, 
 	m.tmu.Lock()
 	m.tokens[t] = tok
 	m.tmu.Unlock()
-	return FormatPreview{DiskID: d.ID, Device: d.Device, Model: d.Model, Serial: d.Serial, SizeBytes: d.SizeBytes,
+	return FormatPreview{DiskID: d.ID, Device: d.Device, Model: d.Model, Serial: d.Serial, Transport: d.Transport, SizeBytes: d.SizeBytes,
 		Partitions: d.Partitions, ConfirmToken: t, ExpiresAt: tok.expires}, nil
 }
 

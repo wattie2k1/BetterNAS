@@ -191,6 +191,7 @@ export interface DiskView {
 
 export interface FormatPreview {
   diskId: string
+  transport?: string
   device: string
   model: string
   serial: string

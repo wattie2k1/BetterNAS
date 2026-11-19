@@ -58,7 +58,7 @@ async function loadPower() {
 watch(() => [props.visible, props.disk?.id, days.value], () => Promise.all([loadHistory(), loadPower()]), { immediate: true })
 
 // APM und Schreibcache gibt es nur für Daten-/Paritätsplatten; die aktuellen Werte liest der Server, ohne schlafende Platten zu wecken.
-const tunable = computed(() => !!live.value && (live.value.role === 'data' || live.value.role === 'parity') && live.value.state === 'online')
+const tunable = computed(() => !!live.value && (live.value.role === 'data' || live.value.role === 'parity') && live.value.state === 'online' && live.value.transport !== 'usb')
 const tuning = ref<TuningState | null>(null)
 const tuneForm = ref<TuningSettings>({ apm: 0, writeCache: '' })
 const tuneError = ref('')

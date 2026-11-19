@@ -33,6 +33,16 @@ describe('FormatDialog: Rolle', () => {
   })
 })
 
+describe('FormatDialog: USB', () => {
+  it('warnt bei USB-Platten, sonst nicht', async () => {
+    const usb = mount(FormatDialog, { props: { visible: true, preview: { ...preview, transport: 'usb' } }, global: { plugins: plugins() } })
+    expect(usb.find('[data-test="usb-warning"]').exists()).toBe(true)
+    usb.unmount()
+    const sata = mount(FormatDialog, { props: { visible: true, preview: { ...preview, transport: 'sata' } }, global: { plugins: plugins() } })
+    expect(sata.find('[data-test="usb-warning"]').exists()).toBe(false)
+  })
+})
+
 describe('DisksView: Paritätsplatten', () => {
   it('bietet „Freigeben“ für unbenutzte Paritätsplatten, nicht für benutzte', async () => {
     vi.stubGlobal(

@@ -56,6 +56,11 @@ function submit() {
       </Message>
       <Message v-else severity="warn" :closable="false">Alle Daten auf diesem Datenträger werden gelöscht.</Message>
 
+      <Message v-if="preview.transport === 'usb'" severity="warn" :closable="false" data-test="usb-warning">
+        Diese Platte hängt per USB. USB-Platten fallen bei Wackelkontakt, Stromsparen oder Abziehen kurz aus und können dabei Daten beschädigen;
+        für den Dauerbetrieb, besonders als Paritätsplatte, sind SATA-Anschlüsse besser geeignet.
+      </Message>
+
       <fieldset class="fs">
         <legend>Dateisystem</legend>
         <label><RadioButton v-model="fsType" value="ext4" input-id="fs-ext4" /> ext4 (empfohlen)</label>
