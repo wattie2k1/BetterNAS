@@ -98,11 +98,12 @@ html .p-dialog {
   border: 1px solid var(--bn-border);
   border-radius: calc(var(--bn-radius) + 4px);
   box-shadow: 0 30px 80px -20px rgb(0 0 0 / 55%);
-  backdrop-filter: var(--bn-blur);
-  -webkit-backdrop-filter: var(--bn-blur);
+  /* Kein eigener backdrop-filter: Die Maske blurt den Hintergrund schon, ein zweiter
+     verschachtelter Blur (auf dem fixierten Wallpaper) flackert beim Scrollen. */
 }
 html .p-dialog-mask {
   backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 html .p-drawer {
   background: var(--bn-glass-strong);
