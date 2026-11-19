@@ -1204,6 +1204,309 @@ volumes:
       - \${CONFIG_DIR}:/config
 `,
   },
+  {
+    id: 'nginx-proxy-manager',
+    title: 'Nginx Proxy Manager',
+    description: 'Reverse Proxy mit Weboberfläche: Dienste unter eigenen Namen erreichbar machen, mit Let’s-Encrypt-Zertifikaten.',
+    icon: 'pi pi-directions',
+    category: 'Netzwerk',
+    stack: 'nginx-proxy-manager',
+    notice: 'Die Ports 80 und 443 gehören auf dem NAS schon der BetterNAS-Oberfläche. Der Proxy läuft deshalb auf anderen Ports; am Router leitest du 80 und 443 von außen auf diese Ports um. Die Verwaltungsoberfläche meldet man beim ersten Start mit admin@example.com und dem Passwort changeme an (sofort ändern).',
+    fields: [
+      { key: 'ADMIN_PORT', label: 'Port der Verwaltungsoberfläche', kind: 'port', def: () => '8181' },
+      { key: 'HTTP_PORT', label: 'Port für HTTP', kind: 'port', def: () => '8880', hint: 'Am Router von Port 80 auf diesen Port weiterleiten.' },
+      { key: 'HTTPS_PORT', label: 'Port für HTTPS', kind: 'port', def: () => '8444', hint: 'Am Router von Port 443 auf diesen Port weiterleiten.' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'CERT_DIR', label: 'Ordner für Zertifikate', kind: 'path', def: appdata('letsencrypt') },
+    ],
+    compose: `services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    restart: unless-stopped
+    ports:
+      - "\${ADMIN_PORT}:81"
+      - "\${HTTP_PORT}:80"
+      - "\${HTTPS_PORT}:443"
+    volumes:
+      - \${DATA_DIR}:/data
+      - \${CERT_DIR}:/etc/letsencrypt
+`,
+  },
+  {
+    id: 'wg-easy',
+    title: 'WireGuard (wg-easy)',
+    description: 'Eigener WireGuard-VPN-Server mit Weboberfläche für Geräte und QR-Codes.',
+    icon: 'pi pi-shield',
+    category: 'Netzwerk',
+    stack: 'wg-easy',
+    notice: 'wg-easy braucht erweiterte Rechte (NET_ADMIN, SYS_MODULE) und leitet Datenverkehr im Netz des NAS weiter. Am Router muss der VPN-Port (UDP) auf das NAS weitergeleitet werden. Die Weboberfläche läuft unverschlüsselt (HTTP): nur im Heimnetz nutzen. Beim ersten Aufruf legst du den Administrator an. Die BetterNAS-Firewall muss den VPN-Port zulassen.',
+    fields: [
+      { key: 'WEB_PORT', label: 'Port der Weboberfläche', kind: 'port', def: () => '51821' },
+      { key: 'VPN_PORT', label: 'VPN-Port (UDP)', kind: 'port', def: () => '51820', hint: 'Diesen UDP-Port am Router auf das NAS weiterleiten.' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:15
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.src_valid_mark: "1"
+    environment:
+      INSECURE: "true"
+    ports:
+      - "\${VPN_PORT}:51820/udp"
+      - "\${WEB_PORT}:51821"
+    volumes:
+      - \${DATA_DIR}:/etc/wireguard
+`,
+  },
+  {
+    id: 'homepage',
+    title: 'Homepage',
+    description: 'Startseite mit Kacheln und Statusanzeigen für alle Dienste, per Textdatei konfiguriert.',
+    icon: 'pi pi-home',
+    category: 'Verwaltung',
+    stack: 'homepage',
+    notice: 'Homepage wird über YAML-Dateien im Einstellungsordner eingerichtet (services.yaml, widgets.yaml …). Beim ersten Start legt es Beispieldateien an. Der Eintrag „Erlaubte Adresse“ muss genau so lauten, wie du die Seite im Browser aufrufst, sonst zeigt Homepage nur einen Fehler.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3007' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'ALLOWED_HOSTS', label: 'Erlaubte Adresse (mit Port)', kind: 'text', def: () => (hostIp() ? `${hostIp()}:3007` : ''), hint: 'Adresse samt Port, wie sie im Browser steht, z. B. 192.168.1.10:3007. Mehrere Adressen durch Komma trennen.' },
+    ],
+    compose: `services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    restart: unless-stopped
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: "\${ALLOWED_HOSTS}"
+    ports:
+      - "\${PORT}:3000"
+    volumes:
+      - \${CONFIG_DIR}:/app/config
+`,
+  },
+  {
+    id: 'linkding',
+    title: 'Linkding',
+    description: 'Schlanke Lesezeichen-Verwaltung mit Tags, Suche und Archivierung.',
+    icon: 'pi pi-bookmark',
+    category: 'Wissen und Dokumente',
+    stack: 'linkding',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '9091' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'ADMIN_USER', label: 'Name des Administrators', kind: 'text', def: () => 'admin' },
+      { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators', kind: 'secret' },
+    ],
+    compose: `services:
+  linkding:
+    image: sissel/linkding:latest
+    restart: unless-stopped
+    environment:
+      LD_SUPERUSER_NAME: "\${ADMIN_USER}"
+      LD_SUPERUSER_PASSWORD: "\${ADMIN_PASSWORD}"
+    ports:
+      - "\${PORT}:9090"
+    volumes:
+      - \${DATA_DIR}:/etc/linkding/data
+`,
+  },
+  {
+    id: 'freshrss',
+    title: 'FreshRSS',
+    description: 'Eigener RSS-Reader, der Feeds regelmäßig abruft und auch mobile Apps bedient.',
+    icon: 'pi pi-megaphone',
+    category: 'Wissen und Dokumente',
+    stack: 'freshrss',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8093' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'EXT_DIR', label: 'Ordner für Erweiterungen', kind: 'path', def: appdata('extensions') },
+    ],
+    compose: `services:
+  freshrss:
+    image: freshrss/freshrss:latest
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+      CRON_MIN: "1,31"
+    ports:
+      - "\${PORT}:80"
+    volumes:
+      - \${DATA_DIR}:/var/www/FreshRSS/data
+      - \${EXT_DIR}:/var/www/FreshRSS/extensions
+`,
+  },
+  {
+    id: 'metube',
+    title: 'MeTube',
+    description: 'Videos und Audio von YouTube und vielen anderen Seiten per Link herunterladen (yt-dlp).',
+    icon: 'pi pi-download',
+    category: 'Downloader',
+    stack: 'metube',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8094' },
+      { key: 'DOWNLOAD_DIR', label: 'Ordner für Downloads', kind: 'path', def: () => '/srv/pools', pool: true, hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Downloads' },
+    ],
+    compose: `services:
+  metube:
+    image: ghcr.io/alexta69/metube:latest
+    restart: unless-stopped
+    ports:
+      - "\${PORT}:8081"
+    volumes:
+      - \${DOWNLOAD_DIR}:/downloads
+`,
+  },
+  {
+    id: 'gluetun',
+    title: 'Gluetun (VPN-Client)',
+    description: 'VPN-Container, über den andere Container (z. B. Downloader) ihren Datenverkehr leiten.',
+    icon: 'pi pi-lock',
+    category: 'Netzwerk',
+    stack: 'gluetun',
+    notice: 'Gluetun braucht erweiterte Rechte (NET_ADMIN) und das Gerät /dev/net/tun. Es hat keine Oberfläche und veröffentlicht von sich aus keine Ports. Andere Container nutzen es, indem du in ihrer compose.yaml `network_mode: "container:gluetun"` einträgst; ihre Web-Ports veröffentlichst du dann hier am gluetun-Dienst unter `ports:`. Anbieter und Zugangsdaten stehen bei deinem VPN-Anbieter (WireGuard-Konfiguration), die genauen Namen in der Gluetun-Wiki.',
+    fields: [
+      { key: 'VPN_PROVIDER', label: 'VPN-Anbieter', kind: 'text', def: () => 'mullvad', hint: 'Name wie in der Gluetun-Wiki, z. B. mullvad, protonvpn, nordvpn, airvpn oder custom.' },
+      { key: 'WG_PRIVATE_KEY', label: 'WireGuard-Schlüssel (privat)', kind: 'text', def: () => '', hint: 'Der PrivateKey aus der WireGuard-Konfiguration deines Anbieters.' },
+      { key: 'WG_ADDRESSES', label: 'WireGuard-Adresse', kind: 'text', def: () => '', hint: 'Das Feld Address aus der Konfiguration, z. B. 10.64.222.21/32.' },
+      { key: 'COUNTRIES', label: 'Länder (optional)', kind: 'text', optional: true, def: () => '', hint: 'Servernstandort, z. B. Germany. Leer lassen für beliebige Server.' },
+    ],
+    compose: `services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: "\${VPN_PROVIDER}"
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: "\${WG_PRIVATE_KEY}"
+      WIREGUARD_ADDRESSES: "\${WG_ADDRESSES}"
+      SERVER_COUNTRIES: "\${COUNTRIES}"
+      TZ: Europe/Berlin
+`,
+  },
+  {
+    id: 'flaresolverr',
+    title: 'FlareSolverr',
+    description: 'Hilfsdienst für Prowlarr: löst Cloudflare-Abfragen, damit geschützte Indexer funktionieren.',
+    icon: 'pi pi-filter',
+    category: '*arr und Wunschliste',
+    stack: 'flaresolverr',
+    notice: 'Nach dem Start trägst du in Prowlarr unter Einstellungen → Indexer einen Proxy vom Typ FlareSolverr mit der Adresse http://<NAS-IP>:<Port> ein und gibst ihm ein Tag, das du an den betroffenen Indexern setzt.',
+    fields: [{ key: 'PORT', label: 'Port', kind: 'port', def: () => '8191' }],
+    compose: `services:
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      TZ: Europe/Berlin
+    ports:
+      - "\${PORT}:8191"
+`,
+  },
+  {
+    id: 'unpackerr',
+    title: 'Unpackerr',
+    description: 'Entpackt fertige Downloads für Radarr und Sonarr, wenn Releases als Archive ankommen.',
+    icon: 'pi pi-box',
+    category: '*arr und Wunschliste',
+    stack: 'unpackerr',
+    notice: 'Unpackerr hat keine Oberfläche. Es braucht denselben Datenordner wie Download-Client, Radarr und Sonarr, damit es die Archive im Ordner downloads findet. Den API-Schlüssel findest du in Radarr und Sonarr unter Einstellungen → Allgemein.',
+    fields: [
+      dataField,
+      ...idFields,
+      { key: 'RADARR_URL', label: 'Adresse von Radarr', kind: 'text', def: () => (hostIp() ? `http://${hostIp()}:7878` : ''), hint: 'z. B. http://192.168.1.10:7878' },
+      { key: 'RADARR_KEY', label: 'API-Schlüssel von Radarr', kind: 'text', def: () => '' },
+      { key: 'SONARR_URL', label: 'Adresse von Sonarr', kind: 'text', def: () => (hostIp() ? `http://${hostIp()}:8989` : ''), hint: 'z. B. http://192.168.1.10:8989' },
+      { key: 'SONARR_KEY', label: 'API-Schlüssel von Sonarr', kind: 'text', def: () => '' },
+    ],
+    compose: `services:
+  unpackerr:
+    image: golift/unpackerr:latest
+    restart: unless-stopped
+    user: "\${PUID}:\${PGID}"
+    environment:
+      TZ: Europe/Berlin
+      UMASK: "002"
+      UN_RADARR_0_URL: "\${RADARR_URL}"
+      UN_RADARR_0_API_KEY: "\${RADARR_KEY}"
+      UN_RADARR_0_PATHS_0: /data/downloads
+      UN_SONARR_0_URL: "\${SONARR_URL}"
+      UN_SONARR_0_API_KEY: "\${SONARR_KEY}"
+      UN_SONARR_0_PATHS_0: /data/downloads
+    volumes:
+      - \${DATA_DIR}:/data
+`,
+  },
+  {
+    id: 'forgejo',
+    title: 'Forgejo',
+    description: 'Eigener Git-Server mit Weboberfläche, Issues und Pull-Requests (Fork von Gitea).',
+    icon: 'pi pi-code',
+    category: 'Entwicklung',
+    stack: 'forgejo',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3008' },
+      { key: 'SSH_PORT', label: 'SSH-Port für Git', kind: 'port', def: () => '2223', hint: 'Nicht 22: Dieser Port gehört dem SSH-Zugang des NAS.' },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+    ],
+    compose: `services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:latest
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+    ports:
+      - "\${PORT}:3000"
+      - "\${SSH_PORT}:22"
+    volumes:
+      - \${DATA_DIR}:/data
+      - /etc/localtime:/etc/localtime:ro
+`,
+  },
+  {
+    id: 'code-server',
+    title: 'code-server',
+    description: 'Visual Studio Code im Browser, mit Zugriff auf einen Ordner des NAS.',
+    icon: 'pi pi-desktop',
+    category: 'Entwicklung',
+    stack: 'code-server',
+    notice: 'Die Oberfläche läuft unverschlüsselt (HTTP). Einige Funktionen von VS Code (z. B. Zwischenablage, Webansichten) gehen im Browser nur über HTTPS oder localhost; dafür kann ein Reverse Proxy mit Zertifikat davor. Wer das Passwort kennt, kann auf dem NAS im Container Befehle ausführen und alle eingebundenen Ordner ändern.',
+    fields: [
+      { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8445' },
+      { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
+      { key: 'WORKSPACE_DIR', label: 'Arbeitsordner', kind: 'path', def: appdata('workspace'), hint: 'Der Ordner, den code-server als Projektordner öffnet.' },
+      { key: 'PASSWORD', label: 'Passwort', kind: 'secret' },
+      ...idFields,
+    ],
+    compose: `services:
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    restart: unless-stopped
+    environment:
+      PUID: "\${PUID}"
+      PGID: "\${PGID}"
+      UMASK: "002"
+      TZ: Europe/Berlin
+      PASSWORD: "\${PASSWORD}"
+      DEFAULT_WORKSPACE: /workspace
+    ports:
+      - "\${PORT}:8443"
+    volumes:
+      - \${CONFIG_DIR}:/config
+      - \${WORKSPACE_DIR}:/workspace
+`,
+  },
 ]
 
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
