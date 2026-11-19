@@ -352,7 +352,18 @@ describe('Notizen und Partitionen', () => {
     expect(w.find('[data-test="note-save"]').attributes('disabled')).toBeUndefined()
     await w.find('[data-test="note-form"]').trigger('submit')
     await flushPromises()
-    expect(puts).toEqual([{ url: '/api/v1/disks/d2/note', body: JSON.stringify({ name: 'Schacht 4', notes: '', purchased: '2024-03-01', warrantyUntil: '2999-01-01' }) }])
+    expect(puts).toEqual([{ url: '/api/v1/disks/d2/note', body: JSON.stringify({ name: 'Schacht 4', notes: '', purchased: '2024-03-01', warrantyUntil: '2999-01-01', tempWarnC: 0 }) }])
+  })
+
+  it('speichert eine Temperaturgrenze pro Platte; leer bedeutet global', async () => {
+    const { w, puts } = setup(disk({ id: 'd2', role: 'data', note: { name: 'S', notes: '', purchased: '', warrantyUntil: '', tempWarnC: 45 } }))
+    await flushPromises()
+    const input = w.find('[data-test="note-temp"]')
+    expect((input.element as HTMLInputElement).value).toBe('45')
+    await input.setValue('')
+    await w.find('[data-test="note-form"]').trigger('submit')
+    await flushPromises()
+    expect(JSON.parse(puts[0].body).tempWarnC).toBe(0)
   })
 
   it('markiert abgelaufene Garantie', async () => {

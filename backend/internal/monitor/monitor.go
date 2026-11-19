@@ -216,8 +216,12 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 			add("ssd-wear:"+d.ID, "warn", "SSD fast verschlissen: "+label,
 				fmt.Sprintf("Die SSD hat %d %% ihrer Lebensdauer verbraucht. Plane einen Austausch, bevor sie ausfällt.", *w.PercentUsed))
 		}
-		if s.TemperatureC > 0 && s.TemperatureC >= cfg.TempWarnC {
-			add("temp:"+d.ID, "warn", "Platte zu warm: "+label, fmt.Sprintf("Die Platte ist %d °C warm (Schwelle %d °C). Prüfe die Belüftung.", s.TemperatureC, cfg.TempWarnC))
+		limit := cfg.TempWarnC
+		if d.Note != nil && d.Note.TempWarnC > 0 {
+			limit = d.Note.TempWarnC
+		}
+		if s.TemperatureC > 0 && s.TemperatureC >= limit {
+			add("temp:"+d.ID, "warn", "Platte zu warm: "+label, fmt.Sprintf("Die Platte ist %d °C warm (Schwelle %d °C). Prüfe die Belüftung.", s.TemperatureC, limit))
 		}
 	}
 	pools, perr := m.src.ListPools(ctx)

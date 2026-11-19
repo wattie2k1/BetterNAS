@@ -97,7 +97,7 @@ async function saveTuning() {
 const hasIds = computed(() => (smart.value?.attributes ?? []).some((a) => a.id > 0))
 
 // Notizen: Formular mit den gespeicherten Angaben der Platte füllen, sobald der Dialog aufgeht oder die Platte wechselt.
-const emptyNote = (): DiskNote => ({ name: '', notes: '', purchased: '', warrantyUntil: '' })
+const emptyNote = (): DiskNote => ({ name: '', notes: '', purchased: '', warrantyUntil: '', tempWarnC: 0 })
 const form = ref<DiskNote>(emptyNote())
 const noteError = ref('')
 watch(
@@ -114,7 +114,7 @@ async function saveNote() {
   busy.value = true
   noteError.value = ''
   try {
-    await store.setNote(props.disk!.id, { ...form.value })
+    await store.setNote(props.disk!.id, { ...form.value, tempWarnC: Number(form.value.tempWarnC) || 0 })
     toast.add({ severity: 'success', summary: 'Notizen gespeichert', life: 4000 })
   } catch (e) {
     noteError.value = e instanceof Error ? e.message : String(e)
@@ -201,6 +201,8 @@ const resultTag = { passed: { label: 'bestanden', severity: 'success' }, aborted
           <label>Gekauft am<input v-model="form.purchased" type="date" data-test="note-purchased" /></label>
           <label>Garantie bis<input v-model="form.warrantyUntil" type="date" data-test="note-warranty" /></label>
         </div>
+        <label>Temperaturgrenze (°C)<input v-model.number="form.tempWarnC" type="number" min="30" max="80" placeholder="global" data-test="note-temp" /></label>
+        <p class="hint">Warnung ab dieser Temperatur; leer oder 0 nutzt die globale Schwelle aus den Benachrichtigungen.</p>
         <p v-if="warranty" class="hint" :class="{ bad: warranty.expired }" data-test="warranty-hint">{{ warranty.text }}</p>
         <label>Notiz<textarea v-model="form.notes" rows="3" maxlength="1000" placeholder="z. B. gebraucht gekauft, Händler, Einbaudatum" data-test="note-notes" /></label>
         <Message v-if="noteError" severity="error" :closable="false" data-test="note-error">{{ noteError }}</Message>

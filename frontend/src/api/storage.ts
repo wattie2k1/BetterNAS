@@ -69,6 +69,8 @@ export interface DiskNote {
   notes: string
   purchased: string
   warrantyUntil: string
+  /** Warnschwelle dieser Platte in °C; 0 = globale Schwelle aus den Benachrichtigungen. */
+  tempWarnC?: number
 }
 
 /** Tagesstatistik des Energiezustands; day als JJJJ-MM-TT (Ortszeit des Geräts). */

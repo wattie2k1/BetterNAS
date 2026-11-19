@@ -17,12 +17,16 @@ type DiskNote struct {
 	Notes         string `json:"notes"`
 	Purchased     string `json:"purchased"`     // YYYY-MM-DD oder leer
 	WarrantyUntil string `json:"warrantyUntil"` // YYYY-MM-DD oder leer
+	// TempWarnC ist die Warnschwelle dieser Platte in °C; 0 = globale Schwelle.
+	TempWarnC int `json:"tempWarnC"`
 }
 
 const (
 	maxNoteName  = 60
 	maxNoteNotes = 1000
 	dateLayout   = "2006-01-02"
+	minTempWarn  = 30
+	maxTempWarn  = 80
 )
 
 func (n DiskNote) empty() bool { return n == DiskNote{} }
@@ -36,6 +40,9 @@ func (n DiskNote) normalize() (DiskNote, error) {
 	if utf8.RuneCountInString(n.Notes) > maxNoteNotes {
 		return n, apierr.New(apierr.InvalidParams, "Die Notiz darf höchstens 1000 Zeichen lang sein.")
 	}
+	if n.TempWarnC != 0 && (n.TempWarnC < minTempWarn || n.TempWarnC > maxTempWarn) {
+		return n, apierr.New(apierr.InvalidParams, "Die Temperaturgrenze muss zwischen 30 und 80 °C liegen.")
+	}
 	for _, d := range []string{n.Purchased, n.WarrantyUntil} {
 		if d == "" {
 			continue
@@ -48,7 +55,7 @@ func (n DiskNote) normalize() (DiskNote, error) {
 }
 
 func (m *Manager) loadNotes(ctx context.Context) (map[string]DiskNote, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT disk_id, name, notes, purchased, warranty_until FROM disk_notes`)
+	rows, err := m.db.QueryContext(ctx, `SELECT disk_id, name, notes, purchased, warranty_until, temp_warn_c FROM disk_notes`)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +64,7 @@ func (m *Manager) loadNotes(ctx context.Context) (map[string]DiskNote, error) {
 	for rows.Next() {
 		var id string
 		var n DiskNote
-		if err := rows.Scan(&id, &n.Name, &n.Notes, &n.Purchased, &n.WarrantyUntil); err != nil {
+		if err := rows.Scan(&id, &n.Name, &n.Notes, &n.Purchased, &n.WarrantyUntil, &n.TempWarnC); err != nil {
 			return nil, err
 		}
 		out[id] = n
@@ -90,9 +97,9 @@ func (m *Manager) SetNote(ctx context.Context, actor, id string, n DiskNote) (er
 	if n.empty() {
 		_, err = m.db.ExecContext(ctx, `DELETE FROM disk_notes WHERE disk_id = ?`, id)
 	} else {
-		_, err = m.db.ExecContext(ctx, `INSERT INTO disk_notes(disk_id, name, notes, purchased, warranty_until) VALUES (?,?,?,?,?)
-			ON CONFLICT(disk_id) DO UPDATE SET name = excluded.name, notes = excluded.notes, purchased = excluded.purchased, warranty_until = excluded.warranty_until`,
-			id, n.Name, n.Notes, n.Purchased, n.WarrantyUntil)
+		_, err = m.db.ExecContext(ctx, `INSERT INTO disk_notes(disk_id, name, notes, purchased, warranty_until, temp_warn_c) VALUES (?,?,?,?,?,?)
+			ON CONFLICT(disk_id) DO UPDATE SET name = excluded.name, notes = excluded.notes, purchased = excluded.purchased, warranty_until = excluded.warranty_until, temp_warn_c = excluded.temp_warn_c`,
+			id, n.Name, n.Notes, n.Purchased, n.WarrantyUntil, n.TempWarnC)
 	}
 	if err != nil {
 		return err

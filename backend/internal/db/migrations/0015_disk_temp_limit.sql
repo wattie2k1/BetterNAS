@@ -1,0 +1,1 @@
+ALTER TABLE disk_notes ADD COLUMN temp_warn_c INTEGER NOT NULL DEFAULT 0;

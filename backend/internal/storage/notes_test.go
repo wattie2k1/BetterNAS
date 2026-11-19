@@ -90,3 +90,25 @@ func TestNoteSurvivesMissingDisk(t *testing.T) {
 		t.Fatalf("fehlende, bekannte Platte: %v", err)
 	}
 }
+
+func TestNoteTempLimit(t *testing.T) {
+	e := newEnv(t)
+	if err := e.m.SetNote(e.ctx, "admin", "d1", DiskNote{TempWarnC: 20}); err == nil {
+		t.Fatal("zu niedrige Grenze akzeptiert")
+	}
+	if err := e.m.SetNote(e.ctx, "admin", "d1", DiskNote{TempWarnC: 95}); err == nil {
+		t.Fatal("zu hohe Grenze akzeptiert")
+	}
+	if err := e.m.SetNote(e.ctx, "admin", "d1", DiskNote{TempWarnC: 45}); err != nil {
+		t.Fatal(err)
+	}
+	if got := noteOf(t, e, "d1"); got == nil || got.TempWarnC != 45 {
+		t.Fatalf("%+v", got)
+	}
+	if err := e.m.SetNote(e.ctx, "admin", "d1", DiskNote{}); err != nil {
+		t.Fatal(err)
+	}
+	if noteOf(t, e, "d1") != nil {
+		t.Fatal("0 = globale Schwelle, Eintrag leer")
+	}
+}

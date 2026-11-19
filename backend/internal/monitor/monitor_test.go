@@ -385,3 +385,27 @@ func TestNewDiskFindingResolvesQuietly(t *testing.T) {
 		t.Fatal("kein „Behoben“ für eine neue Platte")
 	}
 }
+
+func TestPerDiskTempLimit(t *testing.T) {
+	// Globale Schwelle löst bei 56 °C aus; eine höhere Grenze an der Platte unterdrückt die Warnung,
+	// eine niedrigere löst sie früher aus.
+	warm := healthyDisk("w")
+	warm.Smart.TemperatureC = 56
+	warm.Note = &storage.DiskNote{TempWarnC: 60}
+	cool := healthyDisk("c")
+	cool.Smart.TemperatureC = 41
+	cool.Note = &storage.DiskNote{TempWarnC: 40}
+	src := &fakeSource{disks: []storage.DiskView{warm, cool}, snap: map[string]snapraid.Status{}}
+	m, _, _ := newMon(t, src)
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keys(fs)
+	if _, ok := got["temp:w"]; ok {
+		t.Errorf("Grenze 60 °C darf bei 56 °C nicht warnen: %v", got)
+	}
+	if got["temp:c"] != "warn" {
+		t.Errorf("Grenze 40 °C muss bei 41 °C warnen: %v", got)
+	}
+}
