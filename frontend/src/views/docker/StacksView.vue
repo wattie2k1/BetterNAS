@@ -299,12 +299,13 @@ async function remove() {
 }
 .stack-icon {
   flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 2.5rem;
+  height: 2.5rem;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 6px 14px -6px rgb(0 0 0 / 25%);
 }
 .stack-icon.img {
   background: var(--bn-glass-strong);
@@ -314,6 +315,7 @@ async function remove() {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  padding: 6px;
 }
 .name-text {
   overflow: hidden;
