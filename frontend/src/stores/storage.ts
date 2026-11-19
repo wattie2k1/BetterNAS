@@ -52,6 +52,14 @@ export const useStorageStore = defineStore('storage', () => {
       await storageApi.setSpindown(id, minutes)
       await refresh()
     },
+    startIdentify: async (id: string) => {
+      await storageApi.startIdentify(id)
+      await refresh()
+    },
+    stopIdentify: async (id: string) => {
+      await storageApi.stopIdentify(id)
+      await refresh()
+    },
     startSelfTest: async (id: string, kind: SelfTestKind) => {
       await storageApi.startSelfTest(id, kind)
       await refresh()

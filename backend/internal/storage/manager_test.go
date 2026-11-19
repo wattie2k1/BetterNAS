@@ -44,6 +44,9 @@ type fakeAgent struct {
 	selfTests    []string       // "start:<gerät>:<art>" / "abort:<gerät>"
 	selfTestBusy map[string]int // Gerät → so viele disk.smart-Abfragen lang läuft der Test noch
 	selfTestFail bool
+
+	identifyDevs []string // Geräte der disk.identify-Aufrufe
+	identifyFail bool
 }
 
 func (f *fakeAgent) Call(_ context.Context, method string, params, result any) error {
@@ -67,6 +70,15 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			si.SelfTest = &SelfTest{Running: true, RemainingPercent: 50}
 		}
 		out = si
+	case "disk.identify":
+		b, _ := json.Marshal(params)
+		var req map[string]string
+		json.Unmarshal(b, &req)
+		if f.identifyFail {
+			return apierr.New(apierr.Conflict, "nicht lesbar")
+		}
+		f.identifyDevs = append(f.identifyDevs, req["device"])
+		out = map[string]bool{"ok": true}
 	case "disk.selftest.start", "disk.selftest.abort":
 		b, _ := json.Marshal(params)
 		var req map[string]string

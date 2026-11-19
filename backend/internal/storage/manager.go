@@ -93,6 +93,8 @@ type DiskView struct {
 	FSType string     `json:"fsType,omitempty"`
 	Smart  *SmartInfo `json:"smart,omitempty"`
 	Usage  *Usage     `json:"usage,omitempty"`
+	// Identifying: die Aktivitäts-LED blinkt gerade, damit man die Platte findet.
+	Identifying bool `json:"identifying,omitempty"`
 	// Spindown ist die eingestellte Ruhezeit in Minuten (0 = aus).
 	Spindown int `json:"spindown"`
 }
@@ -154,11 +156,15 @@ type Manager struct {
 	hub   *events.Hub
 	deps  []DependentsFunc
 
-	mu           sync.Mutex  // serialisiert alle Änderungen
-	stRunning    atomic.Bool // ein Selbsttest-Lauf ist aktiv
-	tmu          sync.Mutex
-	tokens       map[string]formatToken
-	smart        map[string]smartEntry
+	mu        sync.Mutex  // serialisiert alle Änderungen
+	stRunning atomic.Bool // ein Selbsttest-Lauf ist aktiv
+	tmu       sync.Mutex
+	tokens    map[string]formatToken
+	smart     map[string]smartEntry
+	// identifying: Platten-ID → Abbruchfunktion des laufenden Blinkens (unter tmu).
+	identifying  map[string]context.CancelFunc
+	identifyFor  time.Duration // Dauer des Blinkens
+	identifyGap  time.Duration // Pause zwischen zwei Impulsen
 	now          func() time.Time
 	pollEvery    time.Duration // Abfrageintervall der SnapRAID-Läufe
 	selfTestPoll time.Duration // Abfrageintervall laufender Selbsttests
@@ -170,7 +176,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps ...DependentsFunc) *Manager {
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
-		tokens: map[string]formatToken{}, smart: map[string]smartEntry{},
+		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
 		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }
@@ -392,6 +398,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 		}
 		v.Smart = m.smartFor(ctx, d.Device)
 		v.Usage = m.usageOf(d.System, v.Role, d.ID)
+		v.Identifying = m.isIdentifying(d.ID)
 		out = append(out, v)
 	}
 	for id, k := range known {

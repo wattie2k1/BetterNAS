@@ -94,7 +94,7 @@ describe('DisksView', () => {
     const w = mount(DisksView, { global: { plugins: plugins() } })
     await flushPromises()
     const row = (id: string) => w.find(`[data-test="disk-${id}"]`)
-    expect(row('sys').findAll('button').length).toBe(0)
+    expect(row('sys').findAll('button').map((b) => b.text())).toEqual(['Finden']) // keine verändernden Aktionen
     expect(row('d4').text()).toContain('Fehlt')
     expect(row('d3').text()).toContain('Formatieren')
     expect(row('d2').text()).toContain('Freigeben')

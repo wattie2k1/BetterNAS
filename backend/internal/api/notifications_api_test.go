@@ -180,3 +180,19 @@ func TestSelfTestAndHistoryRoutes(t *testing.T) {
 		t.Fatalf("Standardzeitraum: %d %s", w.Code, w.Body)
 	}
 }
+
+func TestIdentifyRoutes(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("POST", "/api/v1/disks/d1/identify", ""); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/disks", ""); !strings.Contains(w.Body.String(), `"identifying":true`) {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := s.do("DELETE", "/api/v1/disks/d1/identify", ""); w.Code != 204 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/disks/nope/identify", ""); w.Code != 404 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}

@@ -23,6 +23,24 @@ const detailDisk = ref<DiskView | null>(null)
 const showDetail = ref(false)
 const showSchedule = ref(false)
 
+async function toggleIdentify(d: DiskView) {
+  try {
+    if (d.identifying) {
+      await store.stopIdentify(d.id)
+    } else {
+      await store.startIdentify(d.id)
+      toast.add({
+        severity: 'info',
+        summary: 'Platte wird angesprochen',
+        detail: `Die Aktivitäts-LED von ${d.model || d.id} (${d.device}) blinkt jetzt 30 Sekunden lang. Die Platte läuft dafür an.`,
+        life: 8000,
+      })
+    }
+  } catch (e) {
+    fail(e)
+  }
+}
+
 function openDetail(d: DiskView) {
   detailDisk.value = d
   showDetail.value = true
@@ -171,6 +189,17 @@ const canImport = (d: DiskView) => d.partitions.some((p) => ['ext4', 'xfs', 'btr
             <span v-else class="sub">—</span>
           </td>
           <td class="actions">
+            <Button
+              v-if="d.state === 'online' && d.device"
+              :label="d.identifying ? 'Stopp' : 'Finden'"
+              :icon="d.identifying ? 'pi pi-stop-circle' : 'pi pi-lightbulb'"
+              size="small"
+              text
+              :severity="d.identifying ? 'warn' : undefined"
+              :title="d.identifying ? 'Blinken beenden' : 'Aktivitäts-LED 30 Sekunden blinken lassen'"
+              :data-test="`identify-${d.id}`"
+              @click="toggleIdentify(d)"
+            />
             <Button
               v-if="d.smart && d.state === 'online'"
               label="Details"

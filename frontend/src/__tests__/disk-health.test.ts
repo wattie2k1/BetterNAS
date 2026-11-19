@@ -257,3 +257,46 @@ describe('SSD-Verschleiß und SMART-Attribute', () => {
     expect(w.find('[data-test="wear-s"]').classes()).toContain('warn')
   })
 })
+
+describe('DisksView: Platte finden', () => {
+  function stub(rows: DiskView[]) {
+    const calls: { url: string; method: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (method !== 'GET') {
+          calls.push({ url, method })
+          return url.includes('/d9/') ? new Response(JSON.stringify({ error: { code: 'conflict', message: 'Die Platte lässt sich nicht lesen.' } }), { status: 409 }) : new Response(null, { status: 204 })
+        }
+        return new Response(JSON.stringify(url.includes('/disks') ? rows : pools), { status: 200 })
+      }),
+    )
+    return calls
+  }
+
+  it('startet das Blinken per POST und zeigt „Stopp“, solange es läuft', async () => {
+    const calls = stub([disk({ id: 'd1', role: 'data' }), disk({ id: 'd2', device: '/dev/sdb', role: 'data', identifying: true }), disk({ id: 'd4', device: '', role: 'data', state: 'missing' })])
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    expect(w.find('[data-test="identify-d1"]').text()).toContain('Finden')
+    expect(w.find('[data-test="identify-d2"]').text()).toContain('Stopp')
+    expect(w.find('[data-test="identify-d4"]').exists()).toBe(false)
+    await w.find('[data-test="identify-d1"]').trigger('click')
+    await w.find('[data-test="identify-d2"]').trigger('click')
+    await flushPromises()
+    expect(calls).toEqual([
+      { url: '/api/v1/disks/d1/identify', method: 'POST' },
+      { url: '/api/v1/disks/d2/identify', method: 'DELETE' },
+    ])
+  })
+
+  it('übersteht eine Ablehnung der API', async () => {
+    stub([disk({ id: 'd9', role: 'data' })])
+    const w = mount(DisksView, { global: { plugins: plugins() } })
+    await flushPromises()
+    await w.find('[data-test="identify-d9"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="identify-d9"]').text()).toContain('Finden')
+  })
+})
