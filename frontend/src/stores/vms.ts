@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { vmsApi, type VmAction, type VmInfo, type VmSpec, type VmStatus } from '@/api/vms'
+import { vmIconUrl, vmsApi, type VmAction, type VmInfo, type VmSpec, type VmStatus } from '@/api/vms'
 import type { EventMessage } from '@/api/ws'
 import { pollWhileVisible } from '@/utils/poll'
 
@@ -58,5 +58,11 @@ export const useVmsStore = defineStore('vms', () => {
     await refresh()
   }
 
-  return { status, vms, loading, error, refresh, handleEvent, startPolling, stopPolling, act, remove, create, clone }
+  /** Icon-Adresse einer VM (null = keins gesetzt). */
+  function iconUrlOf(name: string): string | null {
+    const v = vms.value.find((x) => x.name === name)?.icon
+    return v ? vmIconUrl(name, v) : null
+  }
+
+  return { iconUrlOf, status, vms, loading, error, refresh, handleEvent, startPolling, stopPolling, act, remove, create, clone }
 })

@@ -430,3 +430,23 @@ func TestPCIRoute(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func TestVMIconRoutes(t *testing.T) {
+	s, _ := newVMAPI(t)
+	if w := s.do("GET", "/api/v1/vm-icons/debian", ""); w.Code != 404 {
+		t.Fatalf("ohne Icon: %d", w.Code)
+	}
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 32)...)
+	if w := s.putIcon("/api/v1/vm-icons/debian", "image/png", png); w.Code != 204 {
+		t.Fatalf("upload: %d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/vm-icons/debian", ""); w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("abruf: %d", w.Code)
+	}
+	if w := s.putIcon("/api/v1/vm-icons/debian", "image/png", []byte("<html>")); w.Code != 400 {
+		t.Fatalf("Nicht-Bild: %d", w.Code)
+	}
+	if w := s.do("DELETE", "/api/v1/vm-icons/debian", ""); w.Code != 204 {
+		t.Fatalf("löschen: %d", w.Code)
+	}
+}

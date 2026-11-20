@@ -124,6 +124,8 @@ type VM struct {
 	MemoryMiB int      `json:"memoryMiB"`
 	Autostart bool     `json:"autostart"`
 	Disks     []string `json:"disks"`
+	// Icon ist die Version des VM-Icons (leer = keins); wird vom Manager ergänzt.
+	Icon string `json:"icon,omitempty"`
 }
 
 // Status beschreibt, ob libvirt verfügbar ist.

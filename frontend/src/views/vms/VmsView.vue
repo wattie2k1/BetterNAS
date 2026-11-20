@@ -12,6 +12,7 @@ import { useToast } from 'primevue/usetoast'
 import ConsoleDialog from '@/components/vms/ConsoleDialog.vue'
 import IsoDialog from '@/components/vms/IsoDialog.vue'
 import BridgeDialog from '@/components/vms/BridgeDialog.vue'
+import VmIconDialog from '@/components/vms/VmIconDialog.vue'
 import SnapshotsDialog from '@/components/vms/SnapshotsDialog.vue'
 import VmWizard from '@/components/vms/VmWizard.vue'
 import InputText from 'primevue/inputtext'
@@ -29,6 +30,8 @@ const isoDialog = ref(false)
 const bridgeDialog = ref(false)
 const consoleFor = ref<string | null>(null)
 const snapshotsFor = ref<string | null>(null)
+const iconFor = ref<string | null>(null)
+const iconOpen = computed({ get: () => iconFor.value !== null, set: (v) => { if (!v) iconFor.value = null } })
 const cloning = ref<VmInfo | null>(null)
 const cloneName = ref('')
 const cloneError = ref('')
@@ -126,6 +129,7 @@ function items(v: VmInfo) {
     { separator: true },
     { label: 'Konsole', icon: 'pi pi-desktop', disabled: v.state !== 'running' && v.state !== 'paused', command: () => (consoleFor.value = v.name) },
     { label: 'Einstellungen', icon: 'pi pi-cog', command: () => router?.push(`/vms/${v.name}`) },
+    { label: 'Icon ändern …', icon: 'pi pi-image', command: () => (iconFor.value = v.name) },
     { label: 'Snapshots', icon: 'pi pi-camera', command: () => (snapshotsFor.value = v.name) },
     { label: 'Klonen', icon: 'pi pi-clone', disabled: v.state !== 'shutoff', command: () => askClone(v) },
     { separator: true },
@@ -158,7 +162,13 @@ function openMenu(e: Event, v: VmInfo) {
   <div v-if="store.vms.length" class="grid">
     <article v-for="v in store.vms" :key="v.name" class="vm glass" :data-test="`vm-${v.name}`">
       <header>
-        <strong>{{ v.name }}</strong>
+        <span class="title">
+          <button type="button" class="ico" :class="{ on: v.state === 'running', img: !!store.iconUrlOf(v.name) }" :data-test="`vm-icon-${v.name}`" :aria-label="`Icon von ${v.name} ändern`" @click="iconFor = v.name">
+            <img v-if="store.iconUrlOf(v.name)" :src="store.iconUrlOf(v.name)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+            <i v-else class="pi pi-desktop" />
+          </button>
+          <strong>{{ v.name }}</strong>
+        </span>
         <Tag :value="stateLabel[v.state] ?? v.state" :severity="severity(v.state)" />
       </header>
       <p class="sub">{{ v.vcpus }} vCPU · {{ gib(v.memoryMiB) }}</p>
@@ -217,6 +227,7 @@ function openMenu(e: Event, v: VmInfo) {
   <IsoDialog v-model:visible="isoDialog" />
   <BridgeDialog v-model:visible="bridgeDialog" />
   <ConsoleDialog :visible="!!consoleFor" :name="consoleFor" @update:visible="(v) => !v && (consoleFor = null)" />
+  <VmIconDialog v-if="iconFor" v-model:visible="iconOpen" :vm="iconFor" />
   <SnapshotsDialog :visible="!!snapshotsFor" :name="snapshotsFor" @update:visible="(v) => !v && (snapshotsFor = null)" />
   <Dialog :visible="!!cloning" modal append-to="self" header="VM klonen" :style="{ width: 'min(480px, 95vw)' }" @update:visible="(v) => !v && (cloning = null)">
     <p>Die ausgeschaltete VM „{{ cloning?.name }}“ wird mit allen Festplatten kopiert.</p>
@@ -262,6 +273,44 @@ function openMenu(e: Event, v: VmInfo) {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.ico {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 11px;
+  box-shadow: 0 6px 14px -6px rgb(0 0 0 / 25%);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #64748b;
+}
+.ico.on {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+}
+.ico.img {
+  background: var(--bn-glass-strong);
+  border: 1px solid var(--bn-border-soft);
+  overflow: hidden;
+}
+.ico img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 5px;
+}
+.ico.img:not(.on) img {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 .vm footer {
   display: flex;

@@ -56,8 +56,15 @@ func (m *Manager) Status(ctx context.Context) (Status, error) {
 // List liefert alle VMs.
 func (m *Manager) List(ctx context.Context) ([]VM, error) {
 	list := []VM{}
-	err := m.agent.Call(ctx, "vm.list", nil, &list)
-	return list, err
+	if err := m.agent.Call(ctx, "vm.list", nil, &list); err != nil {
+		return list, err
+	}
+	if icons, err := m.iconVersions(ctx); err == nil {
+		for i := range list {
+			list[i].Icon = icons[list[i].Name]
+		}
+	}
+	return list, nil
 }
 
 // Networks liefert die aktiven libvirt-Netze.
@@ -109,6 +116,9 @@ func (m *Manager) Delete(ctx context.Context, actor, name string, deleteDisks bo
 		return apierr.New(apierr.InvalidParams, "Ungültiger VM-Name")
 	}
 	err := m.agent.Call(ctx, "vm.delete", map[string]any{"name": name, "deleteDisks": deleteDisks}, nil)
+	if err == nil {
+		_, _ = m.db.ExecContext(ctx, `DELETE FROM vm_icons WHERE vm = ?`, name)
+	}
 	m.record(ctx, actor, "vm.delete", name, err)
 	return err
 }
@@ -349,6 +359,9 @@ func (m *Manager) Rename(ctx context.Context, actor, name string, r Rename) erro
 		Rename
 	}{name, r}
 	err := m.agent.Call(ctx, "vm.rename", params, nil)
+	if err == nil {
+		m.moveIcon(ctx, name, r.NewName)
+	}
 	m.record(ctx, actor, "vm.rename", name+" -> "+r.NewName, err)
 	return err
 }

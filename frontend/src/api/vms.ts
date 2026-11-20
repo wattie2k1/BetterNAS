@@ -1,4 +1,4 @@
-import { api, ApiError, getCsrfToken } from './client'
+import { api, apiFetch, ApiError, getCsrfToken } from './client'
 import { wsUrl } from './docker'
 
 export interface VmStatus {
@@ -17,6 +17,8 @@ export interface VmInfo {
   memoryMiB: number
   autostart: boolean
   disks: string[]
+  /** Version des VM-Icons (leer = keins); Cache-Schlüssel der Icon-Adresse. */
+  icon?: string
 }
 
 export type VmAction = 'start' | 'shutdown' | 'destroy' | 'reboot' | 'autostart' | 'noautostart'
@@ -198,7 +200,14 @@ export const MAX_UPLOAD_BYTES = 50 * 1024 ** 3
 
 const enc = encodeURIComponent
 
+/** Adresse des VM-Icons; version ist VmInfo.icon und löst bei Änderung einen Neuabruf aus. */
+export const vmIconUrl = (name: string, version: string) => `/api/v1/vm-icons/${enc(name)}?v=${enc(version)}`
+
 export const vmsApi = {
+  setIconFile: (name: string, file: Blob) =>
+    apiFetch<void>(`/api/v1/vm-icons/${enc(name)}`, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } }),
+  setIconUrl: (name: string, url: string) => api.put<void>(`/api/v1/vm-icons/${enc(name)}`, { url }),
+  removeIcon: (name: string) => api.del<void>(`/api/v1/vm-icons/${enc(name)}`),
   status: () => api.get<VmStatus>('/api/v1/vms/status'),
   list: () => api.get<VmInfo[]>('/api/v1/vms'),
   networks: () => api.get<string[]>('/api/v1/vms/networks'),

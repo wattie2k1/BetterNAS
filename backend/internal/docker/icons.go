@@ -78,30 +78,55 @@ func (m *Manager) SetIcon(ctx context.Context, actor, name string, data []byte) 
 	return err
 }
 
-// SetIconFromURL lädt das Bild einer http(s)-Adresse einmalig und speichert es wie einen Upload.
-func (m *Manager) SetIconFromURL(ctx context.Context, actor, name, rawURL string) error {
+// FetchIcon lädt das Bild einer http(s)-Adresse (höchstens MaxIconBytes).
+func FetchIcon(ctx context.Context, rawURL string) ([]byte, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, apierr.New(apierr.InvalidParams, "Ungültige Adresse (erlaubt: http:// oder https://)")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, apierr.New(apierr.InvalidParams, "Ungültige Adresse")
+	}
+	resp, err := iconClient.Do(req)
+	if err != nil {
+		return nil, apierr.New(apierr.InvalidParams, "Die Adresse ist nicht erreichbar")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, apierr.New(apierr.InvalidParams, fmt.Sprintf("Die Adresse antwortet mit Fehler %d", resp.StatusCode))
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxIconBytes+1))
+	if err != nil {
+		return nil, apierr.New(apierr.InvalidParams, "Das Bild konnte nicht gelesen werden")
+	}
+	return data, nil
+}
+
+// SniffIcon prüft ein Icon (Größe, Bildtyp) und liefert Typ und Versionskennung.
+func SniffIcon(data []byte) (contentType, version string, err error) {
+	if len(data) > MaxIconBytes {
+		return "", "", apierr.New(apierr.InvalidParams, "Das Icon ist zu groß (höchstens 512 KiB)")
+	}
+	ct, ok := sniffIcon(data)
+	if !ok {
+		return "", "", apierr.New(apierr.InvalidParams, "Kein unterstütztes Bild (erlaubt: PNG, JPEG, GIF, WebP, SVG)")
+	}
+	sum := sha256.Sum256(data)
+	return ct, hex.EncodeToString(sum[:6]), nil
+}
+
+// SetIconFromURL lädt das Bild einer http(s)-Adresse einmalig und speichert es wie einen Upload.
+func (m *Manager) SetIconFromURL(ctx context.Context, actor, name, rawURL string) error {
+	if _, err := url.Parse(strings.TrimSpace(rawURL)); err != nil {
 		return apierr.New(apierr.InvalidParams, "Ungültige Adresse (erlaubt: http:// oder https://)")
 	}
 	if err := m.requireStack(ctx, name); err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	data, err := FetchIcon(ctx, rawURL)
 	if err != nil {
-		return apierr.New(apierr.InvalidParams, "Ungültige Adresse")
-	}
-	resp, err := iconClient.Do(req)
-	if err != nil {
-		return apierr.New(apierr.InvalidParams, "Die Adresse ist nicht erreichbar")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return apierr.New(apierr.InvalidParams, fmt.Sprintf("Die Adresse antwortet mit Fehler %d", resp.StatusCode))
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxIconBytes+1))
-	if err != nil {
-		return apierr.New(apierr.InvalidParams, "Das Bild konnte nicht gelesen werden")
+		return err
 	}
 	return m.SetIcon(ctx, actor, name, data)
 }

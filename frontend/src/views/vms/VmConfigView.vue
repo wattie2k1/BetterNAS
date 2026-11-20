@@ -14,6 +14,7 @@ import { vmsApi, type VmConfig, type VmConfigUpdate, type VmDisk, type VmLiveUpd
 import DiskAddDialog from '@/components/vms/DiskAddDialog.vue'
 import DiskRemoveDialog from '@/components/vms/DiskRemoveDialog.vue'
 import DiskResizeDialog from '@/components/vms/DiskResizeDialog.vue'
+import VmIconDialog from '@/components/vms/VmIconDialog.vue'
 import RenameDialog from '@/components/vms/RenameDialog.vue'
 import VmAdvanced, { type AdvancedState } from '@/components/vms/VmAdvanced.vue'
 import VmPciDevices, { type PciState } from '@/components/vms/VmPciDevices.vue'
@@ -74,6 +75,7 @@ const resizeDisk = ref<VmDisk | null>(null)
 const resizeOpen = ref(false)
 const addOpen = ref(false)
 const renameOpen = ref(false)
+const iconOpen = ref(false)
 async function renamed(newName: string) {
   void store.refresh()
   // Die Ansicht gehört zum alten Namen; über die Liste neu einsteigen.
@@ -234,6 +236,7 @@ const back = () => router?.push('/vms')
       <h2>
         {{ cfg.name }}
         <Button icon="pi pi-pencil" size="small" text rounded aria-label="VM umbenennen" :disabled="!editable" data-test="cfg-rename" @click="renameOpen = true" />
+        <Button icon="pi pi-image" size="small" text rounded aria-label="Icon ändern" data-test="cfg-icon" @click="iconOpen = true" />
       </h2>
       <Tag :value="stateLabel[cfg.state] ?? cfg.state" :severity="cfg.state === 'running' ? 'success' : cfg.state === 'shutoff' ? 'secondary' : 'warn'" />
     </header>
@@ -354,7 +357,8 @@ const back = () => router?.push('/vms')
       </div>
     </div>
     <DiskResizeDialog v-model:visible="resizeOpen" :vm="name" :disk="resizeDisk" :live="live" @resized="load" />
-    <RenameDialog v-model:visible="renameOpen" :vm="name" @renamed="renamed" />
+    <VmIconDialog v-model:visible="iconOpen" :vm="name" />
+  <RenameDialog v-model:visible="renameOpen" :vm="name" @renamed="renamed" />
     <DiskAddDialog v-model:visible="addOpen" :vm="name" @added="load" />
     <DiskRemoveDialog v-model:visible="removeOpen" :vm="name" :disk="removeDisk" @removed="load" />
 
