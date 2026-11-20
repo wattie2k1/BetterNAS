@@ -92,3 +92,13 @@ func (p Paths) Validate(allowLegacy bool) error {
 	}
 	return nil
 }
+
+// PathsInfo ist der Zustand der Docker-Speicherorte für die Oberfläche.
+type PathsInfo struct {
+	Configured bool     `json:"configured"`
+	Appdata    string   `json:"appdata"`
+	Dockerdata string   `json:"dockerdata"`
+	Warnings   []string `json:"warnings"`
+	// StaleStacks zählt Stacks, deren compose.yaml Pfade außerhalb der eingerichteten Speicherorte und der Pools enthält.
+	StaleStacks int `json:"staleStacks"`
+}

@@ -362,6 +362,16 @@ func registerDocker(s dockerReg, d Deps) {
 	s.Handle("docker.status", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return DockerStatus(ctx, d)
 	})
+	s.Handle("docker.paths.get", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return GetPaths(ctx, d)
+	})
+	s.Handle("docker.paths.set", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var in docker.Paths
+		if err := decode(p, &in); err != nil {
+			return nil, err
+		}
+		return SetPaths(ctx, d, in)
+	})
 	s.Handle("stack.list", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return ListStacks(ctx, d)
 	})
