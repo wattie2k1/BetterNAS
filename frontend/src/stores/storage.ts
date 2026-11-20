@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { storageApi, type DiskNote, type DiskView, type EraseRequest, type FormatRequest, type SelfTestKind, type TuningSettings, type PoolInput, type PoolView, type SnapraidInput } from '@/api/storage'
+import { storageApi, type DiskNote, type DiskView, type EraseRequest, type FormatRequest, type SelfTestKind, type TuningSettings, type PoolInput, type PoolView, type SnapraidInput, type BtrfsDiskInput, type BtrfsProfile, type BtrfsScrubSchedule } from '@/api/storage'
 import type { EventMessage } from '@/api/ws'
 import { useJobsStore } from './jobs'
 
@@ -40,6 +40,20 @@ export const useStorageStore = defineStore('storage', () => {
     } finally {
       await refresh()
     }
+  }
+
+  /**
+   * Startet einen langen Auftrag (z. B. Plattenersatz) und kehrt zurück, sobald er angenommen ist.
+   * `done` erfüllt sich, wenn er fertig ist, und schlägt fehl, wenn er scheitert.
+   */
+  async function startJob(start: () => Promise<{ jobId: string }>): Promise<{ done: Promise<void> }> {
+    const { jobId } = await start()
+    const done = useJobsStore()
+      .track(jobId)
+      .then(() => undefined)
+      .finally(() => void refresh())
+    done.catch(() => undefined) // Der Aufrufer wertet `done` aus; hier nur unbehandelte Ablehnung vermeiden.
+    return { done }
   }
 
   return {
@@ -110,7 +124,28 @@ export const useStorageStore = defineStore('storage', () => {
     release: (id: string) => runJob(() => storageApi.release(id)),
     createPool: (p: PoolInput) => runJob(() => storageApi.createPool(p)),
     updatePool: (name: string, p: PoolInput) => runJob(() => storageApi.updatePool(name, p)),
-    deletePool: (name: string) => runJob(() => storageApi.deletePool(name)),
+    deletePool: (name: string, confirm?: string) => runJob(() => storageApi.deletePool(name, confirm)),
+    startJob,
+    previewPool: storageApi.previewPool,
+    btrfsScrub: async (pool: string, action: 'start' | 'cancel') => {
+      await storageApi.btrfsScrub(pool, action)
+      await refresh()
+    },
+    btrfsReplace: (pool: string, in_: BtrfsDiskInput) => startJob(() => storageApi.btrfsReplace(pool, in_)),
+    btrfsAddDisk: (pool: string, in_: BtrfsDiskInput) => startJob(() => storageApi.btrfsAddDisk(pool, in_)),
+    btrfsRemoveDisk: (pool: string, disk: string, confirm: string) => startJob(() => storageApi.btrfsRemoveDisk(pool, disk, confirm)),
+    btrfsBalance: (pool: string, usage: number) => startJob(() => storageApi.btrfsBalance(pool, usage)),
+    btrfsConvert: (pool: string, profile: BtrfsProfile, confirmName: string) => startJob(() => storageApi.btrfsConvert(pool, profile, confirmName)),
+    btrfsMountDegraded: async (pool: string) => {
+      await storageApi.btrfsMountDegraded(pool)
+      await refresh()
+    },
+    btrfsResetErrors: async (pool: string) => {
+      await storageApi.btrfsResetErrors(pool)
+      await refresh()
+    },
+    saveScrubSchedule: (s: BtrfsScrubSchedule) => storageApi.saveScrubSchedule(s),
+    scrubSchedule: storageApi.scrubSchedule,
     enableSnapraid: (pool: string, input: SnapraidInput) => runJob(() => storageApi.enableSnapraid(pool, input)),
     disableSnapraid: (pool: string) => runJob(() => storageApi.disableSnapraid(pool)),
     replaceDisk: (pool: string, oldDisk: string, newDisk: string) => runJob(() => storageApi.replaceDisk(pool, oldDisk, newDisk)),

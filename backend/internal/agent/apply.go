@@ -111,7 +111,7 @@ func Apply(ctx context.Context, d Deps, st storage.State) (ApplyResult, error) {
 	}
 	res := ApplyResult{Changed: orderUnits(append(append([]string{}, added...), modified...), false)}
 	if len(stale)+len(res.Changed) == 0 {
-		syncScrubTimers(ctx, d, st.Pools, nil)
+		syncScrubTimers(ctx, d, st.Pools, nil, st.ScrubSchedule)
 		return ApplyResult{Changed: []string{}}, nil
 	}
 	// Prüf-Timer entfernter btrfs-Pools abschalten (die Unit selbst wird unten gestoppt und gelöscht).
@@ -122,7 +122,7 @@ func Apply(ctx context.Context, d Deps, st storage.State) (ApplyResult, error) {
 		}
 	}
 
-	syncScrubTimers(ctx, d, nil, staleBtrfs)
+	syncScrubTimers(ctx, d, nil, staleBtrfs, st.ScrubSchedule)
 
 	// 1. Veraltete Units entfernen – Pools vor Datenplatten.
 	for _, name := range orderUnits(stale, true) {
@@ -168,7 +168,7 @@ func Apply(ctx context.Context, d Deps, st storage.State) (ApplyResult, error) {
 			return ApplyResult{}, err
 		}
 	}
-	syncScrubTimers(ctx, d, st.Pools, nil)
+	syncScrubTimers(ctx, d, st.Pools, nil, st.ScrubSchedule)
 	return res, nil
 }
 

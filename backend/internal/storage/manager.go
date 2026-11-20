@@ -289,7 +289,7 @@ func (m *Manager) currentState(ctx context.Context) (State, map[string]dbDisk, e
 	if err != nil {
 		return State{}, nil, err
 	}
-	st := State{Pools: pools}
+	st := State{Pools: pools, ScrubSchedule: m.scrubCalendar(ctx)}
 	ids := make([]string, 0, len(disks))
 	for id := range disks {
 		ids = append(ids, id)

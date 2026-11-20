@@ -41,6 +41,7 @@ func TestBtrfsPoolLifecycle(t *testing.T) {
 	const unit = "srv-pools-ittest.mount"
 	t.Cleanup(func() {
 		_ = exec.Command("systemctl", "disable", "--now", scrubTimer("ittest")).Run()
+		os.Remove(scrubDropIn)
 		_ = exec.Command("systemctl", "stop", "betternas-btrfs-op-ittest.service").Run()
 		_ = exec.Command("systemctl", "stop", unit).Run()
 		_ = exec.Command("umount", storage.PoolPath("ittest")).Run()
@@ -132,9 +133,26 @@ func TestBtrfsPoolLifecycle(t *testing.T) {
 	}
 
 	// Prüf-Timer wird eingeschaltet (die Vorlage liefert das Paket).
-	syncScrubTimers(ctx, d, []storage.Pool{pool}, nil)
+	syncScrubTimers(ctx, d, []storage.Pool{pool}, nil, "")
 	if !shOK("systemctl", "is-enabled", scrubTimer("ittest")) {
 		t.Fatal("Timer nicht aktiv")
+	}
+
+	// Zeitplan: eigener Ausdruck greift im Timer, „aus“ schaltet ihn ab, Standard schaltet wieder an.
+	syncScrubTimers(ctx, d, []storage.Pool{pool}, nil, "Sun *-*-* 04:00:00")
+	if cat := sh(t, "systemctl", "cat", scrubTimer("ittest")); !strings.Contains(cat, "OnCalendar=Sun *-*-* 04:00:00") {
+		t.Fatalf("Zeitplan nicht aktiv:\n%s", cat)
+	}
+	syncScrubTimers(ctx, d, []storage.Pool{pool}, nil, "off")
+	if shOK("systemctl", "is-enabled", scrubTimer("ittest")) {
+		t.Fatal("Timer müsste aus sein")
+	}
+	syncScrubTimers(ctx, d, []storage.Pool{pool}, nil, "")
+	if !shOK("systemctl", "is-enabled", scrubTimer("ittest")) {
+		t.Fatal("Timer müsste wieder an sein")
+	}
+	if _, err := os.Stat(scrubDropIn); err == nil {
+		t.Fatal("Drop-in muss beim Standard entfernt sein")
 	}
 
 	// Prüfung starten und auf das Ende warten.

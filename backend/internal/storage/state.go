@@ -79,6 +79,9 @@ func btrfsMembers(pools []Pool) map[string]string {
 type State struct {
 	Disks []DiskMount `json:"disks"`
 	Pools []Pool      `json:"pools"`
+	// ScrubSchedule steuert die Prüf-Timer der btrfs-Pools: "" = Standard (monatlich, wie ausgeliefert),
+	// "off" = aus, sonst ein systemd-OnCalendar-Ausdruck.
+	ScrubSchedule string `json:"scrubSchedule,omitempty"`
 }
 
 // Rollen eingehängter Datenträger.
@@ -101,6 +104,8 @@ var (
 	diskIDRe   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
 	uuidRe     = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 	fsTypes    = []string{"ext4", "xfs", "btrfs"}
+	// ScrubScheduleRe erlaubt "", "off" und einfache OnCalendar-Ausdrücke (keine Zeilenumbrüche, keine Steuerzeichen).
+	ScrubScheduleRe = regexp.MustCompile(`^(|[A-Za-z0-9 *:,./~-]{1,80})$`)
 )
 
 // DiskPath liefert den Mountpoint einer Datenplatte.
@@ -116,6 +121,9 @@ func invalid(msg string) error { return apierr.New(apierr.InvalidParams, msg) }
 
 // Validate prüft den Zustand vollständig (Namen, Werte, Referenzen).
 func (s State) Validate() error {
+	if !ScrubScheduleRe.MatchString(s.ScrubSchedule) {
+		return invalid("Ungültiger Zeitplan für die Pool-Prüfung")
+	}
 	disks := map[string]*DiskMount{}
 	for _, d := range s.Disks {
 		if !diskIDRe.MatchString(d.DiskID) {

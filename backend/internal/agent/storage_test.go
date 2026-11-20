@@ -581,3 +581,61 @@ func testStateMergerfs() storage.State {
 		Pools: []storage.Pool{{Name: "media", Branches: []string{"a"}, CreatePolicy: "epmfs", MinFree: "20G"}},
 	}
 }
+
+func TestApplyScrubSchedule(t *testing.T) {
+	d, f, root := storageEnv(t)
+	const u = "33333333-3333-3333-3333-333333333333"
+	st := storage.State{
+		Disks: []storage.DiskMount{{DiskID: "a", FSUUID: u, FSType: "btrfs"}},
+		Pools: []storage.Pool{{Name: "tresor", Type: storage.PoolBtrfs, Branches: []string{"a"}, Profile: "single", FSUUID: u, CreatePolicy: "epmfs", MinFree: "20G"}},
+	}
+	dropIn := filepath.Join(root, "etc/systemd/system/betternas-btrfs-scrub@.timer.d/10-betternas.conf")
+
+	// eigener Zeitplan: Drop-in, daemon-reload, Timer neu starten
+	st.ScrubSchedule = "Sun *-*-* 04:00:00"
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(dropIn)
+	if err != nil || !strings.Contains(string(b), "OnCalendar=\nOnCalendar=Sun *-*-* 04:00:00\n") || !strings.HasPrefix(string(b), storage.ManagedHeader) {
+		t.Fatalf("%v %s", err, b)
+	}
+	assertOrder(t, f, "systemctl daemon-reload", "systemctl enable --now betternas-btrfs-scrub@tresor.timer", "systemctl restart betternas-btrfs-scrub@tresor.timer")
+
+	// unverändert: kein Neustart des Timers
+	f.Calls = nil
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	if f.Called("systemctl restart betternas-btrfs-scrub") {
+		t.Fatal(f.Calls)
+	}
+
+	// aus: Timer abgeschaltet, Drop-in entfernt
+	f.Calls = nil
+	st.ScrubSchedule = "off"
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("systemctl disable --now betternas-btrfs-scrub@tresor.timer") || f.Called("systemctl enable --now betternas-btrfs-scrub") {
+		t.Fatal(f.Calls)
+	}
+	if _, err := os.Stat(dropIn); err == nil {
+		t.Fatal("Drop-in muss entfernt sein")
+	}
+
+	// Standard: Timer an, kein Drop-in
+	f.Calls = nil
+	st.ScrubSchedule = ""
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("systemctl enable --now betternas-btrfs-scrub@tresor.timer") {
+		t.Fatal(f.Calls)
+	}
+	// ungültiger Ausdruck wird vom Zustand abgelehnt
+	st.ScrubSchedule = "x\nExecStart=/bin/sh"
+	if _, err := Apply(context.Background(), d, st); code(err) != "invalid_params" {
+		t.Fatalf("%v", err)
+	}
+}

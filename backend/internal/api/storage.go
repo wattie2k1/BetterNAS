@@ -369,6 +369,25 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
+	mux.HandleFunc("GET /api/v1/btrfs/scrub-schedule", func(w http.ResponseWriter, r *http.Request) {
+		sc, err := m.BtrfsScrubSchedule(r.Context())
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, sc)
+	})
+	mux.HandleFunc("PUT /api/v1/btrfs/scrub-schedule", func(w http.ResponseWriter, r *http.Request) {
+		var sc storage.BtrfsScrubSchedule
+		if !decodeBody(w, r, &sc) {
+			return
+		}
+		if err := m.SetBtrfsScrubSchedule(r.Context(), actor(r), sc); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, sc)
+	})
 	mux.HandleFunc("POST /api/v1/pools/preview", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Branches []string `json:"branches"`

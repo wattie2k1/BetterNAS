@@ -290,3 +290,36 @@ func TestBtrfsScrubStartAndError(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestBtrfsScrubSchedule(t *testing.T) {
+	e := newEnv(t)
+	s, _ := e.m.BtrfsScrubSchedule(e.ctx)
+	if s.Interval != "monthly" || s.Hour != 3 {
+		t.Fatalf("Standard: %+v", s)
+	}
+	if st, _, _ := e.m.currentState(e.ctx); st.ScrubSchedule != "" {
+		t.Fatalf("ungespeichert = Standard: %q", st.ScrubSchedule)
+	}
+	for _, bad := range []BtrfsScrubSchedule{{Interval: "daily", Hour: 1}, {Interval: "weekly", Hour: 24}, {Interval: "", Hour: 0}} {
+		if err := e.m.SetBtrfsScrubSchedule(e.ctx, "anna", bad); codeOf(err) != "invalid_params" {
+			t.Errorf("%+v: %v", bad, err)
+		}
+	}
+	for in, want := range map[BtrfsScrubSchedule]string{
+		{"weekly", 4}:    "Sun *-*-* 04:00:00",
+		{"monthly", 3}:   "*-*-01 03:00:00",
+		{"quarterly", 0}: "*-01,04,07,10-01 00:00:00",
+		{"off", 0}:       "off",
+	} {
+		if err := e.m.SetBtrfsScrubSchedule(e.ctx, "anna", in); err != nil {
+			t.Fatal(err)
+		}
+		last := e.agent.applied[len(e.agent.applied)-1]
+		if last.ScrubSchedule != want {
+			t.Errorf("%+v: %q statt %q", in, last.ScrubSchedule, want)
+		}
+		if got, _ := e.m.BtrfsScrubSchedule(e.ctx); got != in {
+			t.Errorf("gespeichert: %+v", got)
+		}
+	}
+}
