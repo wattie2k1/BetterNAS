@@ -14,12 +14,12 @@ import (
 
 const maxFolders = 500
 
-var errFolderOutside = apierr.New(apierr.InvalidParams, "Ungültiger Ordnerpfad (erlaubt: Ordner in Pools, auf Platten und in den Docker-Speicherorten)")
+var errFolderOutside = apierr.New(apierr.InvalidParams, "Ungültiger Ordnerpfad (erlaubt: Ordner unter /srv, /mnt und /media)")
 
-var folderRootsFixed = []string{"/srv/pools", "/srv/disks"}
+var folderRootsFixed = []string{"/srv/pools", "/srv/disks", "/srv", "/mnt", "/media"}
 
-// folderRoots sind die Wurzeln der Ordnerauswahl: Pools, Platten und die eingerichteten Docker-Speicherorte
-// (soweit sie nicht ohnehin darunter liegen).
+// folderRoots sind die Wurzeln der Ordnerauswahl: Pools und Platten, die Bereiche /srv, /mnt und /media des
+// Dateisystems und die eingerichteten Docker-Speicherorte (soweit sie nicht ohnehin darunter liegen).
 func folderRoots() []string {
 	roots := append([]string{}, folderRootsFixed...)
 	if p := curPaths.Load(); p != nil {

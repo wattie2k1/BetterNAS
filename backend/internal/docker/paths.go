@@ -71,10 +71,22 @@ func (p Paths) Reserved(root, first string) bool {
 // ein Zeichen mit Bedeutung für Shell, YAML, Compose oder Logs in einem Skript oder einer Konfiguration.
 var rootCharsRe = regexp.MustCompile(`^[A-Za-z0-9_./+@-]+$`)
 
-// CleanRoot bereinigt einen Wurzelpfad und prüft ihn rein syntaktisch: absolut, ohne „..“, unterhalb von
-// /srv/pools oder /srv/disks (bei allowLegacy auch /srv/appdata), nie diese Bereiche selbst.
+// Verzeichnisse des Systems, die nie als Speicherort dienen dürfen (auch nicht darunter).
+var systemDirs = map[string]bool{
+	"bin": true, "boot": true, "dev": true, "etc": true, "lib": true, "lib32": true, "lib64": true, "libx32": true,
+	"proc": true, "root": true, "run": true, "sbin": true, "sys": true, "tmp": true, "usr": true, "var": true,
+}
+
+// Bereiche von BetterNAS, die selbst keine Speicherorte sein dürfen: die Pool- und Platten-Wurzeln sowie Parität und VMs.
+var reservedSrv = []string{"/srv/pools", "/srv/disks", "/srv/parity", "/srv/vms"}
+
+// CleanRoot bereinigt einen Wurzelpfad und prüft ihn rein syntaktisch: absolut, nur sichere Zeichen, ohne „..“,
+// mindestens zwei Ebenen tief (z. B. /srv/dockerdata oder /mnt/ssd), nicht in Systemverzeichnissen und nicht in
+// den Bereichen von BetterNAS (/srv/pools, /srv/disks, /srv/parity, /srv/vms selbst). Beliebige andere Ordner
+// im Dateisystem sind erlaubt; Besitzer und Rechte prüft der Agent. allowLegacy ist für Aufrufer erhalten geblieben.
 func CleanRoot(p string, allowLegacy bool) (string, error) {
-	bad := apierr.New(apierr.InvalidParams, "Ungültiger Speicherort (erlaubt: ein Ordner unterhalb von /srv/pools oder /srv/disks; Buchstaben ohne Umlaute, Ziffern und _ . / + @ -)")
+	_ = allowLegacy
+	bad := apierr.New(apierr.InvalidParams, "Ungültiger Speicherort (erlaubt: ein Ordner mit mindestens zwei Ebenen, z. B. /srv/dockerdata oder /mnt/ssd/docker, nicht in Systemverzeichnissen; Buchstaben ohne Umlaute, Ziffern und _ . / + @ -)")
 	if !strings.HasPrefix(p, "/") || len(p) > 4096 || !rootCharsRe.MatchString(p) {
 		return "", bad
 	}
@@ -84,15 +96,16 @@ func CleanRoot(p string, allowLegacy bool) (string, error) {
 		}
 	}
 	c := path.Clean(p)
-	if allowLegacy && (c == legacyRoot || strings.HasPrefix(c, legacyRoot+"/")) {
-		return c, nil
+	segs := strings.Split(strings.TrimPrefix(c, "/"), "/")
+	if len(segs) < 2 || systemDirs[segs[0]] {
+		return "", bad
 	}
-	for _, r := range []string{"/srv/pools", "/srv/disks"} {
-		if strings.HasPrefix(c, r+"/") {
-			return c, nil
+	for _, r := range reservedSrv {
+		if c == r || (r != "/srv/pools" && r != "/srv/disks" && strings.HasPrefix(c, r+"/")) {
+			return "", bad
 		}
 	}
-	return "", bad
+	return c, nil
 }
 
 // Validate prüft beide Wurzeln. Sie dürfen weder gleich noch ineinander verschachtelt sein

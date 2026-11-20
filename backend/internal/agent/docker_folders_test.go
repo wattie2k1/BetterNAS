@@ -38,7 +38,7 @@ func TestListFoldersRootsAndSubfolders(t *testing.T) {
 		map[string]string{"/srv/pools/tank": "Medien\x00.hidden\x00backup\x00Fotos\x00"})
 	ctx := context.Background()
 	roots, err := ListFolders(ctx, d, "")
-	if err != nil || len(roots.Dirs) != 2 || roots.Dirs[0].Path != "/srv/pools" || roots.Dirs[1].Path != "/srv/appdata" || roots.Parent != "" {
+	if err != nil || len(roots.Dirs) != 2 || roots.Dirs[0].Path != "/srv/pools" || roots.Dirs[1].Path != "/srv" || roots.Parent != "" {
 		t.Fatalf("%+v %v", roots, err)
 	}
 	l, err := ListFolders(ctx, d, "/srv/pools/tank")
@@ -78,7 +78,7 @@ func TestListFoldersRejectsEscapes(t *testing.T) {
 		"/srv/pools/ok":   "/srv/pools/ok",
 	}, nil)
 	ctx := context.Background()
-	for _, bad := range []string{"/etc", "/srv/pools/../../etc", "/srv", "relativ"} {
+	for _, bad := range []string{"/etc", "/srv/pools/../../etc", "/usr", "relativ"} {
 		if _, err := ListFolders(ctx, d, bad); code(err) != apierr.InvalidParams {
 			t.Errorf("%q: %v", bad, err)
 		}
@@ -196,12 +196,13 @@ func TestCreateFolderConflictWhenExists(t *testing.T) {
 func TestListFoldersRootsIncludeDisks(t *testing.T) {
 	d, _ := folderEnv(t, map[string]string{}, map[string]string{})
 	_ = d.FS.MkdirAll("/srv/disks", 0o755)
+	_ = d.FS.MkdirAll("/mnt", 0o755)
 	roots, err := ListFolders(context.Background(), d, "")
 	var got []string
 	for _, r := range roots.Dirs {
 		got = append(got, r.Path)
 	}
-	if err != nil || strings.Join(got, ",") != "/srv/pools,/srv/disks,/srv/appdata" {
+	if err != nil || strings.Join(got, ",") != "/srv/pools,/srv/disks,/srv,/mnt" {
 		t.Fatalf("%v %v", got, err)
 	}
 }
@@ -262,5 +263,29 @@ func TestFolderRPCsWorkWhenNotConfigured(t *testing.T) {
 	var l docker.FolderList
 	if err := c.Call(context.Background(), "folder.list", map[string]string{"path": "/srv/pools/tank"}, &l); err != nil || len(l.Dirs) != 1 {
 		t.Fatalf("%+v %v", l, err)
+	}
+}
+
+func TestPickerBrowsesFilesystemAndCreatesDockerdata(t *testing.T) {
+	d, f := folderEnv(t, map[string]string{"/srv": "/srv", "/srv/dockerdata": "/srv/dockerdata", "/mnt": "/mnt", "/mnt/ssd": "/mnt/ssd"},
+		map[string]string{"/srv": "appdata\x00pools\x00dockerdata\x00", "/mnt/ssd": "daten\x00"})
+	ctx := context.Background()
+	l, err := ListFolders(ctx, d, "/srv")
+	if err != nil || l.Parent != "" || len(l.Dirs) != 3 {
+		t.Fatalf("%+v %v", l, err)
+	}
+	if _, err := ListFolders(ctx, d, "/mnt/ssd"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := CreateFolder(ctx, d, "/srv", "dockerdata"); err != nil || got.Path != "/srv/dockerdata" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if !f.Called("mkdir -m 755 -- /srv/dockerdata") {
+		t.Fatalf("%v", f.Calls)
+	}
+	for _, p := range []string{"/etc", "/var/lib", "/usr", "/"} {
+		if _, err := ListFolders(ctx, d, p); err == nil {
+			t.Errorf("%s darf nicht listbar sein", p)
+		}
 	}
 }

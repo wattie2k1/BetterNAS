@@ -64,13 +64,13 @@ function pick(p: string) {
   <Dialog :visible="visible" modal append-to="self" header="Speicherorte für Docker" :style="{ width: 'min(620px, 96vw)' }" @update:visible="emit('update:visible', $event)">
     <template v-if="!result">
       <p class="intro">
-        Wähle zwei Ordner auf einer Platte oder einem Pool (btrfs-Pool oder einzelne Platte; mergerfs-Pools sind für Docker ungeeignet). Lege sie im Ordnerfenster an, damit sie root gehören. Erlaubt sind Buchstaben ohne Umlaute, Ziffern und _ . + @ - (keine Leerzeichen).
+        Wähle zwei Ordner, z. B. /srv/dockerdata, auf einer eigenen Platte oder einem btrfs-Pool (mergerfs-Pools sind für Docker ungeeignet). Lege sie im Ordnerfenster an, damit sie root gehören; das Fenster zeigt das Dateisystem unter /srv, /mnt und /media. Erlaubt sind Buchstaben ohne Umlaute, Ziffern und _ . + @ - (keine Leerzeichen).
       </p>
       <Message v-if="!configured" severity="info" :closable="false">Bis die Speicherorte festgelegt sind, ist Docker gesperrt. Beim ersten Speichern wird Docker eingerichtet und gestartet.</Message>
       <div class="field">
         <label for="p-app">Einstellungen der Apps (appdata)</label>
         <div class="row">
-          <InputText id="p-app" v-model="appdata" data-test="paths-appdata" placeholder="/srv/pools/<Pool>/appdata" autocomplete="off" spellcheck="false" />
+          <InputText id="p-app" v-model="appdata" data-test="paths-appdata" placeholder="/srv/appdata" autocomplete="off" spellcheck="false" />
           <Button label="Auswählen" severity="secondary" icon="pi pi-folder-open" data-test="paths-browse-appdata" @click="browsing = 'appdata'" />
         </div>
         <small>Klein: Einstellungen der Container sowie Stacks, Reverse-Proxy und Sicherungen von BetterNAS.</small>
@@ -78,7 +78,7 @@ function pick(p: string) {
       <div class="field">
         <label for="p-data">Daten der Apps (dockerdata)</label>
         <div class="row">
-          <InputText id="p-data" v-model="dockerdata" data-test="paths-dockerdata" placeholder="/srv/pools/<Pool>/dockerdata" autocomplete="off" spellcheck="false" />
+          <InputText id="p-data" v-model="dockerdata" data-test="paths-dockerdata" placeholder="/srv/dockerdata" autocomplete="off" spellcheck="false" />
           <Button label="Auswählen" severity="secondary" icon="pi pi-folder-open" data-test="paths-browse-dockerdata" @click="browsing = 'dockerdata'" />
         </div>
         <small>Groß: Daten, Datenbanken, Caches sowie Docker-Images und Container.</small>

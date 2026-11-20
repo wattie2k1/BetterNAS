@@ -301,7 +301,7 @@ func TestSetPathsRejectsInvalid(t *testing.T) {
 		"link":          {Appdata: "/srv/pools/a/link", Dockerdata: "/srv/pools/b/dd"},
 		"fehlt":         {Appdata: "/srv/pools/a/fehlt", Dockerdata: "/srv/pools/b/dd"},
 		"leer":          {},
-		"srv-appdata":   {Appdata: "/srv/appdata", Dockerdata: "/srv/pools/b/dd"}, // nur bei bestehenden Installationen
+		"var":           {Appdata: "/var/lib/x", Dockerdata: "/srv/pools/b/dd"},
 	} {
 		if _, err := SetPaths(context.Background(), d, in); err == nil {
 			t.Errorf("%s akzeptiert", name)
@@ -621,5 +621,13 @@ func TestSafeBindPathPreviousRoots(t *testing.T) {
 func TestShQuoteEscapesSingleQuotes(t *testing.T) {
 	if got := shQuote([]string{"a'b", "c d"}); got != `'a'\''b' 'c d'` {
 		t.Fatal(got)
+	}
+}
+
+func TestSetPathsAcceptsPlainFilesystemFolder(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	info, err := SetPaths(context.Background(), d, docker.Paths{Appdata: "/srv/appdata", Dockerdata: "/srv/dockerdata"})
+	if err != nil || info.Dockerdata != "/srv/dockerdata" {
+		t.Fatalf("%+v %v", info, err)
 	}
 }

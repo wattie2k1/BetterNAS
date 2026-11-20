@@ -17,7 +17,7 @@ const newName = ref('')
 const createError = ref('')
 const saving = ref(false)
 
-const ROOT_LABEL: Record<string, string> = { pools: 'Speicherpools', disks: 'Einzelne Platten', appdata: 'App-Daten' }
+const ROOT_LABEL: Record<string, string> = { pools: 'Speicherpools', disks: 'Einzelne Platten', srv: 'Dateisystem /srv', mnt: 'Eingehängte Laufwerke /mnt', media: 'Wechseldatenträger /media' }
 
 async function load(path: string) {
   loading.value = true
@@ -38,7 +38,7 @@ watch(
     list.value = null
     creating.value = false
     const s = (props.start ?? '').replace(/\/+$/, '')
-    const inRoots = s.startsWith('/srv/')
+    const inRoots = ['/srv/', '/mnt/', '/media/'].some((r) => s.startsWith(r))
     await load(inRoots ? s : '')
     // Existiert der bisherige Ordner nicht (mehr), mit der Übersicht beginnen.
     if (error.value && inRoots) await load('')
@@ -136,7 +136,7 @@ const choose = () => {
       </li>
       <li v-if="list && !list.dirs.length" class="empty">Keine Unterordner.</li>
     </ul>
-    <small class="hint">Es werden vorhandene Ordner der Speicherpools, der Platten und der Docker-Speicherorte angezeigt.</small>
+    <small class="hint">Angezeigt werden Ordner unter /srv, /mnt und /media sowie die Speicherpools und Platten.</small>
     <template #footer>
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
       <Button data-test="folder-select" label="Diesen Ordner wählen" icon="pi pi-check" :disabled="loading || current === ''" @click="choose" />
