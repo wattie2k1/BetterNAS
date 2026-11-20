@@ -17,6 +17,7 @@ func dockerEnv(t *testing.T) (Deps, *sysexec.FakeRunner, string) {
 	f := &sysexec.FakeRunner{Responses: map[string]sysexec.Result{}}
 	nowUnix = func() int64 { return 1700000000 }
 	t.Cleanup(func() { nowUnix = defaultNowUnix })
+	useLegacyPaths(t)
 	return Deps{Runner: f, FS: sysexec.NewRootFS(root)}, f, root
 }
 

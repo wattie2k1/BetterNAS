@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 
@@ -30,6 +31,9 @@ var mutate sync.Mutex
 
 // Register registriert alle Agent-Methoden.
 func Register(s *rpc.Server, d Deps) {
+	if err := initPaths(d); err != nil {
+		log.Printf("docker: %v", err)
+	}
 	s.Handle("auth.verify", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var req struct {
 			Username string `json:"username"`
