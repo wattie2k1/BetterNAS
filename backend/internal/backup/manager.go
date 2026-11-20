@@ -54,6 +54,8 @@ type Manager struct {
 
 	mu     sync.Mutex
 	tokens map[string]pendingRestore
+
+	appdataMu sync.Mutex // eine appdata-Sicherung zur Zeit
 }
 
 // NewManager erzeugt einen Manager. dir ist das Backup-Verzeichnis; die ausstehende Wiederherstellung
@@ -79,31 +81,138 @@ func (m *Manager) record(ctx context.Context, actor, action, target string, err 
 	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: action, Target: target, Result: result})
 }
 
-// Create legt eine Sicherung an und räumt alte auf.
+// Status beschreibt den aktuellen Sicherungsort.
+type Status struct {
+	Dir     string `json:"dir"`     // Ordner, in dem gesichert wird
+	Default bool   `json:"default"` // true = Systemplatte (Standard)
+	Appdata string `json:"appdata"` // Ordner der App-Einstellungen; leer, solange Docker nicht eingerichtet ist
+	Free    int64  `json:"free"`    // freie Bytes am Sicherungsort (0 = unbekannt)
+	Problem string `json:"problem"` // warum der Ort nicht nutzbar ist
+}
+
+type target struct {
+	Dir     string `json:"dir"`
+	Free    int64  `json:"free"`
+	Appdata string `json:"appdata"`
+}
+
+// where liefert den Sicherungsordner der Einstellungen (m.dir = Systemplatte).
+func (m *Manager) where(c Config) string {
+	if c.Dir == "" {
+		return m.dir
+	}
+	d, err := dirCheck(c.Dir)
+	if err != nil {
+		return m.dir
+	}
+	return d
+}
+
+func (m *Manager) stagingDir() string { return filepath.Join(filepath.Dir(m.dir), "staging") }
+
+// prune räumt je Art nach der Aufbewahrung auf (im eigenen Ordner direkt, sonst über den Agent).
+func (m *Manager) prune(ctx context.Context, c Config) error {
+	if c.Dir == "" {
+		return Prune(m.dir, c.Keep)
+	}
+	return m.agent.Call(ctx, "backup.prune", map[string]any{"dir": m.where(c), "keep": c.Keep}, nil)
+}
+
+// Status prüft den Sicherungsort (legt den Ordner bei Bedarf an) und meldet freien Platz.
+func (m *Manager) Status(ctx context.Context) (Status, error) {
+	c, err := LoadConfig(ctx, m.db)
+	if err != nil {
+		return Status{}, err
+	}
+	st := Status{Dir: m.where(c), Default: c.Dir == ""}
+	var t target
+	if err := m.agent.Call(ctx, "backup.prepare", map[string]string{"dir": st.Dir}, &t); err != nil {
+		st.Problem = apierr.From(err).Message
+		return st, nil
+	}
+	st.Free, st.Appdata = t.Free, t.Appdata
+	return st, nil
+}
+
+// Create legt eine Konfigurations-Sicherung an und räumt alte auf.
 func (m *Manager) Create(ctx context.Context, actor string) (Info, error) {
-	info, err := Create(ctx, m.db, m.dir, m.version)
+	cfg, _ := LoadConfig(ctx, m.db)
+	info, err := m.createConfig(ctx, cfg)
 	m.record(ctx, actor, "backup.create", info.Name, err)
 	if err != nil {
 		return Info{}, err
 	}
-	cfg, _ := LoadConfig(ctx, m.db)
-	_ = Prune(m.dir, cfg.Keep)
+	_ = m.prune(ctx, cfg)
 	m.publish()
 	return info, nil
+}
+
+func (m *Manager) createConfig(ctx context.Context, cfg Config) (Info, error) {
+	if cfg.Dir == "" {
+		return Create(ctx, m.db, m.dir, m.version)
+	}
+	// Die API darf nur in ihr Zustandsverzeichnis schreiben: Archiv dort bauen, der Agent legt es im Zielordner ab.
+	info, err := Create(ctx, m.db, m.stagingDir(), m.version, m.where(cfg))
+	if err != nil {
+		return Info{}, err
+	}
+	src := filepath.Join(m.stagingDir(), info.Name)
+	defer os.Remove(src)
+	if err := m.agent.Call(ctx, "backup.store", map[string]string{"src": src, "dir": m.where(cfg)}, nil); err != nil {
+		return Info{}, err
+	}
+	return info, nil
+}
+
+// ErrAppdataRunning meldet, dass schon eine appdata-Sicherung läuft.
+var errAppdataRunning = apierr.New(apierr.Conflict, "Eine appdata-Sicherung läuft bereits.")
+
+// AppdataResult ist das Ergebnis einer appdata-Sicherung.
+type AppdataResult struct {
+	Info    Info `json:"info"`
+	Changed bool `json:"changed"` // Dateien haben sich währenddessen geändert (laufende Container)
+}
+
+// CreateAppdata sichert den Ordner appdata (Einstellungen der Docker-Apps) und räumt alte Sicherungen auf.
+// Das kann dauern; der Aufrufer sollte es als Auftrag laufen lassen.
+func (m *Manager) CreateAppdata(ctx context.Context, actor string) (AppdataResult, error) {
+	if !m.appdataMu.TryLock() {
+		return AppdataResult{}, errAppdataRunning
+	}
+	defer m.appdataMu.Unlock()
+	cfg, _ := LoadConfig(ctx, m.db)
+	var res struct {
+		Name    string `json:"name"`
+		Size    int64  `json:"size"`
+		Changed bool   `json:"changed"`
+	}
+	err := m.agent.Call(ctx, "backup.appdata", map[string]string{"dir": m.where(cfg)}, &res)
+	m.record(ctx, actor, "backup.appdata", res.Name, err)
+	if err != nil {
+		return AppdataResult{}, err
+	}
+	_ = m.prune(ctx, cfg)
+	m.publish()
+	info := Info{Name: res.Name, Kind: KindAppdata, Size: res.Size, Manifest: Manifest{CreatedAt: m.now().UTC()}}
+	return AppdataResult{Info: info, Changed: res.Changed}, nil
 }
 
 // Config liefert die Einstellungen der automatischen Sicherung.
 func (m *Manager) Config(ctx context.Context) (Config, error) { return LoadConfig(ctx, m.db) }
 
-// SetConfig speichert neue Einstellungen, räumt sofort nach der neuen Aufbewahrung auf
-// und weckt den Planer, damit die neue Uhrzeit gilt.
+// SetConfig speichert neue Einstellungen. Ein eigener Ordner wird angelegt und geprüft (Schreiben durch den Agent,
+// Lesen durch die API); appdata braucht eingerichtetes Docker. Danach wird nach der neuen Aufbewahrung aufgeräumt
+// und der Planer geweckt, damit die neue Uhrzeit gilt. Vorhandene Sicherungen im alten Ordner bleiben dort liegen.
 func (m *Manager) SetConfig(ctx context.Context, actor string, c Config) error {
-	err := SaveConfig(ctx, m.db, c)
+	err := m.checkConfig(ctx, &c)
+	if err == nil {
+		err = SaveConfig(ctx, m.db, c)
+	}
 	m.record(ctx, actor, "backup.config", c.String(), err)
 	if err != nil {
 		return err
 	}
-	_ = Prune(m.dir, c.Keep)
+	_ = m.prune(ctx, c)
 	select {
 	case m.wake <- struct{}{}:
 	default:
@@ -112,15 +221,50 @@ func (m *Manager) SetConfig(ctx context.Context, actor string, c Config) error {
 	return nil
 }
 
+func (m *Manager) checkConfig(ctx context.Context, c *Config) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	if c.Dir == "" && !c.Appdata {
+		return nil
+	}
+	if c.Dir != "" {
+		c.Dir, _ = dirCheck(c.Dir)
+	}
+	var t target
+	if err := m.agent.Call(ctx, "backup.prepare", map[string]string{"dir": m.where(*c)}, &t); err != nil {
+		return err
+	}
+	if c.Dir != "" {
+		if _, err := os.ReadDir(t.Dir); err != nil {
+			return apierr.New(apierr.Conflict, "BetterNAS kann den Ordner nicht lesen. Er und seine übergeordneten Ordner müssen für andere Benutzer lesbar sein (Rechte r-x).").With("detail", err.Error())
+		}
+	}
+	if c.Appdata && t.Appdata == "" {
+		return apierr.New(apierr.Conflict, "appdata gibt es erst, wenn Docker eingerichtet ist (Einstellungen → Docker).")
+	}
+	return nil
+}
+
 // List liefert die abgelegten Sicherungen.
-func (m *Manager) List(context.Context) ([]Info, error) { return List(m.dir) }
+func (m *Manager) List(ctx context.Context) ([]Info, error) {
+	c, err := LoadConfig(ctx, m.db)
+	if err != nil {
+		return nil, err
+	}
+	return List(m.where(c))
+}
 
 // Open öffnet eine Sicherung zum Herunterladen.
-func (m *Manager) Open(name string) (*os.File, error) {
-	if !NameRe.MatchString(name) {
+func (m *Manager) Open(ctx context.Context, name string) (*os.File, error) {
+	if KindOf(name) == "" {
 		return nil, invalid("Ungültiger Backup-Name.")
 	}
-	f, err := os.Open(filepath.Join(m.dir, name))
+	c, err := LoadConfig(ctx, m.db)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(filepath.Join(m.where(c), name))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, apierr.New(apierr.NotFound, "Backup nicht gefunden.")
@@ -137,7 +281,15 @@ func (m *Manager) Audit(ctx context.Context, actor, action, name string) {
 
 // Delete löscht eine Sicherung.
 func (m *Manager) Delete(ctx context.Context, actor, name string) error {
-	err := Delete(m.dir, name)
+	c, _ := LoadConfig(ctx, m.db)
+	var err error
+	if c.Dir == "" {
+		err = Delete(m.dir, name)
+	} else if KindOf(name) == "" {
+		err = invalid("Ungültiger Backup-Name.")
+	} else {
+		err = m.agent.Call(ctx, "backup.delete", map[string]string{"dir": m.where(c), "name": name}, nil)
+	}
 	m.record(ctx, actor, "backup.delete", name, err)
 	if err == nil {
 		m.publish()
@@ -172,7 +324,10 @@ func (m *Manager) PreviewUpload(ctx context.Context, r io.Reader) (Preview, erro
 
 // PreviewStored prüft eine abgelegte Sicherung.
 func (m *Manager) PreviewStored(ctx context.Context, name string) (Preview, error) {
-	f, err := m.Open(name)
+	if KindOf(name) == KindAppdata {
+		return Preview{}, invalid("appdata-Sicherungen lassen sich nicht hier wiederherstellen. Stoppe die Container und entpacke das Archiv mit „tar -xzpf“ in den Ordner appdata.")
+	}
+	f, err := m.Open(ctx, name)
 	if err != nil {
 		return Preview{}, err
 	}

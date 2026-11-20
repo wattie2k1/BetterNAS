@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"io"
 	"net/http"
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/auth"
 	"github.com/betternas/betternas/internal/backup"
+	"github.com/betternas/betternas/internal/jobs"
 )
 
 // maxBackupUpload begrenzt hochgeladene Archive (in Tests verkleinert).
@@ -35,6 +37,30 @@ func (s *server) registerBackup(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, in)
 	})
+	mux.HandleFunc("GET /api/v1/backups/status", func(w http.ResponseWriter, r *http.Request) {
+		st, err := m.Status(r.Context())
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
+	})
+	mux.HandleFunc("POST /api/v1/backups/appdata", func(w http.ResponseWriter, r *http.Request) {
+		who := actor(r)
+		id := s.deps.Jobs.Start("backup.appdata", "appdata", who, func(ctx context.Context, log jobs.Logger) error {
+			log.Printf("Sichere appdata …")
+			res, err := m.CreateAppdata(ctx, who)
+			if err != nil {
+				return err
+			}
+			log.Printf("Fertig: %s", res.Info.Name)
+			if res.Changed {
+				log.Printf("Hinweis: Einige Dateien haben sich während der Sicherung geändert (laufende Container). Das Archiv kann daher Datenbanken in einem Zwischenzustand enthalten.")
+			}
+			return nil
+		})
+		accepted(w, id, nil)
+	})
 	mux.HandleFunc("GET /api/v1/backups", func(w http.ResponseWriter, r *http.Request) {
 		l, err := m.List(r.Context())
 		if err != nil {
@@ -53,7 +79,7 @@ func (s *server) registerBackup(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/v1/backups/{name}", func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
-		f, err := m.Open(name)
+		f, err := m.Open(r.Context(), name)
 		if err != nil {
 			apierr.Write(w, err)
 			return

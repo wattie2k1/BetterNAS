@@ -25,14 +25,31 @@ func nextRun(now time.Time, hour, min int) time.Time {
 	return t
 }
 
-// runDaily erstellt das nächtliche Backup; bei Fehlern kommt eine Meldung, bestehende Backups bleiben.
+// runDaily erstellt das nächtliche Backup (Konfiguration und, wenn eingestellt, appdata); bei Fehlern kommt je
+// Art eine Meldung, bestehende Backups bleiben.
 func (m *Manager) runDaily(ctx context.Context, n Notifier) {
 	if _, err := m.Create(ctx, "system"); err != nil {
 		slog.Warn("nächtliches backup", "err", err)
 		n.Send(ctx, notify.Message{
 			Level: "crit", Title: "Konfigurations-Backup fehlgeschlagen",
-			Body: "Das nächtliche Backup der BetterNAS-Konfiguration ist fehlgeschlagen: " + err.Error() + ". Prüfe den freien Platz auf der Systemplatte.",
+			Body: "Das nächtliche Backup der BetterNAS-Konfiguration ist fehlgeschlagen: " + err.Error() + ". Prüfe den freien Platz am Sicherungsort.",
 		})
+	}
+	cfg, _ := LoadConfig(ctx, m.db)
+	if !cfg.Appdata {
+		return
+	}
+	res, err := m.CreateAppdata(ctx, "system")
+	if err != nil {
+		slog.Warn("nächtliches appdata-backup", "err", err)
+		n.Send(ctx, notify.Message{
+			Level: "crit", Title: "appdata-Backup fehlgeschlagen",
+			Body: "Das nächtliche Backup von appdata (Einstellungen der Docker-Apps) ist fehlgeschlagen: " + err.Error() + ". Prüfe den freien Platz am Sicherungsort.",
+		})
+		return
+	}
+	if res.Changed {
+		slog.Info("appdata-backup: Dateien haben sich während der Sicherung geändert", "name", res.Info.Name)
 	}
 }
 
