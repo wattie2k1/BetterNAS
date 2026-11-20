@@ -36,6 +36,8 @@ func (agentStub) Call(_ context.Context, method string, _, result any) error {
 		out = map[string]string{"fsUuid": "u1", "label": "bnas-1"}
 	case "pool.btrfs.status":
 		out = storage.BtrfsStatus{Mounted: true, Devices: []storage.BtrfsDevice{{DevID: 1, Path: "/dev/sda1"}, {DevID: 2, Path: "/dev/sdb1"}}, DataProfile: "RAID1"}
+	case "pool.btrfs.replace.status":
+		out = storage.BtrfsReplace{State: "finished", Percent: 100}
 	case "pool.btrfs.create":
 		out = map[string]string{"fsUuid": "bu1", "label": "bnas-tresor"}
 	default:
@@ -214,6 +216,38 @@ func TestBtrfsPoolRoutes(t *testing.T) {
 	}
 	if w := s.do("GET", "/api/v1/pools/gibtsnicht/btrfs", ""); w.Code != 404 {
 		t.Fatalf("unbekannt %d", w.Code)
+	}
+	// Wartung
+	w = s.do("POST", "/api/v1/pools/tresor/btrfs/balance", `{"usage":50}`)
+	if w.Code != 202 {
+		t.Fatalf("balance %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
+	if w := s.do("POST", "/api/v1/pools/tresor/btrfs/balance", `{"usage":500}`); w.Code != 400 {
+		t.Fatalf("balance ungültig %d", w.Code)
+	}
+	if w := s.do("POST", "/api/v1/pools/tresor/btrfs/convert", `{"profile":"single"}`); w.Code != 400 {
+		t.Fatalf("convert ohne Bestätigung %d %s", w.Code, w.Body)
+	}
+	w = s.do("POST", "/api/v1/pools/tresor/btrfs/convert", `{"profile":"single","confirmName":"tresor"}`)
+	if w.Code != 202 {
+		t.Fatalf("convert %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
+	if w := s.do("GET", "/api/v1/pools/tresor", ""); !strings.Contains(w.Body.String(), `"profile":"single"`) {
+		t.Fatalf("Profil nicht geändert: %s", w.Body)
+	}
+	if w := s.do("POST", "/api/v1/pools/tresor/btrfs/mount-degraded", ""); w.Code != 200 {
+		t.Fatalf("mount-degraded %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/pools/tresor/btrfs/reset-errors", ""); w.Code != 200 {
+		t.Fatalf("reset-errors %d %s", w.Code, w.Body)
+	}
+	if w := s.do("DELETE", "/api/v1/pools/tresor/btrfs/devices/d2", ""); w.Code != 400 {
+		t.Fatalf("entfernen ohne Bestätigung %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/pools/gibtsnicht/btrfs/balance", `{}`); w.Code != 404 {
+		t.Fatalf("unbekannter Pool %d", w.Code)
 	}
 	if w := s.do("DELETE", "/api/v1/pools/tresor", ""); w.Code != 400 {
 		t.Fatalf("löschen ohne Bestätigung %d %s", w.Code, w.Body)

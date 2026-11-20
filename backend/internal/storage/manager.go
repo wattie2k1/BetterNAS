@@ -182,6 +182,7 @@ type Manager struct {
 	tmu       sync.Mutex
 	tokens    map[string]formatToken
 	poolTokens map[string]poolToken // Bestätigungen für btrfs-Pools (unter tmu)
+	btrfsBusy  map[string]bool      // Pools mit laufender Wartung (unter tmu)
 	smart     map[string]smartEntry
 	// identifying: Platten-ID → Abbruchfunktion des laufenden Blinkens (unter tmu).
 	identifying  map[string]context.CancelFunc
@@ -205,7 +206,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps ...DependentsFunc) *Manager {
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
-		tokens: map[string]formatToken{}, poolTokens: map[string]poolToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, benchErr: map[string]string{}, erases: map[string]*Erase{}, erasePoll: 3 * time.Second, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
+		tokens: map[string]formatToken{}, poolTokens: map[string]poolToken{}, btrfsBusy: map[string]bool{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, benchErr: map[string]string{}, erases: map[string]*Erase{}, erasePoll: 3 * time.Second, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
 		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }
@@ -879,6 +880,9 @@ func (m *Manager) DeletePoolConfirm(ctx context.Context, actor, name, confirm st
 	pools, err := m.loadPools(ctx)
 	if err != nil {
 		return "", err
+	}
+	if m.isBtrfsBusy(name) {
+		return "", apierr.New(apierr.Conflict, "Auf dem Pool läuft gerade eine Wartung.")
 	}
 	var btrfsMembers []string
 	for _, p := range pools {

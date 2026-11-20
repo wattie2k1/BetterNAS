@@ -313,6 +313,62 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/replace", func(w http.ResponseWriter, r *http.Request) {
+		var in storage.BtrfsDiskInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		id, err := m.ReplaceBtrfsDisk(r.Context(), actor(r), r.PathValue("name"), in)
+		accepted(w, id, err)
+	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/devices", func(w http.ResponseWriter, r *http.Request) {
+		var in storage.BtrfsDiskInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		id, err := m.AddBtrfsDisk(r.Context(), actor(r), r.PathValue("name"), in)
+		accepted(w, id, err)
+	})
+	mux.HandleFunc("DELETE /api/v1/pools/{name}/btrfs/devices/{id}", func(w http.ResponseWriter, r *http.Request) {
+		in := storage.BtrfsDiskInput{DiskID: r.PathValue("id"), ConfirmName: r.URL.Query().Get("confirm")}
+		id, err := m.RemoveBtrfsDisk(r.Context(), actor(r), r.PathValue("name"), in)
+		accepted(w, id, err)
+	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/balance", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Usage int `json:"usage"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		id, err := m.BalanceBtrfs(r.Context(), actor(r), r.PathValue("name"), req.Usage)
+		accepted(w, id, err)
+	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/convert", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Profile     string `json:"profile"`
+			ConfirmName string `json:"confirmName"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		id, err := m.ConvertBtrfsProfile(r.Context(), actor(r), r.PathValue("name"), req.Profile, req.ConfirmName)
+		accepted(w, id, err)
+	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/mount-degraded", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.MountBtrfsDegraded(r.Context(), actor(r), r.PathValue("name")); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/reset-errors", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.ResetBtrfsErrors(r.Context(), actor(r), r.PathValue("name")); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("POST /api/v1/pools/preview", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Branches []string `json:"branches"`

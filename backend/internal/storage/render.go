@@ -78,10 +78,7 @@ WantedBy=multi-user.target %s
 // (udev-Regel „btrfs ready“). Fehlt eine Platte, hängt der Pool bewusst nicht von selbst ein.
 func renderBtrfsPool(p Pool) []byte {
 	device := EscapePath("/dev/disk/by-uuid/"+p.FSUUID) + ".device"
-	options := "noatime,nofail"
-	if p.Compress != "" {
-		options += ",compress=" + p.Compress
-	}
+	options := BtrfsMountOptions(p.Compress, false)
 	return []byte(fmt.Sprintf(`%s
 [Unit]
 Description=BetterNAS Pool %s (btrfs, %s)
@@ -95,4 +92,29 @@ Options=%s
 [Install]
 WantedBy=multi-user.target %s
 `, ManagedHeader, p.Name, p.Profile, p.FSUUID, PoolPath(p.Name), options, device))
+}
+
+// BtrfsMountOptions liefert die Mount-Optionen eines btrfs-Pools. degraded erlaubt das Einhängen mit fehlenden Platten.
+func BtrfsMountOptions(compress string, degraded bool) string {
+	o := "noatime,nofail"
+	if compress != "" {
+		o += ",compress=" + compress
+	}
+	if degraded {
+		o += ",degraded"
+	}
+	return o
+}
+
+// BtrfsMetadataProfile wählt das Metadaten-Profil zu einem Daten-Profil: Bei „single“ über mehrere Platten
+// liegen die Metadaten gespiegelt (raid1), damit der Ausfall einer Platte die übrigen Dateien nicht mitreißt;
+// bei einer einzelnen Platte dup. Alle anderen Profile gelten für Daten und Metadaten.
+func BtrfsMetadataProfile(profile string, disks int) string {
+	if profile != "single" {
+		return profile
+	}
+	if disks > 1 {
+		return "raid1"
+	}
+	return "dup"
 }
