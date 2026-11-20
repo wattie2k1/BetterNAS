@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Badge from 'primevue/badge'
 import Drawer from 'primevue/drawer'
+import Menu from 'primevue/menu'
 import Toast from 'primevue/toast'
 import { useAuthStore } from '@/stores/auth'
 import { useJobsStore, type Job } from '@/stores/jobs'
@@ -16,7 +17,9 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useBackupStore } from '@/stores/backup'
 import { connectEvents } from '@/api/ws'
 import JobsPanel from './JobsPanel.vue'
+import PowerDialog from './PowerDialog.vue'
 import PowerOverlay from './PowerOverlay.vue'
+import type { PowerAction } from '@/api/system'
 import NewDiskNotice from './storage/NewDiskNotice.vue'
 
 const auth = useAuthStore()
@@ -94,6 +97,15 @@ async function logout() {
   await auth.logout()
   router.replace({ name: 'login' })
 }
+
+const userMenu = ref<InstanceType<typeof Menu>>()
+const powerAction = ref<PowerAction | null>(null)
+const userItems = [
+  { label: 'Abmelden', icon: 'pi pi-sign-out', command: () => void logout() },
+  { separator: true },
+  { label: 'Neu starten', icon: 'pi pi-refresh', command: () => (powerAction.value = 'reboot') },
+  { label: 'Herunterfahren', icon: 'pi pi-power-off', command: () => (powerAction.value = 'poweroff') },
+]
 </script>
 
 <template>
@@ -127,9 +139,11 @@ async function logout() {
             <span class="avatar">{{ initial }}</span>
             <span class="name">{{ auth.user }}</span>
           </RouterLink>
-          <button class="logout" aria-label="Abmelden" title="Abmelden" @click="logout"><i class="pi pi-sign-out" /></button>
+          <button class="logout" data-test="user-menu" aria-label="Benutzermenü" aria-haspopup="true" title="Abmelden, Neustarten, Herunterfahren" @click="userMenu?.toggle($event)"><i class="pi pi-chevron-down" /></button>
+          <Menu ref="userMenu" :model="userItems" popup append-to="body" />
         </div>
       </header>
+      <PowerDialog v-model="powerAction" />
       <main class="content">
         <RouterView />
       </main>
