@@ -34,6 +34,8 @@ func (agentStub) Call(_ context.Context, method string, _, result any) error {
 		}
 	case "disk.format":
 		out = map[string]string{"fsUuid": "u1", "label": "bnas-1"}
+	case "pool.btrfs.create":
+		out = map[string]string{"fsUuid": "bu1", "label": "bnas-tresor"}
 	default:
 		out = map[string]any{}
 	}
@@ -175,4 +177,39 @@ func TestFormatPassesRole(t *testing.T) {
 	if w := s.do("POST", "/api/v1/pools", `{"name":"media","branches":["d1"]}`); w.Code != 400 {
 		t.Fatalf("pool with parity disk %d %s", w.Code, w.Body)
 	}
+}
+
+func TestBtrfsPoolRoutes(t *testing.T) {
+	s := newStorageAPI(t)
+	w := s.do("POST", "/api/v1/pools/preview", `{"branches":["d1","d2"]}`)
+	var p struct {
+		ConfirmToken string
+		Disks        []struct{ DiskID string }
+	}
+	json.Unmarshal(w.Body.Bytes(), &p)
+	if w.Code != 200 || p.ConfirmToken == "" || len(p.Disks) != 2 {
+		t.Fatalf("preview %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/pools/preview", `{"branches":[]}`); w.Code != 400 {
+		t.Fatalf("leer %d", w.Code)
+	}
+	if w := s.do("POST", "/api/v1/pools", `{"name":"tresor","type":"btrfs","profile":"raid1","branches":["d1","d2"],"confirmToken":"`+p.ConfirmToken+`","confirmName":"x"}`); w.Code != 400 {
+		t.Fatalf("falsche Bestätigung %d %s", w.Code, w.Body)
+	}
+	w = s.do("POST", "/api/v1/pools", `{"name":"tresor","type":"btrfs","profile":"raid1","branches":["d1","d2"],"confirmToken":"`+p.ConfirmToken+`","confirmName":"tresor"}`)
+	if w.Code != 202 {
+		t.Fatalf("create %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
+	if w := s.do("GET", "/api/v1/pools/tresor", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"type":"btrfs"`) || !strings.Contains(w.Body.String(), `"profile":"raid1"`) {
+		t.Fatalf("get %d %s", w.Code, w.Body)
+	}
+	if w := s.do("DELETE", "/api/v1/pools/tresor", ""); w.Code != 400 {
+		t.Fatalf("löschen ohne Bestätigung %d %s", w.Code, w.Body)
+	}
+	w = s.do("DELETE", "/api/v1/pools/tresor?confirm=tresor", "")
+	if w.Code != 202 {
+		t.Fatalf("löschen %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
 }

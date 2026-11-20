@@ -135,9 +135,15 @@ type FormatRequest struct {
 // PoolInput sind die Eingaben für Anlegen und Bearbeiten eines Pools.
 type PoolInput struct {
 	Name         string   `json:"name"`
+	Type         string   `json:"type,omitempty"` // mergerfs (Standard) | btrfs
 	Branches     []string `json:"branches"`
 	CreatePolicy string   `json:"createPolicy"`
 	MinFree      string   `json:"minFree"`
+	Profile      string   `json:"profile,omitempty"`  // nur btrfs
+	Compress     string   `json:"compress,omitempty"` // nur btrfs
+	// ConfirmToken und ConfirmName bestätigen das Anlegen eines btrfs-Pools (löscht die Platten).
+	ConfirmToken string `json:"confirmToken,omitempty"`
+	ConfirmName  string `json:"confirmName,omitempty"`
 }
 
 // PoolView ist ein Pool aus Sicht der Oberfläche.
@@ -173,6 +179,7 @@ type Manager struct {
 	stRunning atomic.Bool // ein Selbsttest-Lauf ist aktiv
 	tmu       sync.Mutex
 	tokens    map[string]formatToken
+	poolTokens map[string]poolToken // Bestätigungen für btrfs-Pools (unter tmu)
 	smart     map[string]smartEntry
 	// identifying: Platten-ID → Abbruchfunktion des laufenden Blinkens (unter tmu).
 	identifying  map[string]context.CancelFunc
@@ -196,7 +203,7 @@ type Manager struct {
 func NewManager(d *sql.DB, agent Agent, j *jobs.Manager, hub *events.Hub, deps ...DependentsFunc) *Manager {
 	return &Manager{
 		db: d, agent: agent, jobs: j, hub: hub, deps: deps,
-		tokens: map[string]formatToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, benchErr: map[string]string{}, erases: map[string]*Erase{}, erasePoll: 3 * time.Second, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
+		tokens: map[string]formatToken{}, poolTokens: map[string]poolToken{}, smart: map[string]smartEntry{}, identifying: map[string]context.CancelFunc{}, fsRunning: map[string]time.Time{}, benchErr: map[string]string{}, erases: map[string]*Erase{}, erasePoll: 3 * time.Second, fsPoll: 10 * time.Second, powerPrev: map[string]string{}, identifyFor: 30 * time.Second, identifyGap: time.Second,
 		now: time.Now, statfs: statfs, mounted: isMounted, pollEvery: 2 * time.Second, selfTestPoll: 30 * time.Second,
 	}
 }
@@ -248,7 +255,7 @@ func (m *Manager) loadDisks(ctx context.Context) (map[string]dbDisk, error) {
 }
 
 func (m *Manager) loadPools(ctx context.Context) ([]Pool, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT p.name, p.create_policy, p.min_free, COALESCE(b.disk_id, '')
+	rows, err := m.db.QueryContext(ctx, `SELECT p.name, p.create_policy, p.min_free, p.type, p.profile, p.fs_uuid, p.compress, COALESCE(b.disk_id, '')
 		FROM pools p LEFT JOIN pool_branches b ON b.pool_name = p.name ORDER BY p.name, b.position`)
 	if err != nil {
 		return nil, err
@@ -256,12 +263,12 @@ func (m *Manager) loadPools(ctx context.Context) ([]Pool, error) {
 	defer rows.Close()
 	var out []Pool
 	for rows.Next() {
-		var name, policy, minFree, disk string
-		if err := rows.Scan(&name, &policy, &minFree, &disk); err != nil {
+		var name, policy, minFree, typ, profile, fsUUID, compress, disk string
+		if err := rows.Scan(&name, &policy, &minFree, &typ, &profile, &fsUUID, &compress, &disk); err != nil {
 			return nil, err
 		}
 		if len(out) == 0 || out[len(out)-1].Name != name {
-			out = append(out, Pool{Name: name, CreatePolicy: policy, MinFree: minFree, Branches: []string{}})
+			out = append(out, Pool{Name: name, Type: typ, CreatePolicy: policy, MinFree: minFree, Profile: profile, FSUUID: fsUUID, Compress: compress, Branches: []string{}})
 		}
 		if disk != "" {
 			out[len(out)-1].Branches = append(out[len(out)-1].Branches, disk)
@@ -462,7 +469,7 @@ func (m *Manager) ListPools(ctx context.Context) ([]PoolView, error) {
 	out := []PoolView{}
 	for _, p := range pools {
 		c, enabled := sp[p.Name]
-		v := PoolView{PoolInput: PoolInput{Name: p.Name, Branches: p.Branches, CreatePolicy: p.CreatePolicy, MinFree: p.MinFree}, Path: PoolPath(p.Name), Snapraid: snapraidInputOf(c, enabled)}
+		v := PoolView{PoolInput: PoolInput{Name: p.Name, Type: cmpOr(p.Type, PoolMergerfs), Branches: p.Branches, CreatePolicy: p.CreatePolicy, MinFree: p.MinFree, Profile: p.Profile, Compress: p.Compress}, Path: PoolPath(p.Name), Snapraid: snapraidInputOf(c, enabled)}
 		v.Mounted = m.mounted(v.Path)
 		if v.Mounted {
 			v.SizeBytes, v.FreeBytes, _ = m.statfs(v.Path)
@@ -713,6 +720,9 @@ func (m *Manager) Release(ctx context.Context, actor, id string) (string, error)
 
 // validatePool prüft Eingaben gegen den aktuellen Zustand und liefert den neuen Zustand.
 func (m *Manager) validatePool(ctx context.Context, in PoolInput, replacing string) (State, error) {
+	if in.Type != "" && in.Type != PoolMergerfs {
+		return State{}, invalid("Dieser Pool-Typ kann hier nicht angelegt oder geändert werden: " + in.Type)
+	}
 	if in.CreatePolicy == "" {
 		in.CreatePolicy = DefaultPolicy
 	}
@@ -741,7 +751,7 @@ func (m *Manager) validatePool(ctx context.Context, in PoolInput, replacing stri
 		}
 	}
 	st.Pools = slices.DeleteFunc(st.Pools, func(p Pool) bool { return p.Name == replacing })
-	st.Pools = append(st.Pools, Pool{Name: in.Name, Branches: in.Branches, CreatePolicy: in.CreatePolicy, MinFree: in.MinFree})
+	st.Pools = append(st.Pools, Pool{Name: in.Name, Type: PoolMergerfs, Branches: in.Branches, CreatePolicy: in.CreatePolicy, MinFree: in.MinFree})
 	if err := st.Validate(); err != nil {
 		return State{}, err
 	}
@@ -750,8 +760,8 @@ func (m *Manager) validatePool(ctx context.Context, in PoolInput, replacing stri
 
 func writePool(ctx context.Context, tx *sql.Tx, p Pool, now time.Time, create bool) error {
 	if create {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO pools(name, create_policy, min_free, created_at) VALUES (?,?,?,?)`,
-			p.Name, p.CreatePolicy, p.MinFree, now.UTC().Format(time.RFC3339)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO pools(name, create_policy, min_free, type, profile, fs_uuid, compress, created_at) VALUES (?,?,?,?,?,?,?,?)`,
+			p.Name, p.CreatePolicy, p.MinFree, cmpOr(p.Type, PoolMergerfs), p.Profile, p.FSUUID, p.Compress, now.UTC().Format(time.RFC3339)); err != nil {
 			return err
 		}
 	} else {
@@ -779,8 +789,11 @@ func findPool(st State, name string) Pool {
 	return Pool{}
 }
 
-// CreatePool legt einen mergerfs-Pool an.
+// CreatePool legt einen Pool an (mergerfs; btrfs siehe createBtrfsPool).
 func (m *Manager) CreatePool(ctx context.Context, actor string, in PoolInput) (string, error) {
+	if in.Type == PoolBtrfs {
+		return m.createBtrfsPool(ctx, actor, in)
+	}
 	if _, err := m.validatePool(ctx, in, ""); err != nil {
 		return "", err
 	}
@@ -813,6 +826,9 @@ func (m *Manager) UpdatePool(ctx context.Context, actor, name string, in PoolInp
 	if err := m.poolExists(ctx, name); err != nil {
 		return "", err
 	}
+	if err := m.rejectBtrfs(ctx, name, "Ein btrfs-Pool kann noch nicht nachträglich geändert werden."); err != nil {
+		return "", err
+	}
 	in.Name = name
 	if _, err := m.validatePool(ctx, in, name); err != nil {
 		return "", err
@@ -841,8 +857,27 @@ func (m *Manager) UpdatePool(ctx context.Context, actor, name string, in PoolInp
 
 // DeletePool entfernt einen Pool. Die Daten auf den Platten bleiben erhalten.
 func (m *Manager) DeletePool(ctx context.Context, actor, name string) (string, error) {
+	return m.DeletePoolConfirm(ctx, actor, name, "")
+}
+
+// DeletePoolConfirm entfernt einen Pool. Bei einem btrfs-Pool muss confirm der Poolname sein: die Platten
+// werden freigegeben, das gemeinsame Dateisystem lässt sich danach nicht mehr einzeln einhängen.
+func (m *Manager) DeletePoolConfirm(ctx context.Context, actor, name, confirm string) (string, error) {
 	if err := m.poolExists(ctx, name); err != nil {
 		return "", err
+	}
+	pools, err := m.loadPools(ctx)
+	if err != nil {
+		return "", err
+	}
+	var btrfsMembers []string
+	for _, p := range pools {
+		if p.Name == name && p.IsBtrfs() {
+			if confirm != name {
+				return "", invalid("Zur Bestätigung den Poolnamen eingeben. Die Platten werden freigegeben, die Daten sind danach nicht mehr erreichbar.")
+			}
+			btrfsMembers = p.Branches
+		}
 	}
 	var dependents []string
 	for _, f := range m.deps {
@@ -861,6 +896,7 @@ func (m *Manager) DeletePool(ctx context.Context, actor, name string) (string, e
 			return err
 		}
 		st.Pools = slices.DeleteFunc(st.Pools, func(p Pool) bool { return p.Name == name })
+		st.Disks = slices.DeleteFunc(st.Disks, func(d DiskMount) bool { return slices.Contains(btrfsMembers, d.DiskID) })
 		if all, err := m.loadSnapraid(ctx); err != nil {
 			return err
 		} else if _, ok := all[name]; ok {
@@ -871,8 +907,15 @@ func (m *Manager) DeletePool(ctx context.Context, actor, name string) (string, e
 		}
 		log.Printf("Entferne Pool %s …", name)
 		return m.applyAndCommit(ctx, log, st, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `DELETE FROM pools WHERE name = ?`, name)
-			return err
+			if _, err := tx.ExecContext(ctx, `DELETE FROM pools WHERE name = ?`, name); err != nil {
+				return err
+			}
+			for _, id := range btrfsMembers {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM disks WHERE id = ?`, id); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 	}), nil
 }

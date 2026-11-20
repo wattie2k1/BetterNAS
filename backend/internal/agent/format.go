@@ -49,26 +49,9 @@ func Format(ctx context.Context, d Deps, req FormatRequest) (FormatResult, error
 		return FormatResult{}, apierr.New(apierr.Conflict, "Der Datenträger ist eingehängt: "+strings.Join(disk.Mountpoints(), ", "))
 	}
 
-	dev := disk.Device
-	steps := [][]string{
-		{"wipefs", "--all", dev},
-		{"sgdisk", "--zap-all", dev},
-		{"sgdisk", "--new=1:0:0", "--typecode=1:8300", "--change-name=1:bnas-data", dev},
-		{"partprobe", dev},
-		{"udevadm", "settle"},
-	}
-	for _, s := range steps {
-		if _, err := run(ctx, d.Runner, nil, s[0], s[1:]...); err != nil {
-			return FormatResult{}, err
-		}
-	}
-	out, err := run(ctx, d.Runner, nil, "lsblk", "--json", "--bytes", "-o", "PATH,TYPE", dev)
+	part, err := partitionDisk(ctx, d, disk.Device)
 	if err != nil {
 		return FormatResult{}, err
-	}
-	part := firstPartition(out)
-	if part == "" {
-		return FormatResult{}, apierr.New(apierr.Internal, "Neue Partition wurde nicht gefunden")
 	}
 	label := storage.FSLabel(disk.ID)
 	if req.FSType == "xfs" {
@@ -112,4 +95,30 @@ func firstPartition(lsblkJSON []byte) string {
 		return ""
 	}
 	return walk(doc.Blockdevices)
+}
+
+// partitionDisk löscht alle Signaturen und Partitionen der Platte und legt eine einzelne Datenpartition an.
+// Es liefert den Pfad der neuen Partition.
+func partitionDisk(ctx context.Context, d Deps, dev string) (string, error) {
+	steps := [][]string{
+		{"wipefs", "--all", dev},
+		{"sgdisk", "--zap-all", dev},
+		{"sgdisk", "--new=1:0:0", "--typecode=1:8300", "--change-name=1:bnas-data", dev},
+		{"partprobe", dev},
+		{"udevadm", "settle"},
+	}
+	for _, s := range steps {
+		if _, err := run(ctx, d.Runner, nil, s[0], s[1:]...); err != nil {
+			return "", err
+		}
+	}
+	out, err := run(ctx, d.Runner, nil, "lsblk", "--json", "--bytes", "-o", "PATH,TYPE", dev)
+	if err != nil {
+		return "", err
+	}
+	part := firstPartition(out)
+	if part == "" {
+		return "", apierr.New(apierr.Internal, "Neue Partition wurde nicht gefunden")
+	}
+	return part, nil
 }

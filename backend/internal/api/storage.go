@@ -289,6 +289,20 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		apierr.Write(w, apierr.New(apierr.NotFound, "Pool nicht gefunden"))
 	})
+	mux.HandleFunc("POST /api/v1/pools/preview", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Branches []string `json:"branches"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		p, err := m.PreviewBtrfsPool(r.Context(), req.Branches)
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	})
 	mux.HandleFunc("POST /api/v1/pools", func(w http.ResponseWriter, r *http.Request) {
 		var in storage.PoolInput
 		if !decodeBody(w, r, &in) {
@@ -306,7 +320,7 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		accepted(w, id, err)
 	})
 	mux.HandleFunc("DELETE /api/v1/pools/{name}", func(w http.ResponseWriter, r *http.Request) {
-		id, err := m.DeletePool(r.Context(), actor(r), r.PathValue("name"))
+		id, err := m.DeletePoolConfirm(r.Context(), actor(r), r.PathValue("name"), r.URL.Query().Get("confirm"))
 		accepted(w, id, err)
 	})
 }

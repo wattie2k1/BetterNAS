@@ -25,6 +25,7 @@ type fakeAgent struct {
 	disks    []Disk
 	calls    []string
 	applied  []State
+	btrfsReqs []BtrfsCreateRequest
 	applyErr error
 
 	snapApplied []snapraid.State
@@ -167,6 +168,12 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			return apierr.New(apierr.Conflict, "Diese Platte unterstützt keinen Ruhezustand")
 		}
 		out = map[string]bool{"ok": true}
+	case "pool.btrfs.create":
+		b, _ := json.Marshal(params)
+		var req BtrfsCreateRequest
+		json.Unmarshal(b, &req)
+		f.btrfsReqs = append(f.btrfsReqs, req)
+		out = BtrfsCreateResult{FSUUID: "btrfs-uuid-1", Label: BtrfsLabel(req.Name)}
 	case "disk.format":
 		out = map[string]string{"partition": "/dev/sdb1", "fsUuid": "new-uuid", "fsType": "ext4", "label": "bnas-x"}
 	case "snapraid.apply":

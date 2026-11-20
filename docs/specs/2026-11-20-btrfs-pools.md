@@ -99,9 +99,10 @@ Options=noatime,nofail[,compress=zstd:3]
 WantedBy=multi-user.target <geräte-unit je Mitglied>
 ```
 
-- `WantedBy` zeigt auf die `.device`-Units aller Mitglieder (wie bisher bei einzelnen Platten), damit
-  ein zurückkehrendes Mitglied den Pool nachträglich einhängt. Die udev-Regel aus `btrfs-progs`
-  (`btrfs ready`) sorgt dafür, dass das Gerät erst „fertig" meldet, wenn alle Mitglieder da sind.
+- `WantedBy` zeigt auf die `.device`-Unit der gemeinsamen Dateisystem-UUID (alle Mitglieder tragen
+  dieselbe UUID). Die udev-Regel aus `btrfs-progs` (`btrfs ready`) sorgt dafür, dass das Gerät erst
+  „fertig" meldet, wenn alle Mitglieder da sind. Das Einhängen startet damit erst, wenn der Pool
+  vollständig ist; fehlt eine Platte, bleibt der Pool bewusst aus (siehe Leitentscheidung 4).
 - Leerer Einhängeordner bleibt `chattr +i`.
 - Der Renderer braucht dafür Zugriff auf die Mitglieder-UUIDs nur für die Geräte-Units; die
   Pool-UUID kommt aus `Pool.FSUUID`.
@@ -110,7 +111,7 @@ WantedBy=multi-user.target <geräte-unit je Mitglied>
 
 | RPC | Aktion |
 |---|---|
-| `pool.btrfs.create` | Mitglieder wipen und partitionieren (wie `Format`: `wipefs`, `sgdisk`, Partition `bnas-data`), dann `mkfs.btrfs -f -L bnas-<name> -d <profil> -m <profil> <partitionen…>`; liefert `fsUuid` und je Platte die Partition |
+| `pool.btrfs.create` | Mitglieder wipen und partitionieren (wie `Format`: `wipefs`, `sgdisk`, Partition `bnas-data`), dann `mkfs.btrfs -f -L bnas-<name> -d <profil> -m <meta> <partitionen…>`; Metadaten = Profil, bei `single` über mehrere Platten `raid1` (einzelne Platte: `dup`); liefert `fsUuid` und Label |
 | `pool.btrfs.status` | `btrfs filesystem show`, `btrfs filesystem usage -b`, `btrfs device stats`: Mitglieder, fehlende Geräte, Fehlerzähler, genutzt/frei/Rohkapazität, Profile |
 | `pool.btrfs.mountdegraded` | `mount -o degraded` für diesen einen Pool (Audit-Eintrag, kein Dauerzustand) |
 | `pool.btrfs.replace` | `btrfs replace start -B <alt|devid> /dev/neu /srv/pools/<name>`; Fortschritt per `btrfs replace status` |
