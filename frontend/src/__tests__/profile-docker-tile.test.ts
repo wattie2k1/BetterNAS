@@ -61,7 +61,10 @@ describe('QuickTiles', () => {
   it('zeigt je Container und VM eine Kachel', async () => {
     const { default: QuickTiles } = await import('@/components/QuickTiles.vue')
     const containers = [{ id: 'a', name: 'web', image: 'nginx', state: 'running', status: 'Up 3 hours', stack: 'site', ports: ['0.0.0.0:8080->80/tcp'], created: '' }]
-    const vms = [{ name: 'win11', uuid: 'u1', state: 'shutoff', vcpus: 2, memoryMiB: 4096, autostart: false, disks: [] }]
+    const vms = [
+      { name: 'win11', uuid: 'u1', state: 'shutoff', vcpus: 2, memoryMiB: 4096, autostart: false, disks: [] },
+      { name: 'homeassistant', uuid: 'u2', state: 'running', vcpus: 2, memoryMiB: 2048, autostart: true, disks: [], uptimeSeconds: 3 * 3600 + 120 },
+    ]
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (url: string) => {
@@ -85,6 +88,8 @@ describe('QuickTiles', () => {
     expect(w.find('[data-test="quick-container-web"]').text()).not.toContain('running')
     expect(w.find('[data-test="quick-vm-status-win11"]').classes()).toContain('bad')
     expect(w.find('[data-test="quick-vm-status-win11"]').attributes('aria-label')).toBe('aus')
+    expect(w.find('[data-test="quick-vm-up-homeassistant"]').text()).toBe('Up 3 hours')
+    expect(w.find('[data-test="quick-vm-win11"]').text()).toContain('VM')
     const link = w.find('[data-test="quick-container-open-web"]')
     expect(link.element.tagName).toBe('A')
     expect(link.attributes('href')).toBe(`http://${window.location.hostname}:8080/`)

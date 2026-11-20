@@ -18,3 +18,14 @@ describe('formatUptime', () => {
     expect(formatUptime(86400)).toBe('1 Tag 0 Std.')
   })
 })
+
+import { formatUpFor } from '@/utils/format'
+describe('formatUpFor', () => {
+  it('nutzt den Docker-Stil', () => {
+    expect(formatUpFor(1)).toBe('Up 1 second')
+    expect(formatUpFor(300)).toBe('Up 5 minutes')
+    expect(formatUpFor(3600)).toBe('Up 1 hour')
+    expect(formatUpFor(10800)).toBe('Up 3 hours')
+    expect(formatUpFor(3 * 86400)).toBe('Up 3 days')
+  })
+})

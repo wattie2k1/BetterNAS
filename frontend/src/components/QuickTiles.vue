@@ -10,6 +10,7 @@ import { useDockerStore } from '@/stores/docker'
 import { useVmsStore } from '@/stores/vms'
 import type { ContainerAction, ContainerInfo, StackCheck, StackFiles } from '@/api/docker'
 import type { VmAction, VmInfo } from '@/api/vms'
+import { formatUpFor } from '@/utils/format'
 import { moveTile, shiftTile, useTileOrder } from '@/utils/tileOrder'
 
 /** Im Bearbeiten-Modus lassen sich die Kacheln verschieben; sonst sind sie nur Verknüpfungen. */
@@ -234,7 +235,8 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
             </span>
             <span class="app-text">
               <strong>{{ e.item.name }}</strong>
-              <small>VM<template v-if="e.item.state !== 'running' && e.item.state !== 'shutoff'"> · {{ vmLabel[e.item.state] ?? e.item.state }}</template></small>
+              <small v-if="e.item.state === 'running' && e.item.uptimeSeconds" :data-test="`quick-vm-up-${e.item.name}`">{{ formatUpFor(e.item.uptimeSeconds) }}</small>
+              <small v-else>VM<template v-if="e.item.state !== 'running' && e.item.state !== 'shutoff'"> · {{ vmLabel[e.item.state] ?? e.item.state }}</template></small>
             </span>
           </component>
           <span class="status" :class="e.item.state === 'running' ? 'ok' : 'bad'" role="img" :aria-label="vmLabel[e.item.state] ?? e.item.state" :title="vmLabel[e.item.state] ?? e.item.state" :data-test="`quick-vm-status-${e.item.name}`" />

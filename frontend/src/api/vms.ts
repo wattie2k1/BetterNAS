@@ -17,6 +17,8 @@ export interface VmInfo {
   memoryMiB: number
   autostart: boolean
   disks: string[]
+  /** Laufzeit in Sekunden (nur bei laufenden VMs, sonst fehlend). */
+  uptimeSeconds?: number
   /** Version des VM-Icons (leer = keins); Cache-Schlüssel der Icon-Adresse. */
   icon?: string
 }

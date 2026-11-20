@@ -27,3 +27,14 @@ export function formatDateTime(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
 }
+
+/** Laufzeit im Stil der Docker-Statuszeile („Up 3 hours“). */
+export function formatUpFor(seconds: number): string {
+  const unit = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+  if (seconds < 60) return `Up ${unit(Math.floor(seconds), 'second')}`
+  const min = Math.floor(seconds / 60)
+  if (min < 60) return `Up ${unit(min, 'minute')}`
+  const h = Math.floor(min / 60)
+  if (h < 48) return `Up ${unit(h, 'hour')}`
+  return `Up ${unit(Math.floor(h / 24), 'day')}`
+}

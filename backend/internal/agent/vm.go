@@ -95,10 +95,34 @@ func ListVMs(ctx context.Context, d Deps) ([]vm.VM, error) {
 		}
 		v.Name = name
 		v.Disks = domainDisks(ctx, d, name)
+		if v.State == "running" {
+			v.UptimeSeconds = domainUptime(ctx, d, name)
+		}
 		list = append(list, v)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 	return list, nil
+}
+
+// domainUptime liefert die Laufzeit des QEMU-Prozesses einer VM in Sekunden (0 = unbekannt).
+func domainUptime(ctx context.Context, d Deps, name string) int64 {
+	raw, err := d.FS.ReadFile("/run/libvirt/qemu/" + name + ".pid")
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 0 {
+		return 0
+	}
+	res, err := d.Runner.Run(ctx, nil, "ps", "-o", "etimes=", "-p", strconv.Itoa(pid))
+	if err != nil || res.ExitCode != 0 {
+		return 0
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(string(res.Stdout)), 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 // VMNetworks liefert die aktiven libvirt-Netze.

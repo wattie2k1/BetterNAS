@@ -124,6 +124,8 @@ type VM struct {
 	MemoryMiB int      `json:"memoryMiB"`
 	Autostart bool     `json:"autostart"`
 	Disks     []string `json:"disks"`
+	// UptimeSeconds ist die Laufzeit seit dem Start des QEMU-Prozesses (0 = nicht laufend/unbekannt).
+	UptimeSeconds int64 `json:"uptimeSeconds,omitempty"`
 	// Icon ist die Version des VM-Icons (leer = keins); wird vom Manager ergänzt.
 	Icon string `json:"icon,omitempty"`
 }

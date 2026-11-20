@@ -79,6 +79,24 @@ func TestVMList(t *testing.T) {
 	}
 }
 
+func TestVMListUptime(t *testing.T) {
+	d, f, root := vmEnv(t)
+	f.Responses[v+"list --all --name"] = sysexec.Result{Stdout: []byte("debian\n")}
+	f.Responses[v+"dominfo debian"] = sysexec.Result{Stdout: []byte("Name: debian\nState: running\n")}
+	f.Responses["ps -o etimes= -p 4242"] = sysexec.Result{Stdout: []byte("  7200\n")}
+	full := filepath.Join(root, "/run/libvirt/qemu/debian.pid")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("4242\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := ListVMs(context.Background(), d)
+	if len(list) != 1 || list[0].UptimeSeconds != 7200 {
+		t.Fatalf("%+v", list)
+	}
+}
+
 func TestCreateBuildsDiskAndDomain(t *testing.T) {
 	d, f, _ := vmEnv(t)
 	if err := VMCreate(context.Background(), d, okVMSpec(), true); err != nil {
