@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/betternas/betternas/internal/apierr"
+	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/sysexec"
 )
 
@@ -189,5 +190,77 @@ func TestCreateFolderConflictWhenExists(t *testing.T) {
 	}
 	if _, err := CreateFolder(context.Background(), d, "/srv/pools/tank", "da"); code(err) != apierr.Conflict {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestListFoldersRootsIncludeDisks(t *testing.T) {
+	d, _ := folderEnv(t, map[string]string{}, map[string]string{})
+	_ = d.FS.MkdirAll("/srv/disks", 0o755)
+	roots, err := ListFolders(context.Background(), d, "")
+	var got []string
+	for _, r := range roots.Dirs {
+		got = append(got, r.Path)
+	}
+	if err != nil || strings.Join(got, ",") != "/srv/pools,/srv/disks,/srv/appdata" {
+		t.Fatalf("%v %v", got, err)
+	}
+}
+
+func configuredPaths(t *testing.T) {
+	t.Helper()
+	p := docker.Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
+	curPaths.Store(&p)
+}
+
+func TestListFoldersHidesReservedUnderBothRoots(t *testing.T) {
+	d, _ := folderEnv(t, map[string]string{"/srv/pools/a/cfg": "/srv/pools/a/cfg", "/srv/pools/b/dd": "/srv/pools/b/dd"},
+		map[string]string{"/srv/pools/a/cfg": "stacks\x00backups\x00reverse-proxy\x00emby\x00docker\x00", "/srv/pools/b/dd": "docker\x00stacks\x00emby\x00"})
+	configuredPaths(t)
+	for root, want := range map[string]string{"/srv/pools/a/cfg": "docker,emby", "/srv/pools/b/dd": "emby,stacks"} {
+		l, err := ListFolders(context.Background(), d, root)
+		var names []string
+		for _, f := range l.Dirs {
+			names = append(names, f.Name)
+		}
+		if err != nil || strings.Join(names, ",") != want {
+			t.Errorf("%s: %v %v", root, names, err)
+		}
+	}
+}
+
+func TestCreateFolderInDisksAndConfiguredRoots(t *testing.T) {
+	d, f := mkdirEnv(t, map[string]string{"/srv/disks/ab": "/srv/disks/ab", "/srv/pools/b/dd": "/srv/pools/b/dd"})
+	configuredPaths(t)
+	ctx := context.Background()
+	if _, err := CreateFolder(ctx, d, "/srv/disks/ab", "daten"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateFolder(ctx, d, "/srv/pools/b/dd", "emby"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateFolder(ctx, d, "/srv/pools/b/dd", "docker"); err == nil {
+		t.Fatal("reservierter Name unter dockerdata akzeptiert")
+	}
+	if !f.Called("mkdir -m 755 -- /srv/disks/ab/daten") {
+		t.Fatalf("%v", f.Calls)
+	}
+}
+
+func TestCreateFolderRefusesRootsThemselves(t *testing.T) {
+	d, _ := mkdirEnv(t, map[string]string{"/srv/pools": "/srv/pools", "/srv/disks": "/srv/disks"})
+	for _, p := range []string{"/srv/pools", "/srv/disks"} {
+		if _, err := CreateFolder(context.Background(), d, p, "x"); err == nil {
+			t.Errorf("%s akzeptiert", p)
+		}
+	}
+}
+
+func TestFolderRPCsWorkWhenNotConfigured(t *testing.T) {
+	d, _ := folderEnv(t, map[string]string{"/srv/pools/tank": "/srv/pools/tank"}, map[string]string{"/srv/pools/tank": "Medien\x00"})
+	resetPaths(t)
+	c := rpcClient(t, d) // initPaths: nicht eingerichtet
+	var l docker.FolderList
+	if err := c.Call(context.Background(), "folder.list", map[string]string{"path": "/srv/pools/tank"}, &l); err != nil || len(l.Dirs) != 1 {
+		t.Fatalf("%+v %v", l, err)
 	}
 }

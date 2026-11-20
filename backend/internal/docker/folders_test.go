@@ -16,8 +16,14 @@ func TestCleanFolder(t *testing.T) {
 			t.Errorf("CleanFolder(%q) = %q, %v; erwartet %q", in, got, err, want)
 		}
 	}
+	// Nur die Syntax wird geprüft; welche Wurzeln erlaubt sind, entscheidet der Agent.
+	for in, want := range map[string]string{"/etc": "/etc", "/srv": "/srv"} {
+		if got, err := CleanFolder(in); err != nil || got != want {
+			t.Errorf("CleanFolder(%q) = %q, %v", in, got, err)
+		}
+	}
 	for _, bad := range []string{
-		"/", "/etc", "/srv", "/srv/poolsx", "/srv/pools/../../etc", "/srv/pools/a/../../../etc", "srv/pools", "pools",
+		"/srv/pools/../../etc", "/srv/pools/a/../../../etc", "srv/pools", "pools",
 		"/srv/pools/a\x00b", "/srv/appdata/../pools2", "/srv/pools/..",
 	} {
 		if got, err := CleanFolder(bad); err == nil {

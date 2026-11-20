@@ -14,8 +14,51 @@ import (
 
 const maxFolders = 500
 
-// hiddenAppdata sind Ordner in /srv/appdata, die BetterNAS selbst gehören und nicht für Container gedacht sind.
-var hiddenAppdata = map[string]bool{"docker": true, "stacks": true}
+var errFolderOutside = apierr.New(apierr.InvalidParams, "Ungültiger Ordnerpfad (erlaubt: Ordner in Pools, auf Platten und in den Docker-Speicherorten)")
+
+var folderRootsFixed = []string{"/srv/pools", "/srv/disks"}
+
+// folderRoots sind die Wurzeln der Ordnerauswahl: Pools, Platten und die eingerichteten Docker-Speicherorte
+// (soweit sie nicht ohnehin darunter liegen).
+func folderRoots() []string {
+	roots := append([]string{}, folderRootsFixed...)
+	if p := curPaths.Load(); p != nil {
+		for _, r := range []string{p.Appdata, p.Dockerdata} {
+			if !underAny(folderRootsFixed, r) && !underAny(roots[len(folderRootsFixed):], r) {
+				roots = append(roots, r)
+			}
+		}
+	}
+	return roots
+}
+
+func isFolderRoot(p string) bool {
+	for _, r := range folderRoots() {
+		if p == r {
+			return true
+		}
+	}
+	return false
+}
+
+func underAny(roots []string, p string) bool {
+	for _, r := range roots {
+		if p == r || strings.HasPrefix(p, r+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// underFolderRoot sagt, ob p eine Wurzel oder ein Pfad darunter ist (p muss bereinigt sein).
+func underFolderRoot(p string) bool {
+	for _, r := range folderRoots() {
+		if p == r || strings.HasPrefix(p, r+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 // ListFolders liefert die Unterordner von p (leer: die Wurzeln). Symbolische Links, die aus den erlaubten
 // Wurzeln hinausführen, werden abgelehnt; versteckte Ordner (Punkt am Anfang) werden nicht angezeigt.
@@ -24,16 +67,19 @@ func ListFolders(ctx context.Context, d Deps, p string) (docker.FolderList, erro
 	if err != nil {
 		return docker.FolderList{}, err
 	}
+	if p != "" && !underFolderRoot(p) {
+		return docker.FolderList{}, errFolderOutside
+	}
 	out := docker.FolderList{Path: p, Dirs: []docker.Folder{}}
 	if p == "" {
-		for _, r := range docker.FolderRoots {
+		for _, r := range folderRoots() {
 			if d.FS.Exists(r) {
 				out.Dirs = append(out.Dirs, docker.Folder{Name: path.Base(r), Path: r})
 			}
 		}
 		return out, nil
 	}
-	if !docker.IsFolderRoot(p) {
+	if !isFolderRoot(p) {
 		out.Parent = path.Dir(p)
 	}
 	res, err := d.Runner.Run(ctx, nil, "realpath", "-e", "--", p)
@@ -41,7 +87,7 @@ func ListFolders(ctx context.Context, d Deps, p string) (docker.FolderList, erro
 		return out, apierr.New(apierr.NotFound, "Ordner nicht gefunden")
 	}
 	real := strings.TrimSpace(string(res.Stdout))
-	if !docker.UnderFolderRoot(real) {
+	if !underFolderRoot(real) {
 		return out, apierr.New(apierr.InvalidParams, "Der Ordner liegt außerhalb der erlaubten Bereiche")
 	}
 	res, err = d.Runner.Run(ctx, nil, "find", real, "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-printf", `%f\0`)
@@ -52,7 +98,7 @@ func ListFolders(ctx context.Context, d Deps, p string) (docker.FolderList, erro
 	for _, n := range strings.Split(string(res.Stdout), "\x00") {
 		switch {
 		case n == "", strings.HasPrefix(n, "."), n == "lost+found", strings.ContainsAny(n, "\n\r"):
-		case p == "/srv/appdata" && hiddenAppdata[n]:
+		case reservedFolder(path.Join(p, n)):
 		default:
 			names = append(names, n)
 		}
@@ -96,15 +142,24 @@ var folderNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+@-]{0,63}$`)
 
 // reservedFolder sagt, ob ein (aufgelöster) Pfad zu den Bereichen gehört, die BetterNAS selbst verwaltet.
 func reservedFolder(p string) bool {
-	if rest, ok := strings.CutPrefix(p, "/srv/appdata/"); ok {
-		first, _, _ := strings.Cut(rest, "/")
-		return reservedAppdata[first]
+	cur := curPaths.Load()
+	if cur == nil {
+		return false
+	}
+	for _, root := range []string{cur.Appdata, cur.Dockerdata} {
+		if rest, ok := strings.CutPrefix(p, root+"/"); ok {
+			first, _, _ := strings.Cut(rest, "/")
+			if cur.Reserved(root, first) {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-// CreateFolder legt einen Ordner unterhalb von parent an. Erlaubt ist das in /srv/appdata und innerhalb eines Pools,
-// nicht in der Pool-Übersicht selbst (Pools entstehen unter „Speicherpools“) und nicht in den BetterNAS-Bereichen.
+// CreateFolder legt einen Ordner unterhalb von parent an. Erlaubt ist das in den Docker-Speicherorten, in Pools und
+// auf Platten, nicht in /srv/pools oder /srv/disks selbst (Pools entstehen unter „Speicherpools“) und nicht in den
+// BetterNAS-Bereichen.
 func CreateFolder(ctx context.Context, d Deps, parent, name string) (docker.Folder, error) {
 	parent, err := docker.CleanFolder(parent)
 	if err != nil {
@@ -113,13 +168,16 @@ func CreateFolder(ctx context.Context, d Deps, parent, name string) (docker.Fold
 	if parent == "" {
 		return docker.Folder{}, apierr.New(apierr.InvalidParams, "Wähle zuerst einen Bereich, in dem der Ordner angelegt werden soll.")
 	}
+	if !underFolderRoot(parent) {
+		return docker.Folder{}, errFolderOutside
+	}
 	if !folderNameRe.MatchString(name) || name == "lost+found" {
 		return docker.Folder{}, apierr.New(apierr.InvalidParams, "Ungültiger Ordnername (erlaubt: Buchstaben ohne Umlaute, Ziffern und _ . + @ -, höchstens 64 Zeichen).")
 	}
-	if parent == "/srv/pools" {
-		return docker.Folder{}, apierr.New(apierr.InvalidParams, "Hier lassen sich keine Ordner anlegen; öffne zuerst einen Pool.")
+	if parent == "/srv/pools" || parent == "/srv/disks" {
+		return docker.Folder{}, apierr.New(apierr.InvalidParams, "Hier lassen sich keine Ordner anlegen; öffne zuerst einen Pool oder eine Platte.")
 	}
-	if parent == appdataRoot && reservedAppdata[name] {
+	if reservedFolder(path.Join(parent, name)) {
 		return docker.Folder{}, apierr.New(apierr.InvalidParams, "Dieser Name ist für BetterNAS reserviert.")
 	}
 	res, err := d.Runner.Run(ctx, nil, "realpath", "-e", "--", parent)
@@ -127,7 +185,7 @@ func CreateFolder(ctx context.Context, d Deps, parent, name string) (docker.Fold
 		return docker.Folder{}, apierr.New(apierr.NotFound, "Der übergeordnete Ordner wurde nicht gefunden.")
 	}
 	real := strings.TrimSpace(string(res.Stdout))
-	if !docker.UnderFolderRoot(real) || real == "/srv/pools" || reservedFolder(real) || reservedFolder(parent) {
+	if !underFolderRoot(real) || real == "/srv/pools" || real == "/srv/disks" || reservedFolder(real) || reservedFolder(parent) {
 		return docker.Folder{}, apierr.New(apierr.InvalidParams, "In diesem Bereich lassen sich keine Ordner anlegen.")
 	}
 	if d.FS.Exists(path.Join(real, name)) {

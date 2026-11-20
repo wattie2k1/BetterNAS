@@ -257,7 +257,7 @@ func (m *Manager) RunStackOpts(ctx context.Context, actor, name, action string, 
 	}), nil
 }
 
-// Folders liefert die Unterordner von p für die Ordnerauswahl (leer: die Wurzeln /srv/pools und /srv/appdata).
+// Folders liefert die Unterordner von p für die Ordnerauswahl (leer: die Wurzeln).
 func (m *Manager) Folders(ctx context.Context, p string) (FolderList, error) {
 	c, err := CleanFolder(p)
 	if err != nil {
