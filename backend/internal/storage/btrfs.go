@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/betternas/betternas/internal/apierr"
+	"github.com/betternas/betternas/internal/audit"
+	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/jobs"
 )
 
@@ -202,4 +204,76 @@ func (m *Manager) poolNameFree(ctx context.Context, name string) error {
 		return apierr.New(apierr.Conflict, "Ein Pool mit diesem Namen existiert bereits")
 	}
 	return nil
+}
+
+// findBtrfsPool liefert den btrfs-Pool name oder einen passenden Fehler.
+func (m *Manager) findBtrfsPool(ctx context.Context, name string) (Pool, error) {
+	pools, err := m.loadPools(ctx)
+	if err != nil {
+		return Pool{}, err
+	}
+	for _, p := range pools {
+		if p.Name == name {
+			if !p.IsBtrfs() {
+				return Pool{}, apierr.New(apierr.Conflict, "Das ist kein btrfs-Pool")
+			}
+			return p, nil
+		}
+	}
+	return Pool{}, apierr.New(apierr.NotFound, "Pool nicht gefunden")
+}
+
+// btrfsStatus fragt den Agent und ergänzt BetterNAS-Kennungen und fehlende Mitglieder.
+func (m *Manager) btrfsStatus(ctx context.Context, p Pool) (BtrfsStatus, error) {
+	var st BtrfsStatus
+	if err := m.agent.Call(ctx, "pool.btrfs.status", map[string]string{"name": p.Name, "fsUuid": p.FSUUID}, &st); err != nil {
+		return BtrfsStatus{}, err
+	}
+	if live, err := m.liveDisks(ctx); err == nil {
+		for i, d := range st.Devices {
+			for _, ld := range live {
+				if d.Path != "" && slices.ContainsFunc(ld.Partitions, func(pt Partition) bool { return pt.Device == d.Path }) {
+					st.Devices[i].DiskID = ld.ID
+				}
+			}
+		}
+	}
+	// Mitglieder, die btrfs gar nicht mehr auflistet, zählen als fehlend.
+	present := 0
+	for _, d := range st.Devices {
+		if !d.Missing {
+			present++
+		}
+	}
+	if gap := len(p.Branches) - present; gap > st.Missing {
+		st.Missing = gap
+	}
+	st.Degraded = st.Missing > 0
+	return st, nil
+}
+
+// BtrfsStatus liefert Zustand, Platten, Fehlerzähler und Prüfung eines btrfs-Pools.
+func (m *Manager) BtrfsStatus(ctx context.Context, name string) (BtrfsStatus, error) {
+	p, err := m.findBtrfsPool(ctx, name)
+	if err != nil {
+		return BtrfsStatus{}, err
+	}
+	return m.btrfsStatus(ctx, p)
+}
+
+// BtrfsScrub startet oder bricht die Prüfung eines btrfs-Pools ab (action: start | cancel).
+func (m *Manager) BtrfsScrub(ctx context.Context, actor, name, action string) error {
+	if _, err := m.findBtrfsPool(ctx, name); err != nil {
+		return err
+	}
+	err := m.agent.Call(ctx, "pool.btrfs.scrub", map[string]string{"name": name, "action": action}, nil)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	_ = audit.Record(ctx, m.db, audit.Entry{Actor: actor, Action: "pool.scrub." + action, Target: name, Result: result})
+	if err == nil {
+		m.hub.Publish(events.Message{Type: "pools.changed"})
+	}
+	return err
 }

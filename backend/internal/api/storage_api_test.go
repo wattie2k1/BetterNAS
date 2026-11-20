@@ -34,6 +34,8 @@ func (agentStub) Call(_ context.Context, method string, _, result any) error {
 		}
 	case "disk.format":
 		out = map[string]string{"fsUuid": "u1", "label": "bnas-1"}
+	case "pool.btrfs.status":
+		out = storage.BtrfsStatus{Mounted: true, Devices: []storage.BtrfsDevice{{DevID: 1, Path: "/dev/sda1"}, {DevID: 2, Path: "/dev/sdb1"}}, DataProfile: "RAID1"}
 	case "pool.btrfs.create":
 		out = map[string]string{"fsUuid": "bu1", "label": "bnas-tresor"}
 	default:
@@ -203,6 +205,15 @@ func TestBtrfsPoolRoutes(t *testing.T) {
 	s.waitJob(t, w.Body.Bytes())
 	if w := s.do("GET", "/api/v1/pools/tresor", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"type":"btrfs"`) || !strings.Contains(w.Body.String(), `"profile":"raid1"`) {
 		t.Fatalf("get %d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/pools/tresor/btrfs", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"dataProfile":"RAID1"`) {
+		t.Fatalf("status %d %s", w.Code, w.Body)
+	}
+	if w := s.do("POST", "/api/v1/pools/tresor/btrfs/scrub", `{"action":"start"}`); w.Code != 200 {
+		t.Fatalf("scrub %d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/pools/gibtsnicht/btrfs", ""); w.Code != 404 {
+		t.Fatalf("unbekannt %d", w.Code)
 	}
 	if w := s.do("DELETE", "/api/v1/pools/tresor", ""); w.Code != 400 {
 		t.Fatalf("löschen ohne Bestätigung %d %s", w.Code, w.Body)

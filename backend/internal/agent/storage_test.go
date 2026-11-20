@@ -453,3 +453,131 @@ func TestApplyBtrfsPool(t *testing.T) {
 		t.Fatal(f.Calls)
 	}
 }
+
+const (
+	testUUID  = "3a1b2c3d-0000-4000-8000-000000000001"
+	showTwo   = "Label: 'bnas-tresor'  uuid: " + testUUID + "\n\tTotal devices 2 FS bytes used 114688\n\tdevid    1 size 1000 used 100 path /dev/sda1\n\tdevid    2 size 1000 used 100 path /dev/sdb1\n"
+	showGap   = "Label: 'bnas-tresor'  uuid: " + testUUID + "\n\tTotal devices 2 FS bytes used 114688\n\tdevid    1 size 1000 used 100 path /dev/sda1\n\t*** Some devices missing\n"
+	usageTwo  = "Overall:\n    Device size:\t\t2000\n    Free (estimated):\t\t900\t(min: 900)\n    Data ratio:\t\t2.00\n\nData,RAID1: Size:1, Used:1 (0.02%)\nMetadata,RAID1: Size:1, Used:1 (0.04%)\n"
+	statsRead = "[/dev/sda1].write_io_errs    0\n[/dev/sda1].read_io_errs     4\n[/dev/sdb1].write_io_errs    0\n"
+	scrubDone = "UUID:             x\nScrub started:    Fri Nov 20 10:00:00 2026\nStatus:           finished\nDuration:         0:00:01\n\tcsum_errors: 0\n\tuncorrectable_errors: 0\n\tcorrected_errors: 0\n"
+)
+
+func TestBtrfsStatusMounted(t *testing.T) {
+	d, f, _ := storageEnv(t)
+	f.Responses["btrfs filesystem show --raw "+testUUID] = sysexec.Result{Stdout: []byte(showTwo)}
+	f.Responses["findmnt --mountpoint /srv/pools/tresor"] = sysexec.Result{}
+	f.Responses["btrfs device stats /srv/pools/tresor"] = sysexec.Result{Stdout: []byte(statsRead)}
+	f.Responses["btrfs filesystem usage -b /srv/pools/tresor"] = sysexec.Result{Stdout: []byte(usageTwo)}
+	f.Responses["btrfs scrub status -R /srv/pools/tresor"] = sysexec.Result{Stdout: []byte(scrubDone)}
+	st, err := BtrfsStatus(context.Background(), d, BtrfsStatusRequest{Name: "tresor", FSUUID: testUUID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Mounted || st.Degraded || len(st.Devices) != 2 || st.Errors != 4 || st.DataProfile != "RAID1" || st.UsableBytes != 1000 || st.FreeBytes != 900 {
+		t.Fatalf("%+v", st)
+	}
+	if st.Scrub == nil || st.Scrub.Result != "finished" || st.Devices[0].Errors.Read != 4 {
+		t.Fatalf("%+v", st)
+	}
+}
+
+func TestBtrfsStatusUnmountedAndMissing(t *testing.T) {
+	d, f, _ := storageEnv(t)
+	f.Responses["btrfs filesystem show --raw "+testUUID] = sysexec.Result{Stdout: []byte(showGap)}
+	st, err := BtrfsStatus(context.Background(), d, BtrfsStatusRequest{Name: "tresor", FSUUID: testUUID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mounted || !st.Degraded || st.Missing != 1 || st.UsableBytes != 0 {
+		t.Fatalf("%+v", st)
+	}
+	// Ohne eingehängten Pool werden keine Befehle auf dem Mountpoint ausgeführt.
+	if f.Called("btrfs device stats") || f.Called("btrfs scrub") {
+		t.Fatal(f.Calls)
+	}
+	// Show schlägt ganz fehl (alle Platten fort): leere Liste statt Fehler.
+	f.Responses["btrfs filesystem show --raw "+testUUID] = sysexec.Result{ExitCode: 1, Stderr: []byte("ERROR: no btrfs on")}
+	if st, err = BtrfsStatus(context.Background(), d, BtrfsStatusRequest{Name: "tresor", FSUUID: testUUID}); err != nil || len(st.Devices) != 0 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	for _, bad := range []BtrfsStatusRequest{{Name: "../x", FSUUID: testUUID}, {Name: "tresor", FSUUID: "a b"}} {
+		if _, err := BtrfsStatus(context.Background(), d, bad); code(err) != "invalid_params" {
+			t.Errorf("%+v: %v", bad, err)
+		}
+	}
+}
+
+func TestBtrfsScrubStartCancel(t *testing.T) {
+	ctx := context.Background()
+	d, f, _ := storageEnv(t)
+	// nicht eingehängt
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "tresor", Action: "start"}); code(err) != "conflict" {
+		t.Fatalf("%v", err)
+	}
+	f.Responses["findmnt --mountpoint /srv/pools/tresor"] = sysexec.Result{}
+	f.Responses["btrfs scrub status -R /srv/pools/tresor"] = sysexec.Result{Stdout: []byte(scrubDone)}
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "tresor", Action: "start"}); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("systemctl start --no-block betternas-btrfs-scrub@tresor.service") {
+		t.Fatal(f.Calls)
+	}
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "tresor", Action: "cancel"}); code(err) != "conflict" {
+		t.Fatalf("Abbrechen ohne Lauf: %v", err)
+	}
+	f.Responses["btrfs scrub status -R /srv/pools/tresor"] = sysexec.Result{Stdout: []byte("Status:           running\n")}
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "tresor", Action: "start"}); code(err) != "conflict" {
+		t.Fatalf("doppelter Start: %v", err)
+	}
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "tresor", Action: "cancel"}); err != nil || !f.Called("btrfs scrub cancel /srv/pools/tresor") {
+		t.Fatalf("%v %v", err, f.Calls)
+	}
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "tresor", Action: "x"}); code(err) != "invalid_params" {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestApplyEnablesScrubTimerAndRemovesIt(t *testing.T) {
+	d, f, _ := storageEnv(t)
+	const u = "33333333-3333-3333-3333-333333333333"
+	st := storage.State{
+		Disks: []storage.DiskMount{{DiskID: "a", FSUUID: u, FSType: "btrfs"}, {DiskID: "b", FSUUID: u, FSType: "btrfs"}},
+		Pools: []storage.Pool{{Name: "tresor", Type: storage.PoolBtrfs, Branches: []string{"a", "b"}, Profile: "raid1", FSUUID: u, CreatePolicy: "epmfs", MinFree: "20G"}},
+	}
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, f, "systemctl enable --now srv-pools-tresor.mount", "systemctl enable --now betternas-btrfs-scrub@tresor.timer")
+	// Unverändert: Timer wird trotzdem sichergestellt (idempotent).
+	f.Calls = nil
+	if _, err := Apply(context.Background(), d, st); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("systemctl enable --now betternas-btrfs-scrub@tresor.timer") {
+		t.Fatal(f.Calls)
+	}
+	// Pool entfernt: Timer aus.
+	f.Calls = nil
+	if _, err := Apply(context.Background(), d, storage.State{}); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("systemctl disable --now betternas-btrfs-scrub@tresor.timer") {
+		t.Fatal(f.Calls)
+	}
+	// mergerfs-Pools bekommen keinen Timer.
+	f.Calls = nil
+	if _, err := Apply(context.Background(), d, testStateMergerfs()); err != nil {
+		t.Fatal(err)
+	}
+	if f.Called("systemctl enable --now betternas-btrfs-scrub") {
+		t.Fatal(f.Calls)
+	}
+}
+
+func testStateMergerfs() storage.State {
+	return storage.State{
+		Disks: []storage.DiskMount{{DiskID: "a", FSUUID: "11111111-1111-1111-1111-111111111111", FSType: "ext4"}},
+		Pools: []storage.Pool{{Name: "media", Branches: []string{"a"}, CreatePolicy: "epmfs", MinFree: "20G"}},
+	}
+}

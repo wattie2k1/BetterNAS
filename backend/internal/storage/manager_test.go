@@ -26,6 +26,9 @@ type fakeAgent struct {
 	calls    []string
 	applied  []State
 	btrfsReqs []BtrfsCreateRequest
+	btrfsStatus *BtrfsStatus
+	scrubCalls  []string
+	scrubErr    error
 	applyErr error
 
 	snapApplied []snapraid.State
@@ -166,6 +169,20 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		f.spindownReqs = append(f.spindownReqs, req)
 		if f.spindownFail[req["device"].(string)] {
 			return apierr.New(apierr.Conflict, "Diese Platte unterstützt keinen Ruhezustand")
+		}
+		out = map[string]bool{"ok": true}
+	case "pool.btrfs.status":
+		if f.btrfsStatus == nil {
+			return apierr.New(apierr.Internal, "kein btrfs")
+		}
+		out = *f.btrfsStatus
+	case "pool.btrfs.scrub":
+		b, _ := json.Marshal(params)
+		var req map[string]string
+		json.Unmarshal(b, &req)
+		f.scrubCalls = append(f.scrubCalls, req["action"]+":"+req["name"])
+		if f.scrubErr != nil {
+			return f.scrubErr
 		}
 		out = map[string]bool{"ok": true}
 	case "pool.btrfs.create":

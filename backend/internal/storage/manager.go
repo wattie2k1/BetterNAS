@@ -154,6 +154,8 @@ type PoolView struct {
 	FreeBytes uint64         `json:"freeBytes"`
 	Mounted   bool           `json:"mounted"`
 	Snapraid  *SnapraidInput `json:"snapraid,omitempty"`
+	// Btrfs ist Zustand und Belegung eines btrfs-Pools; nil bei mergerfs oder wenn der Agent nicht antwortet.
+	Btrfs *BtrfsStatus `json:"btrfs,omitempty"`
 }
 
 type formatToken struct {
@@ -473,6 +475,14 @@ func (m *Manager) ListPools(ctx context.Context) ([]PoolView, error) {
 		v.Mounted = m.mounted(v.Path)
 		if v.Mounted {
 			v.SizeBytes, v.FreeBytes, _ = m.statfs(v.Path)
+		}
+		if p.IsBtrfs() {
+			if st, err := m.btrfsStatus(ctx, p); err == nil {
+				v.Btrfs = &st
+				if st.UsableBytes > 0 {
+					v.SizeBytes, v.FreeBytes = st.UsableBytes, min(st.FreeBytes, st.UsableBytes)
+				}
+			}
 		}
 		out = append(out, v)
 	}

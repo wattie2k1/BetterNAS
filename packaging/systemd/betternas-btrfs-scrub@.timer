@@ -1,0 +1,10 @@
+[Unit]
+Description=BetterNAS btrfs-Prüfung %i (monatlich)
+
+[Timer]
+OnCalendar=monthly
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

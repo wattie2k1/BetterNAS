@@ -289,6 +289,30 @@ func (s *server) registerStorage(mux *http.ServeMux) {
 		}
 		apierr.Write(w, apierr.New(apierr.NotFound, "Pool nicht gefunden"))
 	})
+	mux.HandleFunc("GET /api/v1/pools/{name}/btrfs", func(w http.ResponseWriter, r *http.Request) {
+		st, err := m.BtrfsStatus(r.Context(), r.PathValue("name"))
+		if err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
+	})
+	mux.HandleFunc("POST /api/v1/pools/{name}/btrfs/scrub", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action string `json:"action"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if req.Action == "" {
+			req.Action = "start"
+		}
+		if err := m.BtrfsScrub(r.Context(), actor(r), r.PathValue("name"), req.Action); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("POST /api/v1/pools/preview", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Branches []string `json:"branches"`

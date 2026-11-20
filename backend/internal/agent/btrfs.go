@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/betternas/betternas/internal/apierr"
@@ -80,4 +81,100 @@ func BtrfsCreate(ctx context.Context, d Deps, req storage.BtrfsCreateRequest) (s
 		return storage.BtrfsCreateResult{}, err
 	}
 	return storage.BtrfsCreateResult{FSUUID: strings.TrimSpace(string(uuid)), Label: label}, nil
+}
+
+// BtrfsStatusRequest nennt den Pool, dessen Zustand gelesen werden soll.
+type BtrfsStatusRequest struct {
+	Name   string `json:"name"`
+	FSUUID string `json:"fsUuid"`
+}
+
+// BtrfsScrubRequest startet oder bricht eine Prüfung ab.
+type BtrfsScrubRequest struct {
+	Name   string `json:"name"`
+	Action string `json:"action"` // start | cancel
+}
+
+const scrubUnitPrefix = "betternas-btrfs-scrub@"
+
+func scrubService(name string) string { return scrubUnitPrefix + name + ".service" }
+func scrubTimer(name string) string   { return scrubUnitPrefix + name + ".timer" }
+
+// output führt einen Befehl aus und liefert die Ausgabe; bei Fehlern (z. B. Pool nicht eingehängt) leer.
+func output(ctx context.Context, d Deps, name string, args ...string) string {
+	res, err := d.Runner.Run(ctx, nil, name, args...)
+	if err != nil || res.ExitCode != 0 {
+		return ""
+	}
+	return string(res.Stdout)
+}
+
+func isMounted(ctx context.Context, d Deps, where string) bool {
+	res, err := d.Runner.Run(ctx, nil, "findmnt", "--mountpoint", where)
+	return err == nil && res.ExitCode == 0
+}
+
+// BtrfsStatus liest Zustand, Belegung, Fehlerzähler und Prüfung eines btrfs-Pools.
+// Fehlende Platten erkennt es auch bei nicht eingehängtem Pool (btrfs filesystem show).
+func BtrfsStatus(ctx context.Context, d Deps, req BtrfsStatusRequest) (storage.BtrfsStatus, error) {
+	if !storage.PoolNameRe.MatchString(req.Name) {
+		return storage.BtrfsStatus{}, apierr.New(apierr.InvalidParams, "Ungültiger Poolname")
+	}
+	if !storage.UUIDValid(req.FSUUID) {
+		return storage.BtrfsStatus{}, apierr.New(apierr.InvalidParams, "Ungültige Dateisystem-UUID")
+	}
+	where := storage.PoolPath(req.Name)
+	devs, missing := storage.ParseBtrfsShow(output(ctx, d, "btrfs", "filesystem", "show", "--raw", req.FSUUID))
+	mounted := isMounted(ctx, d, where)
+	var stats map[string]storage.BtrfsErrors
+	var usage storage.BtrfsUsage
+	var scrub *storage.BtrfsScrub
+	if mounted {
+		stats = storage.ParseBtrfsStats(output(ctx, d, "btrfs", "device", "stats", where))
+		usage = storage.ParseBtrfsUsage(output(ctx, d, "btrfs", "filesystem", "usage", "-b", where))
+		scrub = storage.ParseBtrfsScrub(output(ctx, d, "btrfs", "scrub", "status", "-R", where))
+	}
+	return storage.AssembleBtrfsStatus(devs, missing, stats, usage, mounted, scrub), nil
+}
+
+// BtrfsScrub startet eine Prüfung (über die Dienst-Unit, die auch der Timer nutzt) oder bricht sie ab.
+func BtrfsScrub(ctx context.Context, d Deps, req BtrfsScrubRequest) error {
+	if !storage.PoolNameRe.MatchString(req.Name) {
+		return apierr.New(apierr.InvalidParams, "Ungültiger Poolname")
+	}
+	where := storage.PoolPath(req.Name)
+	if !isMounted(ctx, d, where) {
+		return apierr.New(apierr.Conflict, "Der Pool ist nicht eingehängt.")
+	}
+	running := storage.ParseBtrfsScrub(output(ctx, d, "btrfs", "scrub", "status", "-R", where))
+	isRunning := running != nil && running.Running
+	switch req.Action {
+	case "start":
+		if isRunning {
+			return apierr.New(apierr.Conflict, "Die Prüfung läuft bereits.")
+		}
+		_, err := run(ctx, d.Runner, nil, "systemctl", "start", "--no-block", scrubService(req.Name))
+		return err
+	case "cancel":
+		if !isRunning {
+			return apierr.New(apierr.Conflict, "Es läuft keine Prüfung.")
+		}
+		_, err := run(ctx, d.Runner, nil, "btrfs", "scrub", "cancel", where)
+		return err
+	}
+	return apierr.New(apierr.InvalidParams, "Aktion muss start oder cancel sein")
+}
+
+// syncScrubTimers schaltet den monatlichen Prüf-Timer für alle btrfs-Pools ein; für entfernte Pools (stale) aus.
+func syncScrubTimers(ctx context.Context, d Deps, pools []storage.Pool, stale []string) {
+	for _, p := range pools {
+		if p.IsBtrfs() {
+			if res, err := d.Runner.Run(ctx, nil, "systemctl", "enable", "--now", scrubTimer(p.Name)); err != nil || res.ExitCode != 0 {
+				slog.Warn("scrub-timer konnte nicht aktiviert werden", "pool", p.Name)
+			}
+		}
+	}
+	for _, name := range stale {
+		_, _ = d.Runner.Run(ctx, nil, "systemctl", "disable", "--now", scrubTimer(name))
+	}
 }

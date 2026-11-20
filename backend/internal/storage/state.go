@@ -192,3 +192,6 @@ func (s State) Validate() error {
 	}
 	return nil
 }
+
+// UUIDValid prüft eine Dateisystem-UUID.
+func UUIDValid(u string) bool { return uuidRe.MatchString(u) }

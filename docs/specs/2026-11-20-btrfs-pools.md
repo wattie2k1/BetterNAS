@@ -160,6 +160,20 @@ Pfade und Geräte werden nur aus dem Soll-Zustand abgeleitet, nie aus freien Ein
   Für btrfs gibt es einen eigenen Ablauf mit `btrfs replace`; die Ersatzplatte darf nicht kleiner sein
   als die alte (der Assistent prüft das wie bisher).
 
+**Stand Etappe 2 (umgesetzt):**
+- `pool.btrfs.status` liefert Platten (mit Fehlerzählern), fehlende Platten (auch bei nicht eingehängtem
+  Pool über `btrfs filesystem show <uuid>`), tatsächliche Profile, Rohgröße, nutzbar und frei sowie die
+  letzte oder laufende Prüfung. Der Manager ergänzt die BetterNAS-Kennung je Platte und zählt
+  Mitglieder, die btrfs nicht mehr auflistet, als fehlend. `GET /pools` trägt das als `btrfs` am Pool;
+  `GET /pools/{name}/btrfs` liefert nur den Status.
+- Prüfung: `POST /pools/{name}/btrfs/scrub` mit `{"action":"start"|"cancel"}` (startet die Dienst-Unit
+  `betternas-btrfs-scrub@<pool>.service`, die auch der Timer nutzt). Der Timer
+  `betternas-btrfs-scrub@<pool>.timer` läuft **fest monatlich**; der Agent schaltet ihn mit `Apply` ein
+  und beim Löschen des Pools aus. Ein einstellbarer Zeitplan kommt mit der GUI (Etappe 4).
+- Monitor-Befunde: `pool-degraded:<pool>` (kritisch), `pool-errors:<pool>` (Warnung, solange die
+  Fehlerzähler > 0 sind) und `pool-scrub:<pool>` (kritisch bei nicht reparierbaren Fehlern eines
+  beendeten Laufs). Die Fehlerzähler lassen sich erst in Etappe 3 zurücksetzen (`btrfs device stats -z`).
+
 ## 8. GUI
 
 - Pool-Dialog: erste Auswahl „Typ" mit zwei Karten. Gut erklärt, mit Warnung vor Datenverlust bei
