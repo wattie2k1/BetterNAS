@@ -13,8 +13,8 @@ ssh "$HOST" 'command -v python3 >/dev/null' || { echo "FEHLER: python3 fehlt auf
 # Das Repo wird im Projekt (dist/apt) gepflegt, damit frühere Versionen erhalten bleiben.
 "$SRC/tools/apt-repo.sh" "$SRC/dist/apt" "$DEB"
 
-ssh "$HOST" 'sudo mkdir -p /srv/appdata/betternas-repo && sudo chown "$(id -u):$(id -g)" /srv/appdata/betternas-repo'
-rsync -a --delete "$SRC/dist/apt/" "$HOST:/srv/appdata/betternas-repo/"
+ssh "$HOST" 'sudo mkdir -p /srv/dockerdata/betternas-repo && sudo chown "$(id -u):$(id -g)" /srv/dockerdata/betternas-repo'
+rsync -a --delete "$SRC/dist/apt/" "$HOST:/srv/dockerdata/betternas-repo/"
 # Systeme mit einer älteren Version haben den Schlüsselbund noch nicht: aus dem Projekt nachtragen.
 scp -q "$SRC/packaging/apt/betternas-archive-keyring.gpg" "$HOST:/tmp/betternas-archive-keyring.gpg"
 ssh "$HOST" 'sudo install -m 0644 /tmp/betternas-archive-keyring.gpg /usr/share/keyrings/betternas-archive-keyring.gpg && rm -f /tmp/betternas-archive-keyring.gpg'
@@ -22,7 +22,7 @@ ssh "$HOST" 'sh -s' <<'REMOTE'
 set -eu
 if ! systemctl is-active --quiet bnas-dev-repo; then
 	sudo systemd-run --unit=bnas-dev-repo --property=Restart=always \
-		python3 -m http.server 8088 --bind 127.0.0.1 --directory /srv/appdata/betternas-repo >/dev/null
+		python3 -m http.server 8088 --bind 127.0.0.1 --directory /srv/dockerdata/betternas-repo >/dev/null
 fi
 sudo tee /etc/apt/sources.list.d/betternas.sources >/dev/null <<'EOF2'
 Types: deb

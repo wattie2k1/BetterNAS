@@ -14,7 +14,7 @@ shift 2
 MODES="$*"
 ARCH=amd64
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-REMOTE_DIR=/srv/appdata/betternas-build
+REMOTE_DIR=/srv/dockerdata/betternas-build
 
 cd "$SRC"
 echo "[remote] Baue Go-Binaries und Weboberfläche lokal …"
