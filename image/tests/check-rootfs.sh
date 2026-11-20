@@ -27,6 +27,11 @@ grep -q '^root:[!*]' "$W/etc/shadow" || err "root ist nicht gesperrt"
 grep -q '^betternas-admin:' "$W/etc/group" || err "Gruppe betternas-admin fehlt"
 ls "$W"/boot/vmlinuz-* >/dev/null 2>&1 || err "Kernel fehlt"
 ls "$W"/boot/initrd.img-* >/dev/null 2>&1 || err "initramfs fehlt"
+# Der Kernel stammt aus trixie-backports; die Quelle bleibt für Kernel-Updates im System (Kopfzeile = von BetterNAS verwaltet).
+BPO="$W/etc/apt/sources.list.d/betternas-backports.sources"
+grep -qxF 'Suites: trixie-backports' "$BPO" 2>/dev/null || err "Backports-Quelle fehlt"
+[ -s "$W/etc/apt/preferences.d/betternas-kernel.pref" ] || err "Kernel-Pin (preferences.d) fehlt"
+awk '/^Package: linux-image-(amd64|arm64)$/{f=1} f&&/^Version:/{print; exit}' "$W/var/lib/dpkg/status" | grep -q '~bpo' || err "Kernel stammt nicht aus den Backports"
 grep -q 'de_DE.UTF-8' "$W/etc/locale.gen" || err "Locale de_DE fehlt"
 # Besitzer müssen erhalten bleiben (Overlay daher mit --no-preserve=ownership kopieren) (z. B. /var/mail → Gruppe mail, /etc/shadow → Gruppe shadow)
 [ "$(stat -c %g "$W/var/mail")" = "$(awk -F: '$1=="mail"{print $3}' "$W/etc/group")" ] || err "Besitzer im Image verloren (/var/mail)"

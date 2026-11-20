@@ -1,5 +1,5 @@
 # Zielsystem BetterNAS – eine Zeile je Paket, @ARCH@ wird ersetzt
-linux-image-@ARCH@
+# Der Kernel (linux-image-<arch>) kommt aus trixie-backports (image/hooks/rootfs/35-kernel.sh).
 systemd-sysv
 systemd-resolved
 systemd-timesyncd

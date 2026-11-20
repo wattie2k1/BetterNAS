@@ -1,0 +1,8 @@
+# Verwaltet von BetterNAS: Der Linux-Kernel kommt aus trixie-backports (neuer als der Debian-LTS-Kernel).
+# Mit dieser Einstellung bietet apt neue Kernel-Versionen wie normale Updates an (apt-get dist-upgrade).
+# Alle anderen Pakete bleiben bei Debian stable; Backports werden sonst nie automatisch benutzt.
+# Zurück zum Debian-Standardkernel: diese Datei und betternas-backports.sources löschen, dann
+# "apt-get update && apt-get install --allow-downgrades linux-image-amd64".
+Package: linux-image-* linux-base linux-base-* linux-modules-* linux-binary-*
+Pin: release n=trixie-backports
+Pin-Priority: 600
