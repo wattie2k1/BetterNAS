@@ -119,16 +119,16 @@ func TestStackPathsFollowPaths(t *testing.T) {
 	resetPaths(t)
 	p := docker.Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
 	curPaths.Store(&p)
-	if got := composePath("x"); got != "/srv/pools/a/cfg/stacks/x/compose.yaml" {
+	if got := composePath("x"); got != "/srv/pools/b/dd/stacks/x/compose.yaml" {
 		t.Fatal(got)
 	}
-	if got := envPath("x"); got != "/srv/pools/a/cfg/stacks/x/.env" {
+	if got := envPath("x"); got != "/srv/pools/b/dd/stacks/x/.env" {
 		t.Fatal(got)
 	}
-	if got := rollbackPath("x", "r.json"); got != "/srv/pools/a/cfg/stacks/x/r.json" {
+	if got := rollbackPath("x", "r.json"); got != "/srv/pools/b/dd/stacks/x/r.json" {
 		t.Fatal(got)
 	}
-	if got := proxyNew(); got != "/srv/pools/a/cfg/reverse-proxy/conf/Caddyfile.new" {
+	if got := proxyNew(); got != "/srv/pools/b/dd/reverse-proxy/conf/Caddyfile.new" {
 		t.Fatal(got)
 	}
 }
@@ -233,7 +233,7 @@ func TestSetPathsFirstSetupWritesFilesAndStartsDocker(t *testing.T) {
 	if err != nil || m["data-root"] != "/srv/pools/b/dd/docker" || m["log-driver"] != "json-file" {
 		t.Fatalf("daemon.json: %v %v", m, err)
 	}
-	for _, dir := range []string{"/srv/pools/a/cfg/stacks", "/srv/pools/a/cfg/reverse-proxy", "/srv/pools/a/cfg/backups", "/srv/pools/b/dd/docker"} {
+	for _, dir := range []string{"/srv/pools/b/dd/stacks", "/srv/pools/b/dd/reverse-proxy", "/srv/pools/b/dd/backups", "/srv/pools/b/dd/docker"} {
 		if !d.FS.Exists(dir) {
 			t.Errorf("%s fehlt", dir)
 		}
@@ -349,13 +349,13 @@ func TestSetPathsChangeLaterDoesNotTouchDaemonJsonOrSystemd(t *testing.T) {
 	}
 }
 
-func TestSetPathsRefusesAppdataChangeWhileStacksExist(t *testing.T) {
+func TestSetPathsRefusesDockerdataChangeWhileStacksExist(t *testing.T) {
 	d, _ := pathsEnv(t, &pathsFake{})
 	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
 		t.Fatal(err)
 	}
 	saveStack(t, d, "emby")
-	_, err := SetPaths(context.Background(), d, docker.Paths{Appdata: "/srv/pools/c/cfg2", Dockerdata: twoPools.Dockerdata})
+	_, err := SetPaths(context.Background(), d, docker.Paths{Appdata: twoPools.Appdata, Dockerdata: "/srv/pools/c/dd2"})
 	if code(err) != apierr.Conflict {
 		t.Fatalf("%v", err)
 	}
@@ -382,10 +382,10 @@ func TestGetPathsStaleStacks(t *testing.T) {
 	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
 		t.Fatal(err)
 	}
-	_ = d.FS.MkdirAll("/srv/pools/a/cfg/stacks/alt", 0o700)
-	_ = d.FS.WriteFile("/srv/pools/a/cfg/stacks/alt/compose.yaml", []byte("services:\n  a:\n    volumes:\n      - /srv/appdata/alt/config:/config\n"), 0o600)
-	_ = d.FS.MkdirAll("/srv/pools/a/cfg/stacks/neu", 0o700)
-	_ = d.FS.WriteFile("/srv/pools/a/cfg/stacks/neu/compose.yaml", []byte("services:\n  a:\n    volumes:\n      - /srv/pools/a/cfg/neu:/config\n      - /srv/pools/Medien:/media\n"), 0o600)
+	_ = d.FS.MkdirAll("/srv/pools/b/dd/stacks/alt", 0o700)
+	_ = d.FS.WriteFile("/srv/pools/b/dd/stacks/alt/compose.yaml", []byte("services:\n  a:\n    volumes:\n      - /srv/appdata/alt/config:/config\n"), 0o600)
+	_ = d.FS.MkdirAll("/srv/pools/b/dd/stacks/neu", 0o700)
+	_ = d.FS.WriteFile("/srv/pools/b/dd/stacks/neu/compose.yaml", []byte("services:\n  a:\n    volumes:\n      - /srv/pools/a/cfg/neu:/config\n      - /srv/pools/Medien:/media\n"), 0o600)
 	info, err := GetPaths(context.Background(), d)
 	if err != nil || !info.Configured || info.StaleStacks != 1 || info.Warnings == nil {
 		t.Fatalf("%+v %v", info, err)
@@ -440,7 +440,7 @@ func TestSetPathsRejectsForeignOrWritableRoot(t *testing.T) {
 }
 
 func TestSetPathsRejectsSymlinkedSubdir(t *testing.T) {
-	for _, sub := range []string{"/srv/pools/a/cfg/stacks", "/srv/pools/a/cfg/reverse-proxy", "/srv/pools/a/cfg/backups", "/srv/pools/b/dd/docker"} {
+	for _, sub := range []string{"/srv/pools/b/dd/stacks", "/srv/pools/b/dd/reverse-proxy", "/srv/pools/b/dd/backups", "/srv/pools/b/dd/docker"} {
 		d, _ := pathsEnv(t, &pathsFake{ftype: map[string]string{sub: "symbolic link"}})
 		if _, err := SetPaths(context.Background(), d, twoPools); code(err) != apierr.InvalidParams {
 			t.Errorf("%s: %v", sub, err)
@@ -629,5 +629,19 @@ func TestSetPathsAcceptsPlainFilesystemFolder(t *testing.T) {
 	info, err := SetPaths(context.Background(), d, docker.Paths{Appdata: "/srv/appdata", Dockerdata: "/srv/dockerdata"})
 	if err != nil || info.Dockerdata != "/srv/dockerdata" {
 		t.Fatalf("%+v %v", info, err)
+	}
+}
+
+func TestSetPathsAllowsAppdataChangeWithStacks(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
+		t.Fatal(err)
+	}
+	saveStack(t, d, "emby")
+	if _, err := SetPaths(context.Background(), d, docker.Paths{Appdata: "/srv/pools/c/cfg2", Dockerdata: twoPools.Dockerdata}); err != nil {
+		t.Fatalf("appdata enthält keine Stacks mehr, der Wechsel muss möglich sein: %v", err)
+	}
+	if _, err := ListStacks(context.Background(), d); err != nil {
+		t.Fatal(err)
 	}
 }

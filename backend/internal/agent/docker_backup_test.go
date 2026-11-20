@@ -340,9 +340,10 @@ func TestSafeBindPathBothRoots(t *testing.T) {
 		"/srv/pools/a/cfg/emby/config":          true,
 		"/srv/pools/b/dd/emby/data":             true,
 		"/srv/pools/b/dd/docker/volumes":        false, // data-root
-		"/srv/pools/a/cfg/stacks/x":             false,
-		"/srv/pools/a/cfg/backups/stacks/x":     false,
-		"/srv/pools/a/cfg/reverse-proxy/data":   false,
+		"/srv/pools/a/cfg/stacks/x":             true,  // appdata gehört allein den Apps
+		"/srv/pools/b/dd/stacks/x":              false,
+		"/srv/pools/b/dd/backups/stacks/x":      false,
+		"/srv/pools/b/dd/reverse-proxy/data":    false,
 		"/srv/pools/a/cfg":                      false, // Wurzel selbst
 		"/srv/pools/b/dd":                       false,
 		"/srv/pools/c/Medien":                   false, // Pool
@@ -355,16 +356,12 @@ func TestSafeBindPathBothRoots(t *testing.T) {
 			t.Errorf("safeBindPath(%q) = %v", p, got)
 		}
 	}
-	// dockerdata/stacks ist kein reservierter Name (nur appdata/stacks).
-	if !safeBindPath("/srv/pools/b/dd/stacks/x") {
-		t.Error("dockerdata/stacks wird gesichert")
-	}
 }
 
 func TestBackupDirUsesAppdata(t *testing.T) {
 	resetPaths(t)
 	configuredPaths(t)
-	if got := backupDir("media"); got != "/srv/pools/a/cfg/backups/stacks/media" {
+	if got := backupDir("media"); got != "/srv/pools/b/dd/backups/stacks/media" {
 		t.Fatal(got)
 	}
 }

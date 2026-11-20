@@ -217,7 +217,8 @@ func TestListFoldersHidesReservedUnderBothRoots(t *testing.T) {
 	d, _ := folderEnv(t, map[string]string{"/srv/pools/a/cfg": "/srv/pools/a/cfg", "/srv/pools/b/dd": "/srv/pools/b/dd"},
 		map[string]string{"/srv/pools/a/cfg": "stacks\x00backups\x00reverse-proxy\x00emby\x00docker\x00", "/srv/pools/b/dd": "docker\x00stacks\x00emby\x00"})
 	configuredPaths(t)
-	for root, want := range map[string]string{"/srv/pools/a/cfg": "docker,emby", "/srv/pools/b/dd": "emby,stacks"} {
+	// appdata gehört den Apps (nichts reserviert); in dockerdata sind docker, stacks, backups und reverse-proxy reserviert.
+	for root, want := range map[string]string{"/srv/pools/a/cfg": "backups,docker,emby,reverse-proxy,stacks", "/srv/pools/b/dd": "emby"} {
 		l, err := ListFolders(context.Background(), d, root)
 		var names []string
 		for _, f := range l.Dirs {

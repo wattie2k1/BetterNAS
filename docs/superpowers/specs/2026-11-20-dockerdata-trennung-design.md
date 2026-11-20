@@ -13,8 +13,11 @@ eine Platte oder einen Pool vor und legt dann die beiden Speicherorte fest. Erst
 
 ## Ziele
 
-- Zwei Wurzeln: **appdata** (Einstellungen der Apps, Stacks, Reverse-Proxy, Sicherungen) und **dockerdata**
-  (alle übrigen App-Ordner, außerdem der Docker-`data-root` für Images und Container).
+- Zwei Wurzeln: **appdata** (nur die Einstellungen der Apps) und **dockerdata** (alle übrigen App-Ordner, außerdem
+  Stacks, Reverse-Proxy, Sicherungen und der Docker-`data-root` für Images und Container).
+  *Nachtrag 2026-11-20 (Wunsch des Nutzers):* Stacks, Reverse-Proxy und Sicherungen liegen in dockerdata, nicht in appdata.
+  Unter appdata ist nichts reserviert; unter dockerdata sind `stacks`, `reverse-proxy`, `backups` und `docker` reserviert.
+  Die Sperre „nicht ändern, solange Stacks existieren“ gilt deshalb für dockerdata, appdata ist jederzeit änderbar.
 - Beide sind in den Einstellungen festlegbar und später änderbar.
 - Auf einer frischen Installation ist Docker gesperrt, bis beide gesetzt sind. Die Docker-Ansichten leiten zur
   Einrichtung.

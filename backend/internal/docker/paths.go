@@ -9,8 +9,8 @@ import (
 )
 
 // Paths sind die beiden einstellbaren Wurzeln der Docker-Daten.
-// Appdata enthält Einstellungen der Apps sowie Stacks, Reverse-Proxy und Sicherungen von BetterNAS,
-// Dockerdata alle übrigen App-Ordner und den Docker-data-root.
+// Appdata enthält nur die Einstellungen der Apps; Dockerdata alle übrigen App-Ordner sowie Stacks, Reverse-Proxy
+// und Sicherungen von BetterNAS und den Docker-data-root.
 type Paths struct {
 	Appdata    string `json:"appdata"`
 	Dockerdata string `json:"dockerdata"`
@@ -26,18 +26,17 @@ const legacyRoot = "/srv/appdata"
 
 // Unterordner, die BetterNAS in den Wurzeln selbst verwaltet.
 var (
-	appdataReserved    = map[string]bool{"stacks": true, "reverse-proxy": true, "backups": true}
-	dockerdataReserved = map[string]bool{"docker": true}
+	dockerdataReserved = map[string]bool{"docker": true, "stacks": true, "reverse-proxy": true, "backups": true}
 )
 
 // StacksDir enthält je Stack ein Verzeichnis mit compose.yaml und .env.
-func (p Paths) StacksDir() string { return p.Appdata + "/stacks" }
+func (p Paths) StacksDir() string { return p.Dockerdata + "/stacks" }
 
 // ProxyDir enthält Caddyfile (conf), Zertifikate und Zustand (data, config) des Reverse-Proxys.
-func (p Paths) ProxyDir() string { return p.Appdata + "/reverse-proxy" }
+func (p Paths) ProxyDir() string { return p.Dockerdata + "/reverse-proxy" }
 
 // BackupBase enthält die Datensicherungen vor Updates.
-func (p Paths) BackupBase() string { return p.Appdata + "/backups/stacks" }
+func (p Paths) BackupBase() string { return p.Dockerdata + "/backups/stacks" }
 
 // DataRoot ist der data-root des Docker-Dienstes.
 func (p Paths) DataRoot() string { return p.Dockerdata + "/docker" }
@@ -50,17 +49,14 @@ func (p Paths) Roots() []string {
 	return append([]string{p.Appdata, p.Dockerdata}, p.Previous...)
 }
 
-// Reserved sagt, ob first (erster Namensteil unterhalb von root) BetterNAS selbst gehört.
-// Frühere Wurzeln gelten vorsichtshalber mit beiden Namensmengen.
+// Reserved sagt, ob first (erster Namensteil unterhalb von root) BetterNAS selbst gehört. Das gilt für dockerdata
+// und, vorsichtshalber, für frühere Wurzeln; appdata gehört allein den Apps.
 func (p Paths) Reserved(root, first string) bool {
-	if root == p.Appdata && appdataReserved[first] {
-		return true
-	}
 	if root == p.Dockerdata && dockerdataReserved[first] {
 		return true
 	}
 	for _, r := range p.Previous {
-		if r == root && (appdataReserved[first] || dockerdataReserved[first]) {
+		if r == root && dockerdataReserved[first] {
 			return true
 		}
 	}

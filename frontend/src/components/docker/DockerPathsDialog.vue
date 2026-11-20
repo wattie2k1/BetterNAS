@@ -73,7 +73,7 @@ function pick(p: string) {
           <InputText id="p-app" v-model="appdata" data-test="paths-appdata" placeholder="/srv/appdata" autocomplete="off" spellcheck="false" />
           <Button label="Auswählen" severity="secondary" icon="pi pi-folder-open" data-test="paths-browse-appdata" @click="browsing = 'appdata'" />
         </div>
-        <small>Klein: Einstellungen der Container sowie Stacks, Reverse-Proxy und Sicherungen von BetterNAS.</small>
+        <small>Klein: nur die Einstellungen der Apps (z. B. der Konfigurationsordner von Emby).</small>
       </div>
       <div class="field">
         <label for="p-data">Daten der Apps (dockerdata)</label>
@@ -81,9 +81,9 @@ function pick(p: string) {
           <InputText id="p-data" v-model="dockerdata" data-test="paths-dockerdata" placeholder="/srv/dockerdata" autocomplete="off" spellcheck="false" />
           <Button label="Auswählen" severity="secondary" icon="pi pi-folder-open" data-test="paths-browse-dockerdata" @click="browsing = 'dockerdata'" />
         </div>
-        <small>Groß: Daten, Datenbanken, Caches sowie Docker-Images und Container.</small>
+        <small>Groß: Daten, Datenbanken, Caches, Docker-Images und -Container sowie die Stacks, der Reverse-Proxy und die Update-Sicherungen von BetterNAS.</small>
       </div>
-      <Message v-if="configured" severity="warn" :closable="false">Eine Änderung gilt nur für neue Stacks. Vorhandene Stacks und Daten werden nicht verschoben, und die Images bleiben, wo sie sind.</Message>
+      <Message v-if="configured" severity="warn" :closable="false">Eine Änderung gilt nur für Neues. Vorhandene Daten werden nicht verschoben und die Images bleiben, wo sie sind. Der Ort für Daten lässt sich nur ändern, solange es keine Stacks gibt.</Message>
       <Message v-if="error" severity="error" :closable="false" data-test="paths-error">{{ error }}</Message>
     </template>
     <template v-else>

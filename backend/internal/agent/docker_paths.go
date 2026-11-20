@@ -324,9 +324,11 @@ func SetPaths(ctx context.Context, d Deps, in docker.Paths) (docker.PathsInfo, e
 	a, _ := docker.CleanRoot(in.Appdata, allowLegacy)
 	dd, _ := docker.CleanRoot(in.Dockerdata, allowLegacy)
 	next := docker.Paths{Appdata: a, Dockerdata: dd}
-	if cur != nil && cur.Appdata != next.Appdata {
+	// Stacks, Reverse-Proxy und Sicherungen liegen in dockerdata: bei einem Wechsel würden vorhandene Stacks aus der
+	// Liste verschwinden. appdata enthält nur App-Einstellungen und lässt sich jederzeit ändern (für Neues).
+	if cur != nil && cur.Dockerdata != next.Dockerdata {
 		if files, _ := d.FS.Glob(path.Join(cur.StacksDir(), "*", docker.ComposeFile)); len(files) > 0 {
-			return docker.PathsInfo{}, apierr.New(apierr.Conflict, "Unter "+cur.Appdata+" gibt es noch Stacks. Der Speicherort für Einstellungen lässt sich erst ändern, wenn keine Stacks mehr vorhanden sind (vorhandene Daten werden nicht verschoben).")
+			return docker.PathsInfo{}, apierr.New(apierr.Conflict, "Unter "+cur.Dockerdata+" gibt es noch Stacks. Der Speicherort für Daten lässt sich erst ändern, wenn keine Stacks mehr vorhanden sind (vorhandene Daten werden nicht verschoben).")
 		}
 	}
 	var warns []string

@@ -72,11 +72,11 @@ func TestPathsValidate(t *testing.T) {
 func TestPathsDirs(t *testing.T) {
 	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
 	for got, want := range map[string]string{
-		p.StacksDir():     "/srv/pools/a/cfg/stacks",
-		p.ProxyDir():      "/srv/pools/a/cfg/reverse-proxy",
-		p.BackupBase():    "/srv/pools/a/cfg/backups/stacks",
+		p.StacksDir():     "/srv/pools/b/dd/stacks",
+		p.ProxyDir():      "/srv/pools/b/dd/reverse-proxy",
+		p.BackupBase():    "/srv/pools/b/dd/backups/stacks",
 		p.DataRoot():      "/srv/pools/b/dd/docker",
-		p.StackDir("web"): "/srv/pools/a/cfg/stacks/web",
+		p.StackDir("web"): "/srv/pools/b/dd/stacks/web",
 	} {
 		if got != want {
 			t.Errorf("got %q want %q", got, want)
@@ -90,8 +90,9 @@ func TestPathsReserved(t *testing.T) {
 		root, first string
 		want        bool
 	}{
-		{p.Appdata, "stacks", true}, {p.Appdata, "reverse-proxy", true}, {p.Appdata, "backups", true}, {p.Appdata, "emby", false},
-		{p.Dockerdata, "docker", true}, {p.Dockerdata, "stacks", false}, {p.Dockerdata, "emby", false},
+		// appdata gehört den Apps: nichts ist reserviert. Stacks, Proxy, Sicherungen und data-root liegen in dockerdata.
+		{p.Appdata, "stacks", false}, {p.Appdata, "docker", false}, {p.Appdata, "emby", false},
+		{p.Dockerdata, "docker", true}, {p.Dockerdata, "stacks", true}, {p.Dockerdata, "reverse-proxy", true}, {p.Dockerdata, "backups", true}, {p.Dockerdata, "emby", false},
 		{"/srv/pools/x", "stacks", false},
 	} {
 		if got := p.Reserved(c.root, c.first); got != c.want {

@@ -31,10 +31,11 @@ func noDataReason() string {
 	return "Der Stack hat keine Daten, die gesichert werden können."
 }
 
-// appdataRoot und backupBase folgen den eingerichteten Speicherorten (Aufruf nur, wenn Docker eingerichtet ist).
-func appdataRoot() string {
+// backupRoot (Wurzel der Sicherungen, für die Platzprüfung) und backupBase folgen den eingerichteten Speicherorten
+// (Aufruf nur, wenn Docker eingerichtet ist).
+func backupRoot() string {
 	if p := curPaths.Load(); p != nil {
-		return p.Appdata
+		return p.Dockerdata
 	}
 	return "/nonexistent/docker-not-configured"
 }
@@ -255,7 +256,7 @@ func StackBackupPlan(ctx context.Context, d Deps, name string) (docker.BackupPla
 		plan.Sources[i].Bytes = sizes[plan.Sources[i].Path]
 		plan.TotalBytes += plan.Sources[i].Bytes
 	}
-	if out, err := run(ctx, d.Runner, nil, "df", "--output=avail", "-B1", appdataRoot()); err == nil {
+	if out, err := run(ctx, d.Runner, nil, "df", "--output=avail", "-B1", backupRoot()); err == nil {
 		if f := strings.Fields(string(out)); len(f) >= 2 {
 			plan.FreeBytes, _ = strconv.ParseInt(f[len(f)-1], 10, 64)
 		}
