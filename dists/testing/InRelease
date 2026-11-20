@@ -1,0 +1,37 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: amd64 arm64
+Codename: testing
+Components: main
+Date: Fri, 20 Nov 2026 08:19:27 +0000
+Label: BetterNAS
+Origin: BetterNAS
+Suite: testing
+MD5Sum:
+ 67fc64f02bd7f829d0e7dd8d6290fa45             5274 main/binary-amd64/Packages
+ 4ca836fb380ace64f899100bc5cdb742             1528 main/binary-amd64/Packages.gz
+ d41d8cd98f00b204e9800998ecf8427e                0 main/binary-arm64/Packages
+ ee01ffa6f1bfeb6d42c71a1c1639ed87               29 main/binary-arm64/Packages.gz
+SHA1:
+ 47658ecd4556805b54406bc70926ca1fc6c3685d             5274 main/binary-amd64/Packages
+ 1128efba184f585999590083d097dee964be788b             1528 main/binary-amd64/Packages.gz
+ da39a3ee5e6b4b0d3255bfef95601890afd80709                0 main/binary-arm64/Packages
+ 9064b9036e93a67d41f87304a89b59487043aba8               29 main/binary-arm64/Packages.gz
+SHA256:
+ 73373e05277caf8d7699d30daf1e509e36353eed314465c9ef5915c21943c032             5274 main/binary-amd64/Packages
+ 0e155a2f42d5aac741f40435200804546e95e051b20d1487a94a6e9fd3515713             1528 main/binary-amd64/Packages.gz
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855                0 main/binary-arm64/Packages
+ 79038c3a2a38d5f1278e56f98d57bbc63a000f0d962803fed8eebb2f63109cfd               29 main/binary-arm64/Packages.gz
+SHA512:
+ f676324d19392a6ffbed72cd92f11df985b026e270df4961816e350b329902c0554d981880649552b8acea6613c65f964f06f2ea71b05bd714ebef0d9f3fb233             5274 main/binary-amd64/Packages
+ 19518d551bf6e6c7e0b71b9c2f2461ecf00fbcdf0419482a6b6045b33adfd1ef17185f5ff0a60338b97386ac8934ee16a73196e6caafbc58989dfbb86a9a9857             1528 main/binary-amd64/Packages.gz
+ cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e                0 main/binary-arm64/Packages
+ 71a7e0fad684af6ab1d5a289017148af6720d56e54e49d68f06e591f5fa975017dbec97efea51f6826eb5f47925b02b5368ab4705c983b71d32ec7dc576174a1               29 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQRwH9vq7ytzoTNXGHnWBeH6e/BpFQUCawACjwAKCRDWBeH6e/Bp
+FVODAQCe9V687tmQEmVaGireNAxG6MghCONQFiFXC93SlYq9QgEAqSIrb2Miajsl
+FHuCTzQxNu9NiMnkf7ul7zWOCB4g+g0=
+=cGtB
+-----END PGP SIGNATURE-----
