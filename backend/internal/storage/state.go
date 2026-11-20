@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 
@@ -26,12 +27,52 @@ func (d DiskMount) Path() string {
 	return DiskPath(d.DiskID)
 }
 
-// Pool ist ein mergerfs-Pool. Branches sind Disk-IDs in Reihenfolge.
+// Pool-Typen.
+const (
+	PoolMergerfs = "mergerfs"
+	PoolBtrfs    = "btrfs"
+)
+
+// btrfs-Profile (Daten und Metadaten) mit der Mindestanzahl an Platten.
+var btrfsMinDisks = map[string]int{"single": 1, "raid1": 2, "raid1c3": 3, "raid10": 4}
+
+// BtrfsProfiles sind die angebotenen Profile in der Reihenfolge der Oberfläche.
+var BtrfsProfiles = []string{"single", "raid1", "raid1c3", "raid10"}
+
+// BtrfsCompress sind die erlaubten Kompressionen ("" = aus).
+var BtrfsCompress = []string{"", "zstd:1", "zstd:3"}
+
+// BtrfsMinDisks liefert die Mindestanzahl der Platten für ein Profil (0 = unbekannt).
+func BtrfsMinDisks(profile string) int { return btrfsMinDisks[profile] }
+
+// Pool ist ein Pool aus mehreren Platten. Branches sind Disk-IDs in Reihenfolge.
+// Typ mergerfs (Standard, auch bei leerem Type): Dateien verteilt auf einzelne Dateisysteme.
+// Typ btrfs: ein gemeinsames Mehrplatten-Dateisystem (FSUUID) mit Profil.
 type Pool struct {
 	Name         string   `json:"name"`
+	Type         string   `json:"type,omitempty"`
 	Branches     []string `json:"branches"`
 	CreatePolicy string   `json:"createPolicy"`
 	MinFree      string   `json:"minFree"`
+	Profile      string   `json:"profile,omitempty"`  // nur btrfs
+	FSUUID       string   `json:"fsUuid,omitempty"`   // nur btrfs
+	Compress     string   `json:"compress,omitempty"` // nur btrfs
+}
+
+// IsBtrfs meldet, ob der Pool ein btrfs-Pool ist.
+func (p Pool) IsBtrfs() bool { return p.Type == PoolBtrfs }
+
+// btrfsMembers liefert die Platten, die zu einem btrfs-Pool gehören (Disk-ID → Poolname).
+func btrfsMembers(pools []Pool) map[string]string {
+	out := map[string]string{}
+	for _, p := range pools {
+		if p.IsBtrfs() {
+			for _, b := range p.Branches {
+				out[b] = p.Name
+			}
+		}
+	}
+	return out
 }
 
 // State ist der gewünschte Zustand aller verwalteten Mounts.
@@ -105,11 +146,30 @@ func (s State) Validate() error {
 			return invalid("Poolname bereits vergeben: " + p.Name)
 		}
 		names[p.Name] = true
-		if !slices.Contains(Policies, p.CreatePolicy) {
-			return invalid("Unbekannte Verteilungsstrategie: " + p.CreatePolicy)
-		}
-		if !MinFreeRe.MatchString(p.MinFree) {
-			return invalid("Mindestfreier Speicher: Zahl mit K, M oder G, z. B. 20G")
+		switch p.Type {
+		case "", PoolMergerfs:
+			if !slices.Contains(Policies, p.CreatePolicy) {
+				return invalid("Unbekannte Verteilungsstrategie: " + p.CreatePolicy)
+			}
+			if !MinFreeRe.MatchString(p.MinFree) {
+				return invalid("Mindestfreier Speicher: Zahl mit K, M oder G, z. B. 20G")
+			}
+		case PoolBtrfs:
+			min := btrfsMinDisks[p.Profile]
+			if min == 0 {
+				return invalid("Unbekanntes btrfs-Profil: " + p.Profile)
+			}
+			if len(p.Branches) < min {
+				return invalid(fmt.Sprintf("Das Profil %s braucht mindestens %d Datenträger", p.Profile, min))
+			}
+			if !uuidRe.MatchString(p.FSUUID) {
+				return invalid("Ungültige Dateisystem-UUID des Pools")
+			}
+			if !slices.Contains(BtrfsCompress, p.Compress) {
+				return invalid("Unbekannte Kompression: " + p.Compress)
+			}
+		default:
+			return invalid("Unbekannter Pool-Typ: " + p.Type)
 		}
 		if len(p.Branches) == 0 {
 			return invalid("Ein Pool braucht mindestens einen Datenträger")
@@ -120,6 +180,9 @@ func (s State) Validate() error {
 			}
 			if disks[b].IsParity() {
 				return invalid("Eine Paritätsplatte kann nicht Teil eines Pools sein: " + b)
+			}
+			if p.IsBtrfs() && (disks[b].FSType != "btrfs" || disks[b].FSUUID != p.FSUUID) {
+				return invalid("Datenträger " + b + " gehört nicht zum btrfs-Dateisystem des Pools")
 			}
 			if other, ok := used[b]; ok {
 				return invalid("Datenträger " + b + " gehört bereits zu Pool " + other)

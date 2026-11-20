@@ -188,6 +188,9 @@ func (m *Manager) prepareEnable(ctx context.Context, pool string, in SnapraidInp
 	if i < 0 {
 		return snapraid.PoolConfig{}, nil, apierr.New(apierr.NotFound, "Pool nicht gefunden")
 	}
+	if pools[i].IsBtrfs() {
+		return snapraid.PoolConfig{}, nil, apierr.New(apierr.Conflict, "SnapRAID gibt es nur für Pools aus einzelnen Platten. Ein btrfs-Pool schützt sich selbst.")
+	}
 	aliases, err := m.loadAliases(ctx)
 	if err != nil {
 		return snapraid.PoolConfig{}, nil, err

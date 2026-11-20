@@ -334,3 +334,122 @@ func TestApplyWritesParityUnitAndProtectsMountpoint(t *testing.T) {
 		t.Fatal("stale parity unit kept")
 	}
 }
+
+const (
+	sdaID = "wwn-0x50014ee2b5d1a2c3"
+	sdbID = "WDC_WD40EFRX-68N32N0_WD-WCC7K1234567"
+)
+
+func btrfsRequest(profile string) storage.BtrfsCreateRequest {
+	return storage.BtrfsCreateRequest{Name: "tresor", Profile: profile, Disks: []storage.BtrfsDisk{
+		{DiskID: sdaID, Device: "/dev/sda", SizeBytes: 4000787030016},
+		{DiskID: sdbID, Device: "/dev/sdb", SizeBytes: 4000787030016},
+	}}
+}
+
+func btrfsEnv(t *testing.T) (Deps, *sysexec.FakeRunner) {
+	d, f, _ := storageEnv(t)
+	f.Responses["lsblk --json --bytes -o PATH,TYPE /dev/sdb"] = sysexec.Result{Stdout: []byte(`{"blockdevices":[{"path":"/dev/sdb","type":"disk","children":[{"path":"/dev/sdb1","type":"part"}]}]}`)}
+	f.Responses["blkid -s UUID -o value /dev/sda1"] = sysexec.Result{Stdout: []byte("btrfs-uuid\n")}
+	return d, f
+}
+
+func TestBtrfsCreateCommandSequence(t *testing.T) {
+	d, f := btrfsEnv(t)
+	res, err := BtrfsCreate(context.Background(), d, btrfsRequest("raid1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder(t, f,
+		lsblkCall,
+		"wipefs --all /dev/sda", "sgdisk --zap-all /dev/sda", "partprobe /dev/sda",
+		"wipefs --all /dev/sdb", "sgdisk --zap-all /dev/sdb", "partprobe /dev/sdb",
+		"mkfs.btrfs -f -L bnas-tresor -d raid1 -m raid1 /dev/sda1 /dev/sdb1",
+		"udevadm settle",
+		"blkid -s UUID -o value /dev/sda1",
+	)
+	if res.FSUUID != "btrfs-uuid" || res.Label != "bnas-tresor" {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestBtrfsMetadataProfile(t *testing.T) {
+	cases := []struct {
+		profile string
+		disks   int
+		want    string
+	}{{"single", 1, "dup"}, {"single", 3, "raid1"}, {"raid1", 2, "raid1"}, {"raid1c3", 3, "raid1c3"}, {"raid10", 4, "raid10"}}
+	for _, c := range cases {
+		if got := btrfsMetadata(c.profile, c.disks); got != c.want {
+			t.Errorf("%s/%d: %s", c.profile, c.disks, got)
+		}
+	}
+	d, f := btrfsEnv(t)
+	if _, err := BtrfsCreate(context.Background(), d, btrfsRequest("single")); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("mkfs.btrfs -f -L bnas-tresor -d single -m raid1 /dev/sda1 /dev/sdb1") {
+		t.Fatal(f.Calls)
+	}
+}
+
+func TestBtrfsCreateRejects(t *testing.T) {
+	cases := map[string]func(*storage.BtrfsCreateRequest){
+		"Name":     func(r *storage.BtrfsCreateRequest) { r.Name = "../x" },
+		"Profil":   func(r *storage.BtrfsCreateRequest) { r.Profile = "raid5" },
+		"zu wenig": func(r *storage.BtrfsCreateRequest) { r.Profile = "raid1c3" },
+		"doppelt":  func(r *storage.BtrfsCreateRequest) { r.Disks[1] = r.Disks[0] },
+		"System": func(r *storage.BtrfsCreateRequest) {
+			r.Disks[1] = storage.BtrfsDisk{DiskID: "eui.002538b111b2c3d4", Device: "/dev/nvme0n1", SizeBytes: 512110190592}
+		},
+		"Gerät":     func(r *storage.BtrfsCreateRequest) { r.Disks[1].Device = "/dev/sdx" },
+		"Größe":     func(r *storage.BtrfsCreateRequest) { r.Disks[1].SizeBytes = 1 },
+		"unbekannt": func(r *storage.BtrfsCreateRequest) { r.Disks[1].DiskID = "gibtsnicht" },
+	}
+	for name, mod := range cases {
+		d, f := btrfsEnv(t)
+		req := btrfsRequest("raid1")
+		mod(&req)
+		if _, err := BtrfsCreate(context.Background(), d, req); err == nil {
+			t.Errorf("%s: kein Fehler", name)
+		}
+		for _, c := range f.Calls {
+			if strings.HasPrefix(c, "wipefs") || strings.HasPrefix(c, "mkfs") {
+				t.Errorf("%s: darf nichts löschen, aber: %s", name, c)
+			}
+		}
+	}
+}
+
+func TestBtrfsCreateStopsOnMkfsError(t *testing.T) {
+	d, f := btrfsEnv(t)
+	f.Responses["mkfs.btrfs -f -L bnas-tresor -d raid1 -m raid1 /dev/sda1 /dev/sdb1"] = sysexec.Result{ExitCode: 1, Stderr: []byte("kaputt")}
+	if _, err := BtrfsCreate(context.Background(), d, btrfsRequest("raid1")); err == nil {
+		t.Fatal("kein Fehler")
+	}
+	if f.Called("blkid") {
+		t.Fatal("nach dem Fehler darf nichts mehr laufen")
+	}
+}
+
+func TestApplyBtrfsPool(t *testing.T) {
+	d, f, root := storageEnv(t)
+	const u = "33333333-3333-3333-3333-333333333333"
+	st := storage.State{
+		Disks: []storage.DiskMount{{DiskID: "a", FSUUID: u, FSType: "btrfs"}, {DiskID: "b", FSUUID: u, FSType: "btrfs"}},
+		Pools: []storage.Pool{{Name: "tresor", Type: storage.PoolBtrfs, Branches: []string{"a", "b"}, Profile: "raid1", FSUUID: u, CreatePolicy: "epmfs", MinFree: "20G"}},
+	}
+	res, err := Apply(context.Background(), d, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Changed) != 1 || res.Changed[0] != "srv-pools-tresor.mount" {
+		t.Fatalf("%+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(root, "etc/systemd/system/srv-pools-tresor.mount")); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Called("systemctl enable --now srv-pools-tresor.mount") {
+		t.Fatal(f.Calls)
+	}
+}

@@ -69,6 +69,15 @@ func Register(s *rpc.Server, d Deps) {
 		defer mutate.Unlock()
 		return Format(ctx, d, req)
 	})
+	s.Handle("pool.btrfs.create", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req storage.BtrfsCreateRequest
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		mutate.Lock()
+		defer mutate.Unlock()
+		return BtrfsCreate(ctx, d, req)
+	})
 	s.Handle("account.list", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return ListAccounts(ctx, d)
 	})

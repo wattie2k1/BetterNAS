@@ -14,7 +14,11 @@ func RenderUnits(s State) (map[string][]byte, error) {
 		return nil, err
 	}
 	out := map[string][]byte{}
+	members := btrfsMembers(s.Pools)
 	for _, d := range s.Disks {
+		if members[d.DiskID] != "" {
+			continue // Mitglied eines btrfs-Pools: der Pool hängt das gemeinsame Dateisystem ein
+		}
 		where := d.Path()
 		what := "Datenplatte"
 		if d.IsParity() {
@@ -37,6 +41,10 @@ WantedBy=multi-user.target %s
 `, ManagedHeader, what, d.DiskID, d.FSUUID, where, d.FSType, device))
 	}
 	for _, p := range s.Pools {
+		if p.IsBtrfs() {
+			out[UnitName(PoolPath(p.Name))] = renderBtrfsPool(p)
+			continue
+		}
 		var paths, units []string
 		for _, b := range p.Branches {
 			paths = append(paths, DiskPath(b))
@@ -63,4 +71,28 @@ WantedBy=multi-user.target %s
 			strings.Join(paths, ":"), where, p.CreatePolicy, p.MinFree, p.Name, strings.Join(units, " ")))
 	}
 	return out, nil
+}
+
+// renderBtrfsPool erzeugt die Mount-Unit eines btrfs-Pools. Alle Mitglieder tragen dieselbe
+// Dateisystem-UUID; die Geräte-Unit wird erst aktiv, wenn btrfs alle Mitglieder gesehen hat
+// (udev-Regel „btrfs ready“). Fehlt eine Platte, hängt der Pool bewusst nicht von selbst ein.
+func renderBtrfsPool(p Pool) []byte {
+	device := EscapePath("/dev/disk/by-uuid/"+p.FSUUID) + ".device"
+	options := "noatime,nofail"
+	if p.Compress != "" {
+		options += ",compress=" + p.Compress
+	}
+	return []byte(fmt.Sprintf(`%s
+[Unit]
+Description=BetterNAS Pool %s (btrfs, %s)
+
+[Mount]
+What=/dev/disk/by-uuid/%s
+Where=%s
+Type=btrfs
+Options=%s
+
+[Install]
+WantedBy=multi-user.target %s
+`, ManagedHeader, p.Name, p.Profile, p.FSUUID, PoolPath(p.Name), options, device))
 }

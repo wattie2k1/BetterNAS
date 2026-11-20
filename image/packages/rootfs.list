@@ -50,6 +50,7 @@ gdisk
 parted
 e2fsprogs
 xfsprogs
+btrfs-progs
 dosfstools
 firmware-linux-free
 firmware-misc-nonfree
