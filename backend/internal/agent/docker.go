@@ -14,7 +14,6 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
-	"github.com/betternas/betternas/internal/rpc"
 )
 
 // StackFiles und StackCheck leben im Paket docker (gemeinsam mit der API).
@@ -36,17 +35,17 @@ func checkStackName(name string) error {
 	return nil
 }
 
-func composePath(name string) string { return path.Join(docker.StackDir(name), docker.ComposeFile) }
-func envPath(name string) string     { return path.Join(docker.StackDir(name), docker.EnvFile) }
+func composePath(name string) string { return path.Join(stackDir(name), docker.ComposeFile) }
+func envPath(name string) string     { return path.Join(stackDir(name), docker.EnvFile) }
 
 // composeArgs baut `docker compose -p <name> --project-directory <dir> <args…>`.
 func composeArgs(name string, args ...string) []string {
-	return append([]string{"compose", "-p", name, "--project-directory", docker.StackDir(name), "-f", composePath(name)}, args...)
+	return append([]string{"compose", "-p", name, "--project-directory", stackDir(name), "-f", composePath(name)}, args...)
 }
 
 // ListStacks liefert alle Stacks (Verzeichnisse mit compose.yaml) samt Laufzustand.
 func ListStacks(ctx context.Context, d Deps) ([]docker.StackInfo, error) {
-	files, err := d.FS.Glob(path.Join(docker.StacksDir, "*", docker.ComposeFile))
+	files, err := d.FS.Glob(path.Join(stacksDir(), "*", docker.ComposeFile))
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +107,7 @@ func SaveStack(_ context.Context, d Deps, in StackSave) error {
 	if in.Create && d.FS.Exists(composePath(in.Name)) {
 		return apierr.New(apierr.Conflict, "Ein Stack mit diesem Namen existiert bereits")
 	}
-	if err := d.FS.MkdirAll(docker.StackDir(in.Name), 0o700); err != nil {
+	if err := d.FS.MkdirAll(stackDir(in.Name), 0o700); err != nil {
 		return err
 	}
 	if err := d.FS.WriteFile(composePath(in.Name), []byte(in.Compose), 0o600); err != nil {
@@ -160,7 +159,7 @@ func DeleteStack(ctx context.Context, d Deps, name string) error {
 		return apierr.New(apierr.Internal, "Der Stack konnte nicht gestoppt werden").With("stderr", strings.TrimSpace(string(res.Stderr)))
 	}
 	_ = StackRollbackClear(ctx, d, name)
-	dir := docker.StackDir(name)
+	dir := stackDir(name)
 	rest, err := d.FS.Glob(path.Join(dir, "*"))
 	if err != nil {
 		return err
@@ -353,7 +352,7 @@ func StackRunStatus(ctx context.Context, d Deps, unit string) (docker.RunState, 
 }
 
 // registerDocker registriert die Docker-Methoden des Agents.
-func registerDocker(s *rpc.Server, d Deps) {
+func registerDocker(s dockerReg, d Deps) {
 	named := func(p json.RawMessage) (string, error) {
 		var req struct {
 			Name string `json:"name"`

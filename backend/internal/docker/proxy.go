@@ -18,8 +18,6 @@ import (
 const (
 	// ProxyStack ist der Name des Stacks, den BetterNAS für den Reverse-Proxy verwaltet.
 	ProxyStack = "reverse-proxy"
-	// ProxyDir enthält Caddyfile (conf), Zertifikate und Zustand (data, config).
-	ProxyDir = "/srv/appdata/reverse-proxy"
 	// ProxyImage ist das Caddy-Image; Compose und Prüfung verwenden dasselbe.
 	ProxyImage = "caddy:2"
 	// ProxyContainer ist der Name des Caddy-Containers im Stack.
@@ -144,7 +142,7 @@ func RenderCaddyfile(c ProxyConfig) string {
 }
 
 // RenderProxyCompose erzeugt die compose.yaml des Reverse-Proxy-Stacks.
-func RenderProxyCompose(c ProxyConfig) string {
+func RenderProxyCompose(c ProxyConfig, proxyDir string) string {
 	return fmt.Sprintf(`# Von BetterNAS verwaltet. Die Ports stellst du unter Docker → Reverse-Proxy ein.
 services:
   caddy:
@@ -160,5 +158,5 @@ services:
       - %s/conf:/etc/caddy
       - %s/data:/data
       - %s/config:/config
-`, ProxyImage, c.HTTPPort, c.HTTPSPort, c.HTTPSPort, ProxyDir, ProxyDir, ProxyDir)
+`, ProxyImage, c.HTTPPort, c.HTTPSPort, c.HTTPSPort, proxyDir, proxyDir, proxyDir)
 }

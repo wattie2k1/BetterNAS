@@ -114,12 +114,12 @@ func TestRenderCaddyfileWithoutSitesOrEmail(t *testing.T) {
 }
 
 func TestRenderProxyCompose(t *testing.T) {
-	got := RenderProxyCompose(ProxyConfig{HTTPPort: 8080, HTTPSPort: 9443})
+	got := RenderProxyCompose(ProxyConfig{HTTPPort: 8080, HTTPSPort: 9443}, "/srv/pools/a/cfg/reverse-proxy")
 	for _, want := range []string{
 		"image: caddy:2", "restart: unless-stopped",
 		`"8080:80"`, `"9443:443"`, `"9443:443/udp"`,
 		"host.docker.internal:host-gateway",
-		"/srv/appdata/reverse-proxy/conf:/etc/caddy", "/srv/appdata/reverse-proxy/data:/data", "/srv/appdata/reverse-proxy/config:/config",
+		"/srv/pools/a/cfg/reverse-proxy/conf:/etc/caddy", "/srv/pools/a/cfg/reverse-proxy/data:/data", "/srv/pools/a/cfg/reverse-proxy/config:/config",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("fehlt %q:\n%s", want, got)

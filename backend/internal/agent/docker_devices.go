@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/betternas/betternas/internal/docker"
-	"github.com/betternas/betternas/internal/rpc"
 )
 
 // Nur Pfade aus unkritischen Zeichen gehen in YAML-Vorschläge.
@@ -102,7 +101,7 @@ func ListHostDevices(ctx context.Context, d Deps) ([]docker.HostDevice, error) {
 	return out, nil
 }
 
-func registerDockerDevices(s *rpc.Server, d Deps) {
+func registerDockerDevices(s dockerReg, d Deps) {
 	s.Handle("device.list", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return ListHostDevices(ctx, d)
 	})

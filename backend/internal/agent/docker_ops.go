@@ -160,7 +160,7 @@ func ContainerShell(ctx context.Context, d Deps, params json.RawMessage, in <-ch
 	}
 }
 
-func registerDockerOps(s *rpc.Server, d Deps) {
+func registerDockerOps(s dockerReg, d Deps) {
 	s.Handle("container.stats", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return ContainerStatsList(ctx, d)
 	})

@@ -47,11 +47,42 @@ func guarded(h rpc.Handler) rpc.Handler {
 
 // stackDir ist das Verzeichnis eines Stacks. Nur nach requirePaths aufrufen (die Docker-RPCs sind gesperrt, bis
 // Pfade vorhanden sind); ohne Einrichtung zeigt der Pfad bewusst ins Leere.
-func stackDir(name string) string {
+func stackDir(name string) string { return path.Join(stacksDir(), name) }
+
+func stacksDir() string {
 	if p := curPaths.Load(); p != nil {
-		return p.StackDir(name)
+		return p.StacksDir()
 	}
-	return "/nonexistent/docker-not-configured/" + name
+	return "/nonexistent/docker-not-configured/stacks"
+}
+
+func proxyDir() string {
+	if p := curPaths.Load(); p != nil {
+		return p.ProxyDir()
+	}
+	return "/nonexistent/docker-not-configured/reverse-proxy"
+}
+
+// dockerReg registriert Docker-Methoden und sperrt sie, solange Docker nicht eingerichtet ist.
+// Ausgenommen sind Status und Ordnerauswahl (für die Einrichtung nötig).
+type dockerReg struct{ s *rpc.Server }
+
+var unguardedMethods = map[string]bool{"docker.status": true, "folder.list": true, "folder.create": true}
+
+func (r dockerReg) Handle(method string, h rpc.Handler) {
+	if !unguardedMethods[method] {
+		h = guarded(h)
+	}
+	r.s.Handle(method, h)
+}
+
+func (r dockerReg) HandleSession(method string, h rpc.SessionHandler) {
+	r.s.HandleSession(method, func(ctx context.Context, p json.RawMessage, in <-chan rpc.Event, emit func(rpc.Event) error) error {
+		if _, err := requirePaths(); err != nil {
+			return err
+		}
+		return h(ctx, p, in, emit)
+	})
 }
 
 // initPaths lädt paths.json. Fehlt sie, gilt eine Installation mit vorhandenen Stacks oder mit data-root unter

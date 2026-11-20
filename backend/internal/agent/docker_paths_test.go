@@ -109,3 +109,37 @@ func TestGuardedLocksHandler(t *testing.T) {
 		t.Fatalf("%v %v", v, err)
 	}
 }
+
+func TestStackPathsFollowPaths(t *testing.T) {
+	resetPaths(t)
+	p := docker.Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
+	curPaths.Store(&p)
+	if got := composePath("x"); got != "/srv/pools/a/cfg/stacks/x/compose.yaml" {
+		t.Fatal(got)
+	}
+	if got := envPath("x"); got != "/srv/pools/a/cfg/stacks/x/.env" {
+		t.Fatal(got)
+	}
+	if got := rollbackPath("x", "r.json"); got != "/srv/pools/a/cfg/stacks/x/r.json" {
+		t.Fatal(got)
+	}
+	if got := proxyNew(); got != "/srv/pools/a/cfg/reverse-proxy/conf/Caddyfile.new" {
+		t.Fatal(got)
+	}
+}
+
+func TestDockerRPCsLockedWhenNotConfigured(t *testing.T) {
+	d, _, _ := dockerEnv(t)
+	c := rpcClient(t, d) // Register ruft initPaths: frische Installation, nicht eingerichtet
+	ctx := context.Background()
+	for _, m := range []string{"stack.list", "container.list", "proxy.write", "image.list", "container.stats", "device.list", "stack.images"} {
+		if err := c.Call(ctx, m, map[string]string{}, nil); code(err) != apierr.DockerNotConfigured {
+			t.Errorf("%s: %v", m, err)
+		}
+	}
+	for _, m := range []string{"docker.status", "folder.list"} {
+		if err := c.Call(ctx, m, map[string]string{}, nil); code(err) == apierr.DockerNotConfigured {
+			t.Errorf("%s darf nicht gesperrt sein", m)
+		}
+	}
+}

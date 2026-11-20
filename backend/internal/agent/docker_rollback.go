@@ -26,7 +26,7 @@ const (
 
 var imageIDRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-func rollbackPath(name, file string) string { return path.Join(docker.StackDir(name), file) }
+func rollbackPath(name, file string) string { return path.Join(stackDir(name), file) }
 
 func rollbackTag(name, kind string, i int) string {
 	return fmt.Sprintf("%s%s:%s%d", rollbackRepo, name, kind, i)

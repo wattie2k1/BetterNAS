@@ -764,7 +764,7 @@ func TestDockerProxy(t *testing.T) {
 		}
 		_ = DeleteStack(ctx, d, docker.ProxyStack)
 		_ = exec.Command("docker", "rm", "-f", "bnasprx-a", "bnasprx-b").Run()
-		_ = os.RemoveAll(docker.ProxyDir)
+		_ = os.RemoveAll(proxyDir())
 	})
 
 	// Zwei kleine Webserver als Ziele.
@@ -841,7 +841,7 @@ func TestDockerProxy(t *testing.T) {
 	}
 
 	// Eine kaputte Konfiguration lehnt Caddy ab, die laufende bleibt.
-	if err := d.FS.WriteFile(proxyNew, []byte("a.nas.local {\n\tunbekannte_direktive 1\n}\n"), 0o644); err != nil {
+	if err := d.FS.WriteFile(proxyNew(), []byte("a.nas.local {\n\tunbekannte_direktive 1\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	err := ProxyValidate(ctx, d)
@@ -849,7 +849,7 @@ func TestDockerProxy(t *testing.T) {
 		t.Fatalf("kaputte Konfiguration akzeptiert: %v", err)
 	}
 	t.Logf("Caddy-Meldung: %v", err)
-	if d.FS.Exists(proxyNew) {
+	if d.FS.Exists(proxyNew()) {
 		t.Fatal("abgelehnte Datei bleibt liegen")
 	}
 	if got := fetch("a.nas.local", "18443"); got != "antwort-von-bnasprx-a" {

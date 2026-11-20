@@ -10,7 +10,6 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
-	"github.com/betternas/betternas/internal/rpc"
 )
 
 const maxFolders = 500
@@ -68,7 +67,7 @@ func ListFolders(ctx context.Context, d Deps, p string) (docker.FolderList, erro
 	return out, nil
 }
 
-func registerDockerFolders(s *rpc.Server, d Deps) {
+func registerDockerFolders(s dockerReg, d Deps) {
 	s.Handle("folder.create", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var req struct {
 			Path string `json:"path"`

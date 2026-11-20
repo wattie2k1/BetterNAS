@@ -7,15 +7,13 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
-	"github.com/betternas/betternas/internal/rpc"
 )
 
-const (
-	proxyConf     = docker.ProxyDir + "/conf"
-	proxyNew      = proxyConf + "/Caddyfile.new"
-	proxyCurrent  = proxyConf + "/Caddyfile"
-	proxyCaddyCmd = "/etc/caddy/Caddyfile"
-)
+const proxyCaddyCmd = "/etc/caddy/Caddyfile"
+
+func proxyConf() string    { return proxyDir() + "/conf" }
+func proxyNew() string     { return proxyConf() + "/Caddyfile.new" }
+func proxyCurrent() string { return proxyConf() + "/Caddyfile" }
 
 // ProxyWrite legt die Verzeichnisse und den Stack des Reverse-Proxys an und schreibt die neue Caddy-Konfiguration
 // als Caddyfile.new. Erst ProxyValidate und ProxyCommit machen sie zur laufenden Konfiguration.
@@ -26,28 +24,28 @@ func ProxyWrite(_ context.Context, d Deps, cfg docker.ProxyConfig) error {
 		return err
 	}
 	for _, sub := range []string{"conf", "data", "config"} {
-		if err := d.FS.MkdirAll(docker.ProxyDir+"/"+sub, 0o755); err != nil {
+		if err := d.FS.MkdirAll(proxyDir()+"/"+sub, 0o755); err != nil {
 			return err
 		}
 	}
-	if err := SaveStack(context.Background(), d, StackSave{StackFiles: StackFiles{Name: docker.ProxyStack, Compose: docker.RenderProxyCompose(cfg)}}); err != nil {
+	if err := SaveStack(context.Background(), d, StackSave{StackFiles: StackFiles{Name: docker.ProxyStack, Compose: docker.RenderProxyCompose(cfg, proxyDir())}}); err != nil {
 		return err
 	}
-	return d.FS.WriteFile(proxyNew, []byte(docker.RenderCaddyfile(cfg)), 0o644)
+	return d.FS.WriteFile(proxyNew(), []byte(docker.RenderCaddyfile(cfg)), 0o644)
 }
 
 // ProxyValidate lässt Caddy die neue Konfiguration prüfen (das Image muss vorhanden sein). Bei einem Fehler wird sie verworfen.
 func ProxyValidate(ctx context.Context, d Deps) error {
-	if !d.FS.Exists(proxyNew) {
+	if !d.FS.Exists(proxyNew()) {
 		return apierr.New(apierr.NotFound, "Keine neue Konfiguration vorhanden")
 	}
-	res, err := d.Runner.Run(ctx, nil, "docker", "run", "--rm", "-v", proxyConf+":/etc/caddy:ro", docker.ProxyImage,
+	res, err := d.Runner.Run(ctx, nil, "docker", "run", "--rm", "-v", proxyConf()+":/etc/caddy:ro", docker.ProxyImage,
 		"caddy", "validate", "--config", "/etc/caddy/Caddyfile.new", "--adapter", "caddyfile")
 	if err != nil {
 		return apierr.New(apierr.Internal, "Docker ist nicht verfügbar")
 	}
 	if res.ExitCode != 0 {
-		_ = d.FS.Remove(proxyNew)
+		_ = d.FS.Remove(proxyNew())
 		return apierr.New(apierr.InvalidParams, "Caddy lehnt die Konfiguration ab: "+caddyErrors(string(res.Stderr)))
 	}
 	return nil
@@ -80,15 +78,15 @@ func caddyErrors(stderr string) string {
 
 // ProxyCommit macht die geprüfte Konfiguration zur laufenden.
 func ProxyCommit(_ context.Context, d Deps) error {
-	if !d.FS.Exists(proxyNew) {
+	if !d.FS.Exists(proxyNew()) {
 		return apierr.New(apierr.NotFound, "Keine neue Konfiguration vorhanden")
 	}
-	if d.FS.Exists(proxyCurrent) {
-		if err := d.FS.Remove(proxyCurrent); err != nil {
+	if d.FS.Exists(proxyCurrent()) {
+		if err := d.FS.Remove(proxyCurrent()); err != nil {
 			return err
 		}
 	}
-	return d.FS.Rename(proxyNew, proxyCurrent)
+	return d.FS.Rename(proxyNew(), proxyCurrent())
 }
 
 // ProxyReload lädt die Konfiguration im laufenden Caddy-Container neu (ohne Verbindungen zu kappen).
@@ -99,7 +97,7 @@ func ProxyReload(ctx context.Context, d Deps) error {
 	return nil
 }
 
-func registerDockerProxy(s *rpc.Server, d Deps) {
+func registerDockerProxy(s dockerReg, d Deps) {
 	s.Handle("proxy.write", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var cfg docker.ProxyConfig
 		if err := decode(p, &cfg); err != nil {
