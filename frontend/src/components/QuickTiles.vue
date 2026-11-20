@@ -228,7 +228,10 @@ const vmLabel: Record<string, string> = { running: 'läuft', shutoff: 'aus', pau
             :data-test="`quick-vm-open-${e.item.name}`"
             @click="canConsole(e.item) && (consoleFor = e.item.name)"
           >
-            <span class="app-icon" :class="{ off: e.item.state !== 'running' }" :style="e.item.state === 'running' ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}"><i class="pi pi-desktop" /></span>
+            <span class="app-icon" :class="{ off: e.item.state === 'shutoff', img: !!vms.iconUrlOf(e.item.name) }" :style="e.item.state === 'running' && !vms.iconUrlOf(e.item.name) ? { background: 'linear-gradient(135deg, #f97316, #fb923c)' } : {}" :data-test="`quick-vm-icon-${e.item.name}`">
+              <img v-if="vms.iconUrlOf(e.item.name)" :src="vms.iconUrlOf(e.item.name)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
+              <i v-else class="pi pi-desktop" />
+            </span>
             <span class="app-text">
               <strong>{{ e.item.name }}</strong>
               <small>VM<template v-if="e.item.state !== 'running' && e.item.state !== 'shutoff'"> · {{ vmLabel[e.item.state] ?? e.item.state }}</template></small>

@@ -163,7 +163,7 @@ function openMenu(e: Event, v: VmInfo) {
     <article v-for="v in store.vms" :key="v.name" class="vm glass" :data-test="`vm-${v.name}`">
       <header>
         <span class="title">
-          <button type="button" class="ico" :class="{ on: v.state === 'running', img: !!store.iconUrlOf(v.name) }" :data-test="`vm-icon-${v.name}`" :aria-label="`Icon von ${v.name} ändern`" @click="iconFor = v.name">
+          <button type="button" class="ico" :class="{ on: v.state === 'running', off: v.state === 'shutoff', img: !!store.iconUrlOf(v.name) }" :data-test="`vm-icon-${v.name}`" :aria-label="`Icon von ${v.name} ändern`" @click="iconFor = v.name">
             <img v-if="store.iconUrlOf(v.name)" :src="store.iconUrlOf(v.name)!" alt="" loading="lazy" @error="($event.target as HTMLImageElement).style.display = 'none'" />
             <i v-else class="pi pi-desktop" />
           </button>
@@ -308,7 +308,7 @@ function openMenu(e: Event, v: VmInfo) {
   object-fit: contain;
   padding: 5px;
 }
-.ico.img:not(.on) img {
+.ico.img.off img {
   filter: grayscale(1);
   opacity: 0.6;
 }
