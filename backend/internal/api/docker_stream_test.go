@@ -48,7 +48,11 @@ func newStreamEnv(t *testing.T) (*streamEnv, func(string) string) {
 	fs := &sysexec.FakeStreamer{}
 	fr := &sysexec.FakeRunner{Responses: map[string]sysexec.Result{}}
 	as := rpc.NewServer(nil)
-	agent.Register(as, agent.Deps{Runner: fr, FS: sysexec.NewRootFS(dir), Stream: fs})
+	rootFS := sysexec.NewRootFS(dir)
+	// Eingerichtetes Docker (bestehende Installation), sonst sind die Docker-Methoden gesperrt.
+	_ = rootFS.MkdirAll("/etc/betternas", 0o755)
+	_ = rootFS.WriteFile("/etc/betternas/paths.json", []byte(`{"appdata":"/srv/appdata","dockerdata":"/srv/appdata"}`), 0o644)
+	agent.Register(as, agent.Deps{Runner: fr, FS: rootFS, Stream: fs})
 	go as.Serve(l)
 
 	d, err := db.Open(filepath.Join(dir, "b.db"))
