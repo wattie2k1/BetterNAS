@@ -135,18 +135,18 @@ function submit() {
         Die Eingaben werden in der .env gespeichert (nur für Administratoren lesbar). Im nächsten Schritt kannst du alles noch ändern, bevor der Stack angelegt wird.
       </Message>
     </div>
-    <FolderPicker
-      :visible="browsing !== null"
-      :start="browsing ? values[browsing] : ''"
-      @update:visible="(v) => !v && (browsing = null)"
-      @select="(p) => browsing && (values[browsing] = p)"
-    />
     <template #footer>
       <Button v-if="picked" label="Zurück" text @click="picked = null" />
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
       <Button v-if="picked" data-test="template-next" label="Weiter" icon="pi pi-arrow-right" icon-pos="right" :disabled="!valid" @click="submit" />
     </template>
   </Dialog>
+  <FolderPicker
+    :visible="browsing !== null"
+    :start="browsing ? values[browsing] : ''"
+    @update:visible="(v) => !v && (browsing = null)"
+    @select="(p) => browsing && (values[browsing] = p)"
+  />
 </template>
 
 <style scoped>

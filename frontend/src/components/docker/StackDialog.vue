@@ -231,7 +231,6 @@ const files = (): StackFiles => ({
       <span v-if="check.ok">Die Compose-Datei ist gültig.</span>
       <pre v-else class="out">{{ check.message }}</pre>
     </Message>
-    <FolderPicker :visible="browsing" @update:visible="browsing = $event" @select="insertFolder" />
     <DevicePicker :visible="pickingDevice" @update:visible="pickingDevice = $event" @select="insertDevices" />
     <template #footer>
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
@@ -240,6 +239,7 @@ const files = (): StackFiles => ({
       <Button data-test="stack-start" label="Speichern & starten" icon="pi pi-play" :disabled="!valid || busy" :loading="busy" @click="emit('submit', files(), 'start')" />
     </template>
   </Dialog>
+  <FolderPicker :visible="browsing" @update:visible="browsing = $event" @select="insertFolder" />
 </template>
 
 <style scoped>

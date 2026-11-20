@@ -98,8 +98,8 @@ function pick(p: string) {
       </template>
       <Button v-else data-test="paths-close" label="Schließen" @click="emit('update:visible', false)" />
     </template>
-    <FolderPicker :visible="browsing !== null" :start="browsing === 'appdata' ? appdata : dockerdata" @update:visible="(v) => !v && (browsing = null)" @select="pick" />
   </Dialog>
+  <FolderPicker :visible="browsing !== null" :start="browsing === 'appdata' ? appdata : dockerdata" @update:visible="(v) => !v && (browsing = null)" @select="pick" />
 </template>
 
 <style scoped>
