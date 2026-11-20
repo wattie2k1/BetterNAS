@@ -109,7 +109,7 @@ describe('StackDialog: Icon-Tab', () => {
 describe('Docker-Kachel: Icon', () => {
   it('zeigt das Stack-Icon statt des Anfangsbuchstabens', async () => {
     const s = useDockerStore()
-    s.status = { installed: true, active: true, version: '27' }
+    s.status = { installed: true, active: true, configured: true, version: '27' }
     s.stacks = [{ name: 'media', running: 1, total: 1, icon: 'v1' }]
     s.containers = [container(), container({ id: 'b', name: 'solo', stack: '' })]
     stubFetch({ 'GET /api/v1/docker/status': s.status, 'GET /api/v1/stacks': s.stacks, 'GET /api/v1/containers': s.containers })

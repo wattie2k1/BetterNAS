@@ -2,7 +2,31 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PrimeVue from 'primevue/config'
 import TemplateDialog from '@/components/docker/TemplateDialog.vue'
-import { APP_TEMPLATES, TEMPLATE_CATEGORIES, containerNameError, containerNamesFor, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate } from '@/utils/appTemplates'
+import { APP_TEMPLATES, roots, setRoots, TEMPLATE_CATEGORIES, containerNameError, containerNamesFor, defaultValues, fieldError, groupTemplates, randomSecret, renderTemplate } from '@/utils/appTemplates'
+
+describe('Vorlagen: Speicherorte', () => {
+  it('Einstellungen liegen unter appdata, alles andere unter dockerdata', () => {
+    const before = { ...roots }
+    setRoots({ appdata: '/srv/pools/a/cfg', dockerdata: '/srv/pools/b/dd' })
+    try {
+      for (const t of APP_TEMPLATES) {
+        const v = defaultValues(t, t.stack)
+        for (const f of t.fields.filter((x) => x.kind === 'path')) {
+          const val = v[f.key]
+          if (val.startsWith('/srv/pools/a/cfg/')) expect(['CONFIG_DIR', 'CONF_DIR', 'STATE_DIR', 'CERT_DIR'], `${t.id}.${f.key}`).toContain(f.key)
+          else if (val.startsWith('/srv/pools/b/dd/')) expect(['CONFIG_DIR', 'CONF_DIR', 'STATE_DIR', 'CERT_DIR'], `${t.id}.${f.key}`).not.toContain(f.key)
+          expect(val, `${t.id}.${f.key} hartes /srv/appdata`).not.toMatch(/^\/srv\/appdata\//)
+        }
+      }
+      const jf = APP_TEMPLATES.find((x) => x.id === 'jellyfin')!
+      const v = defaultValues(jf, 'jf')
+      expect(v.CONFIG_DIR).toBe('/srv/pools/a/cfg/jf/config')
+      expect(v.CACHE_DIR).toBe('/srv/pools/b/dd/jf/cache')
+    } finally {
+      setRoots(before)
+    }
+  })
+})
 
 describe('Vorlagen', () => {
   it('jede Vorlage hat für alle ${VARIABLEN} ein Feld und gültige Vorgaben', () => {
