@@ -207,6 +207,21 @@ Pfade und Geräte werden nur aus dem Soll-Zustand abgeleitet, nie aus freien Ein
   Platte hinzufügen/entfernen, Profil ändern, „Degradiert einhängen".
 - Texte alle deutsch, wie im Rest der GUI.
 
+**Stand Etappe 4 (umgesetzt):**
+- `PoolDialog`: beim Anlegen Typ „Flexibel (mergerfs)“ oder „Redundant (btrfs)“. Bei btrfs nur freie, nicht
+  eingerichtete Platten; Profil wird ab zwei Platten automatisch auf RAID1 gestellt (Mindestplatten je
+  Profil sperren Auswahl), nutzbare Kapazität live, Warnung bei ungleich großen Platten und vor dem Löschen
+  (mit Nennung vorhandener Dateisysteme), Bestätigung durch Eintippen des Poolnamens. `PoolsView` holt
+  dann die Vorschau (Token) und legt an.
+- Pool-Karte (`BtrfsPanel`): Profil, Zustand (In Ordnung / Fehler gezählt / Wartung läuft / Unvollständig),
+  Fortschritt von Plattenersatz und Wartung, Fehlerzähler je Platte, Ergebnis der letzten Prüfung,
+  „Jetzt prüfen“ und Menü „Wartung“ (ersetzen, hinzufügen, entfernen, Balance, Schutz ändern, Fehlerzähler
+  zurücksetzen); bei unvollständigem Pool „Degradiert einhängen“. `BtrfsActionDialog` bündelt die
+  Dialoge. Lange Aufträge schließen den Dialog sofort und melden das Ergebnis als Hinweis.
+- Prüfzeitplan: `GET/PUT /api/v1/btrfs/scrub-schedule` (aus, wöchentlich, monatlich, vierteljährlich, Uhrzeit;
+  gilt für alle btrfs-Pools, gespeichert in `settings`, im Soll-Zustand als `State.ScrubSchedule`, vom
+  Agent als Drop-in der Timer-Vorlage umgesetzt) und Dialog „Prüfzeitplan“ in der Pool-Übersicht.
+
 ## 9. Bewusst später
 
 - Übernahme eines vorhandenen Mehrplatten-btrfs (Import).

@@ -227,11 +227,135 @@ export interface FormatRequest {
   confirmToken: string
 }
 
+export type PoolType = 'mergerfs' | 'btrfs'
+export type BtrfsProfile = 'single' | 'raid1' | 'raid1c3' | 'raid10'
+
 export interface PoolInput {
   name: string
+  /** mergerfs (Standard) | btrfs */
+  type?: PoolType
   branches: string[]
   createPolicy: string
   minFree: string
+  /** Nur btrfs. */
+  profile?: BtrfsProfile
+  compress?: '' | 'zstd:1' | 'zstd:3'
+  /** Bestätigung beim Anlegen eines btrfs-Pools (die Platten werden gelöscht). */
+  confirmToken?: string
+  confirmName?: string
+}
+
+export interface BtrfsErrors {
+  write: number
+  read: number
+  flush: number
+  corruption: number
+  generation: number
+}
+
+export interface BtrfsDevice {
+  devId: number
+  path?: string
+  diskId?: string
+  sizeBytes: number
+  usedBytes: number
+  missing: boolean
+  errors: BtrfsErrors
+}
+
+export interface BtrfsScrub {
+  running: boolean
+  result?: string
+  started?: string
+  duration?: string
+  corrected: number
+  uncorrectable: number
+  errors: number
+}
+
+export interface BtrfsOp {
+  op: 'balance' | 'remove' | 'convert' | ''
+  running: boolean
+  result?: 'ok' | 'failed'
+  /** 0–100, -1 = unbekannt */
+  progress: number
+  message?: string
+}
+
+export interface BtrfsReplace {
+  state: 'never' | 'running' | 'finished' | 'canceled'
+  percent: number
+  writeErrs: number
+  readErrs: number
+}
+
+export interface BtrfsStatus {
+  mounted: boolean
+  devices: BtrfsDevice[]
+  missing: number
+  degraded: boolean
+  dataProfile?: string
+  metadataProfile?: string
+  rawBytes: number
+  usableBytes: number
+  freeBytes: number
+  errors: number
+  scrub?: BtrfsScrub
+  op?: BtrfsOp
+  replace?: BtrfsReplace
+}
+
+export interface PoolPreview {
+  disks: FormatPreview[]
+  confirmToken: string
+  expiresAt: string
+}
+
+/** Eingabe zum Ersetzen, Hinzufügen oder Entfernen einer Platte eines btrfs-Pools. */
+export interface BtrfsDiskInput {
+  diskId: string
+  oldDiskId?: string
+  confirmToken?: string
+  confirmName?: string
+  balance?: boolean
+}
+
+export interface BtrfsScrubSchedule {
+  interval: 'off' | 'weekly' | 'monthly' | 'quarterly'
+  hour: number
+}
+
+export const SCRUB_INTERVALS = [
+  { value: 'off', label: 'Aus' },
+  { value: 'weekly', label: 'Wöchentlich (sonntags)' },
+  { value: 'monthly', label: 'Monatlich (am 1.)' },
+  { value: 'quarterly', label: 'Vierteljährlich' },
+] as const
+
+export const BTRFS_PROFILES: { value: BtrfsProfile; label: string; min: number; copies: number; hint: string }[] = [
+  { value: 'single', label: 'Single – keine Ausfallsicherheit', min: 1, copies: 1, hint: 'Nutzt den ganzen Platz. Fällt eine Platte aus, gehen deren Daten verloren. Prüfsummen erkennen Fehler.' },
+  { value: 'raid1', label: 'RAID1 – eine Platte darf ausfallen', min: 2, copies: 2, hint: 'Jede Datei liegt auf zwei Platten. Nutzbar ist etwa die Hälfte.' },
+  { value: 'raid1c3', label: 'RAID1c3 – zwei Platten dürfen ausfallen', min: 3, copies: 3, hint: 'Jede Datei liegt auf drei Platten. Nutzbar ist etwa ein Drittel.' },
+  { value: 'raid10', label: 'RAID10 – schneller, eine Platte pro Paar darf ausfallen', min: 4, copies: 2, hint: 'Zwei Kopien, über mehrere Platten verteilt (schneller). Nutzbar ist etwa die Hälfte.' },
+]
+
+export const profileLabel = (p?: string) => (p ? (p === 'single' ? 'Single' : p.toUpperCase().replace('C3', 'c3')) : '')
+export const profileMin = (p: string) => BTRFS_PROFILES.find((x) => x.value === p)?.min ?? 1
+/** Wie viele Platten ausfallen dürfen (zum Erkennen einer Verringerung). */
+export const profileRedundancy = (p: string) => ({ single: 0, raid1: 1, raid10: 1, raid1c3: 2 })[p as BtrfsProfile] ?? 0
+
+/**
+ * Nutzbare Kapazität (Bytes) eines btrfs-Pools aus den Plattengrößen und was wegen unterschiedlicher Größen ungenutzt bleibt.
+ * Bei k Kopien: min(Summe / k, (Summe − größte) / (k − 1)); RAID10 wird wie RAID1 genähert.
+ */
+export function btrfsUsable(profile: BtrfsProfile, sizes: number[]): { usable: number; unused: number } {
+  const sum = sizes.reduce((a, b) => a + b, 0)
+  const k = BTRFS_PROFILES.find((p) => p.value === profile)?.copies ?? 1
+  if (sizes.length === 0) return { usable: 0, unused: 0 }
+  if (k === 1) return { usable: sum, unused: 0 }
+  const largest = Math.max(...sizes)
+  const usable = Math.max(0, Math.floor(Math.min(sum / k, (sum - largest) / (k - 1))))
+  return { usable, unused: Math.max(0, sum - usable * k) }
 }
 
 export interface SnapraidSettings {
@@ -300,6 +424,8 @@ export interface PoolView extends PoolInput {
   freeBytes: number
   mounted: boolean
   snapraid?: SnapraidInput
+  /** Zustand eines btrfs-Pools; fehlt bei mergerfs oder wenn der Agent nicht antwortet. */
+  btrfs?: BtrfsStatus
 }
 
 /** Identisch zur Backend-Regel (storage.PoolNameRe). */
@@ -353,7 +479,21 @@ export const storageApi = {
   release: (id: string) => api.post<JobRef>(`/api/v1/disks/${enc(id)}/release`),
   createPool: (p: PoolInput) => api.post<JobRef>('/api/v1/pools', p),
   updatePool: (name: string, p: PoolInput) => api.patch<JobRef>(`/api/v1/pools/${enc(name)}`, p),
-  deletePool: (name: string) => api.del<JobRef>(`/api/v1/pools/${enc(name)}`),
+  deletePool: (name: string, confirm?: string) =>
+    api.del<JobRef>(`/api/v1/pools/${enc(name)}${confirm ? `?confirm=${enc(confirm)}` : ''}`),
+  previewPool: (branches: string[]) => api.post<PoolPreview>('/api/v1/pools/preview', { branches }),
+  btrfsScrub: (pool: string, action: 'start' | 'cancel') => api.post<void>(`/api/v1/pools/${enc(pool)}/btrfs/scrub`, { action }),
+  btrfsReplace: (pool: string, in_: BtrfsDiskInput) => api.post<JobRef>(`/api/v1/pools/${enc(pool)}/btrfs/replace`, in_),
+  btrfsAddDisk: (pool: string, in_: BtrfsDiskInput) => api.post<JobRef>(`/api/v1/pools/${enc(pool)}/btrfs/devices`, in_),
+  btrfsRemoveDisk: (pool: string, disk: string, confirm: string) =>
+    api.del<JobRef>(`/api/v1/pools/${enc(pool)}/btrfs/devices/${enc(disk)}?confirm=${enc(confirm)}`),
+  btrfsBalance: (pool: string, usage: number) => api.post<JobRef>(`/api/v1/pools/${enc(pool)}/btrfs/balance`, { usage }),
+  btrfsConvert: (pool: string, profile: BtrfsProfile, confirmName: string) =>
+    api.post<JobRef>(`/api/v1/pools/${enc(pool)}/btrfs/convert`, { profile, confirmName }),
+  btrfsMountDegraded: (pool: string) => api.post<void>(`/api/v1/pools/${enc(pool)}/btrfs/mount-degraded`),
+  btrfsResetErrors: (pool: string) => api.post<void>(`/api/v1/pools/${enc(pool)}/btrfs/reset-errors`),
+  scrubSchedule: () => api.get<BtrfsScrubSchedule>('/api/v1/btrfs/scrub-schedule'),
+  saveScrubSchedule: (s: BtrfsScrubSchedule) => api.put<BtrfsScrubSchedule>('/api/v1/btrfs/scrub-schedule', s),
   enableSnapraid: (pool: string, in_: SnapraidInput) => api.put<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid`, in_),
   disableSnapraid: (pool: string) => api.del<JobRef>(`/api/v1/pools/${enc(pool)}/snapraid`),
   replaceDisk: (pool: string, oldDisk: string, newDisk: string) =>

@@ -258,3 +258,19 @@ func TestBtrfsPoolRoutes(t *testing.T) {
 	}
 	s.waitJob(t, w.Body.Bytes())
 }
+
+func TestBtrfsScrubScheduleRoutes(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("GET", "/api/v1/btrfs/scrub-schedule", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"interval":"monthly"`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/btrfs/scrub-schedule", `{"interval":"weekly","hour":5}`); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/btrfs/scrub-schedule", ""); !strings.Contains(w.Body.String(), `"interval":"weekly"`) || !strings.Contains(w.Body.String(), `"hour":5`) {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/btrfs/scrub-schedule", `{"interval":"hourly","hour":5}`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+}

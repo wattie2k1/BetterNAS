@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"path"
+	"slices"
 	"strings"
 
 	"github.com/betternas/betternas/internal/apierr"
@@ -154,18 +156,58 @@ func BtrfsScrub(ctx context.Context, d Deps, req BtrfsScrubRequest) error {
 	return apierr.New(apierr.InvalidParams, "Aktion muss start oder cancel sein")
 }
 
-// syncScrubTimers schaltet den monatlichen Prüf-Timer für alle btrfs-Pools ein; für entfernte Pools (stale) aus.
-func syncScrubTimers(ctx context.Context, d Deps, pools []storage.Pool, stale []string) {
+const scrubDropIn = "/etc/systemd/system/betternas-btrfs-scrub@.timer.d/10-betternas.conf"
+
+// syncScrubTimers stellt die Prüf-Timer der btrfs-Pools ein: schedule "" = Standard (monatlich), "off" = aus,
+// sonst ein OnCalendar-Ausdruck (als Drop-in der Timer-Vorlage). Für entfernte Pools (stale) schaltet es den Timer aus.
+func syncScrubTimers(ctx context.Context, d Deps, pools []storage.Pool, stale []string, schedule string) {
+	changed := syncScrubDropIn(ctx, d, schedule, pools)
 	for _, p := range pools {
-		if p.IsBtrfs() {
-			if res, err := d.Runner.Run(ctx, nil, "systemctl", "enable", "--now", scrubTimer(p.Name)); err != nil || res.ExitCode != 0 {
-				slog.Warn("scrub-timer konnte nicht aktiviert werden", "pool", p.Name)
-			}
+		if !p.IsBtrfs() {
+			continue
+		}
+		if schedule == "off" {
+			_, _ = d.Runner.Run(ctx, nil, "systemctl", "disable", "--now", scrubTimer(p.Name))
+			continue
+		}
+		if res, err := d.Runner.Run(ctx, nil, "systemctl", "enable", "--now", scrubTimer(p.Name)); err != nil || res.ExitCode != 0 {
+			slog.Warn("scrub-timer konnte nicht aktiviert werden", "pool", p.Name)
+		}
+		if changed {
+			_, _ = d.Runner.Run(ctx, nil, "systemctl", "restart", scrubTimer(p.Name))
 		}
 	}
 	for _, name := range stale {
 		_, _ = d.Runner.Run(ctx, nil, "systemctl", "disable", "--now", scrubTimer(name))
 	}
+}
+
+// syncScrubDropIn schreibt oder entfernt das Drop-in mit dem Zeitplan. Es meldet, ob sich etwas geändert hat.
+func syncScrubDropIn(ctx context.Context, d Deps, schedule string, pools []storage.Pool) bool {
+	hasBtrfs := slices.ContainsFunc(pools, func(p storage.Pool) bool { return p.IsBtrfs() })
+	want := ""
+	if schedule != "" && schedule != "off" {
+		want = storage.ManagedHeader + "\n[Timer]\nOnCalendar=\nOnCalendar=" + schedule + "\n"
+	}
+	cur, err := d.FS.ReadFile(scrubDropIn)
+	exists := err == nil
+	switch {
+	case want == "" && exists:
+		_ = d.FS.Remove(scrubDropIn)
+	case want != "" && hasBtrfs && (!exists || string(cur) != want):
+		if err := d.FS.MkdirAll(path.Dir(scrubDropIn), 0o755); err != nil {
+			slog.Warn("scrub-zeitplan konnte nicht geschrieben werden", "err", err)
+			return false
+		}
+		if err := d.FS.WriteFile(scrubDropIn, []byte(want), 0o644); err != nil {
+			slog.Warn("scrub-zeitplan konnte nicht geschrieben werden", "err", err)
+			return false
+		}
+	default:
+		return false
+	}
+	_, _ = d.Runner.Run(ctx, nil, "systemctl", "daemon-reload")
+	return true
 }
 
 // resolveTarget prüft eine vom Nutzer bestätigte Platte: vorhanden, verwaltbar, keine Systemplatte,
