@@ -19,6 +19,8 @@ const (
 	SystemDisk    = "system_disk"
 	RateLimited   = "rate_limited"
 	Internal      = "internal"
+	// DockerNotConfigured: die Docker-Speicherorte sind noch nicht festgelegt.
+	DockerNotConfigured = "docker_not_configured"
 )
 
 // Error ist ein Fehler mit Code, deutscher Meldung und optionalen Details.
@@ -62,7 +64,7 @@ func HTTPStatus(code string) int {
 		return http.StatusForbidden
 	case NotFound:
 		return http.StatusNotFound
-	case Conflict, PoolBusy, DiskInUse, SystemDisk:
+	case Conflict, PoolBusy, DiskInUse, SystemDisk, DockerNotConfigured:
 		return http.StatusConflict
 	case RateLimited:
 		return http.StatusTooManyRequests
