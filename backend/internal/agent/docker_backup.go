@@ -15,23 +15,42 @@ import (
 	"github.com/betternas/betternas/internal/docker"
 )
 
-// Datensicherung vor einem Update: Gesichert werden nur App-Daten (Ordner unter /srv/appdata, die ein Dienst
+// Datensicherung vor einem Update: Gesichert werden nur App-Daten (Ordner unter appdata und dockerdata, die ein Dienst
 // beschreiben darf, und die benannten Docker-Volumes des Stacks), niemals Pools mit Medien. Die Sicherung gehört
 // zum Rollback-Stand des Updates (genau eine je Stack) und wird mit ihm zusammen verworfen.
 
 const (
-	appdataRoot  = "/srv/appdata"
-	backupBase   = "/srv/appdata/backups/stacks"
-	backupSlack  = 100 << 20 // Reserve auf dem Datenträger zusätzlich zu den 10 % Aufschlag
-	backupIDMax  = 12
-	noDataReason = "Der Stack hat keine Daten, die gesichert werden können (gesichert werden Ordner unter /srv/appdata und Docker-Volumes, keine Pools)."
+	backupSlack = 100 << 20 // Reserve auf dem Datenträger zusätzlich zu den 10 % Aufschlag
+	backupIDMax = 12
 )
 
-// Bereiche in /srv/appdata, die BetterNAS selbst gehören.
-var reservedAppdata = map[string]bool{"stacks": true, "docker": true, "backups": true}
+func noDataReason() string {
+	if p := curPaths.Load(); p != nil {
+		return "Der Stack hat keine Daten, die gesichert werden können (gesichert werden Ordner unter " + p.Appdata + " und " + p.Dockerdata + " sowie Docker-Volumes, keine Pools)."
+	}
+	return "Der Stack hat keine Daten, die gesichert werden können."
+}
+
+// appdataRoot und backupBase folgen den eingerichteten Speicherorten (Aufruf nur, wenn Docker eingerichtet ist).
+func appdataRoot() string {
+	if p := curPaths.Load(); p != nil {
+		return p.Appdata
+	}
+	return "/nonexistent/docker-not-configured"
+}
+
+func backupBase() string {
+	if p := curPaths.Load(); p != nil {
+		return p.BackupBase()
+	}
+	return "/nonexistent/docker-not-configured/backups/stacks"
+}
 
 var (
-	bindPathRe = regexp.MustCompile(`^/srv/appdata/[A-Za-z0-9_.+@ -][A-Za-z0-9_./+@ -]*$`)
+	// bindPathRe: Zeichen, die ein gesicherter Pfad enthalten darf (kein Zeilenumbruch, keine Shell-Sonderzeichen).
+	bindPathRe = regexp.MustCompile(`^/[A-Za-z0-9_.+@ /-]+$`)
+	// bindRestRe: Teil unterhalb der Wurzel; beginnt nicht mit „/“.
+	bindRestRe = regexp.MustCompile(`^[A-Za-z0-9_.+@ -][A-Za-z0-9_./+@ -]*$`)
 	volPathRe  = regexp.MustCompile(`^/[A-Za-z0-9_./-]+/volumes/[A-Za-z0-9][A-Za-z0-9_.-]*/_data$`)
 	volNameRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 	backupIDRe = regexp.MustCompile(`^[0-9]{1,12}$`)
@@ -46,13 +65,25 @@ func hasDotDot(p string) bool {
 	return false
 }
 
-// safeBindPath sagt, ob ein Ordner unter /srv/appdata gesichert und wiederhergestellt werden darf.
+// safeBindPath sagt, ob ein Ordner unter appdata oder dockerdata gesichert und wiederhergestellt werden darf:
+// bereinigt, nur sichere Zeichen, echter Unterordner einer der beiden Wurzeln und nicht in einem Bereich,
+// der BetterNAS selbst gehört (Stacks, Proxy, Sicherungen, Docker-data-root).
 func safeBindPath(p string) bool {
-	if path.Clean(p) != p || hasDotDot(p) || !bindPathRe.MatchString(p) {
+	cur := curPaths.Load()
+	if cur == nil || path.Clean(p) != p || hasDotDot(p) || !bindPathRe.MatchString(p) {
 		return false
 	}
-	first, _, _ := strings.Cut(strings.TrimPrefix(p, appdataRoot+"/"), "/")
-	return !reservedAppdata[first]
+	for _, root := range []string{cur.Appdata, cur.Dockerdata} {
+		rest, ok := strings.CutPrefix(p, root+"/")
+		if !ok || !bindRestRe.MatchString(rest) {
+			continue
+		}
+		first, _, _ := strings.Cut(rest, "/")
+		if !cur.Reserved(root, first) {
+			return true
+		}
+	}
+	return false
 }
 
 // safeSource prüft eine Quelle aus einer Sicherungsbeschreibung, bevor daran etwas gelöscht oder entpackt wird.
@@ -66,7 +97,7 @@ func safeSource(s docker.BackupSource) bool {
 	return false
 }
 
-func backupDir(name string) string { return path.Join(backupBase, name) }
+func backupDir(name string) string { return path.Join(backupBase(), name) }
 func backupArchive(name, id string) string {
 	return path.Join(backupDir(name), id+".tar.gz")
 }
@@ -203,7 +234,7 @@ func StackBackupPlan(ctx context.Context, d Deps, name string) (docker.BackupPla
 	plan.Sources = append(plan.Sources, vols...)
 
 	if len(plan.Sources) == 0 {
-		plan.Reason = noDataReason
+		plan.Reason = noDataReason()
 		return plan, nil
 	}
 	args := []string{"-sb", "--"}
@@ -224,7 +255,7 @@ func StackBackupPlan(ctx context.Context, d Deps, name string) (docker.BackupPla
 		plan.Sources[i].Bytes = sizes[plan.Sources[i].Path]
 		plan.TotalBytes += plan.Sources[i].Bytes
 	}
-	if out, err := run(ctx, d.Runner, nil, "df", "--output=avail", "-B1", appdataRoot); err == nil {
+	if out, err := run(ctx, d.Runner, nil, "df", "--output=avail", "-B1", appdataRoot()); err == nil {
 		if f := strings.Fields(string(out)); len(f) >= 2 {
 			plan.FreeBytes, _ = strconv.ParseInt(f[len(f)-1], 10, 64)
 		}
