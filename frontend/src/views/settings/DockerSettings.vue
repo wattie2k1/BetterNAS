@@ -8,9 +8,13 @@ import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DockerPathsDialog from '@/components/docker/DockerPathsDialog.vue'
+import { useDockerStore } from '@/stores/docker'
 import { servicesApi, type DockerSettings } from '@/api/system'
 
 const toast = useToast()
+const dockerStore = useDockerStore()
+const showPaths = ref(false)
 const loaded = ref<DockerSettings | null>(null)
 const logMaxSize = ref('10m')
 const logMaxFile = ref(3)
@@ -44,7 +48,12 @@ async function load() {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
-onMounted(load)
+onMounted(async () => {
+  await Promise.all([load(), dockerStore.refresh()])
+  await dockerStore.loadPaths()
+  // Ohne eingerichtete Speicherorte ist Docker gesperrt: die Einrichtung öffnet sich gleich.
+  if (dockerStore.status?.configured === false) showPaths.value = true
+})
 
 async function save() {
   busy.value = true
@@ -79,6 +88,24 @@ async function restart() {
 <template>
   <div class="card" data-test="settings-docker">
     <h2>Docker</h2>
+    <section class="paths" data-test="docker-paths">
+      <h3>Speicherorte</h3>
+      <template v-if="dockerStore.paths?.configured">
+        <div class="grid">
+          <label>Einstellungen der Apps (appdata)</label>
+          <code data-test="paths-show-appdata">{{ dockerStore.paths.appdata }}</code>
+          <label>Daten der Apps (dockerdata)</label>
+          <code data-test="paths-show-dockerdata">{{ dockerStore.paths.dockerdata }}</code>
+        </div>
+        <Message v-for="w in dockerStore.paths.warnings" :key="w" severity="warn" :closable="false">{{ w }}</Message>
+        <Button data-test="paths-change" label="Ändern" icon="pi pi-pencil" severity="secondary" @click="showPaths = true" />
+      </template>
+      <template v-else>
+        <Message severity="warn" :closable="false" data-test="paths-missing">Docker ist noch nicht eingerichtet. Lege fest, wo Docker seine Daten ablegt.</Message>
+        <Button data-test="paths-setup" label="Speicherorte festlegen" icon="pi pi-cog" @click="showPaths = true" />
+      </template>
+    </section>
+    <DockerPathsDialog :visible="showPaths" @update:visible="showPaths = $event" @saved="load" />
     <Message v-if="error" severity="error" :closable="false" data-test="docker-error">{{ error }}</Message>
     <form v-if="loaded" class="grid" @submit.prevent="save">
       <label>Daten-Verzeichnis</label>
@@ -123,6 +150,12 @@ async function restart() {
 }
 .save {
   justify-self: start;
+}
+.paths {
+  margin-bottom: 22px;
+}
+.paths h3 {
+  margin: 0 0 10px;
 }
 @media (max-width: 600px) {
   .grid {

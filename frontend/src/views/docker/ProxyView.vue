@@ -9,6 +9,7 @@ import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ProxySiteDialog from '@/components/docker/ProxySiteDialog.vue'
 import { dockerApi, type ProxyConfig, type ProxySite } from '@/api/docker'
+import DockerNotConfigured from '@/components/docker/DockerNotConfigured.vue'
 import { useDockerStore } from '@/stores/docker'
 import { useJobsStore } from '@/stores/jobs'
 import { CADDY_CONTAINER } from '@/utils/proxy'
@@ -105,6 +106,8 @@ async function apply() {
 </script>
 
 <template>
+  <DockerNotConfigured v-if="!store.configured" />
+  <template v-else>
   <Message v-if="loadError" severity="error" :closable="false">{{ loadError }}</Message>
   <Message v-if="dockerDown" severity="warn" :closable="false" data-test="docker-down">
     {{ store.status?.installed ? 'Der Docker-Dienst läuft nicht.' : 'Docker ist nicht installiert.' }}
@@ -201,6 +204,7 @@ async function apply() {
     @update:visible="(v) => !v && (removing = null)"
     @confirm="removeSite"
   />
+  </template>
 </template>
 
 <style scoped>

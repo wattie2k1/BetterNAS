@@ -10,6 +10,7 @@ import Tabs from 'primevue/tabs'
 import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DockerNotConfigured from '@/components/docker/DockerNotConfigured.vue'
 import { useDockerStore } from '@/stores/docker'
 import type { ResourceKind } from '@/api/docker'
 import { formatBytes } from '@/utils/format'
@@ -56,7 +57,7 @@ function askBulk() {
 
 onMounted(async () => {
   await store.refresh()
-  await store.loadResources()
+  if (store.configured) await store.loadResources()
 })
 
 const dockerDown = computed(() => store.status && (!store.status.installed || !store.status.active))
@@ -117,6 +118,8 @@ async function confirm() {
 </script>
 
 <template>
+  <DockerNotConfigured v-if="!store.configured" />
+  <template v-else>
   <div class="toolbar">
     <Button v-if="tab === 'images'" data-test="prune-images" label="Unbenannte Images aufräumen" icon="pi pi-trash" severity="secondary" @click="pending = { kind: 'images', label: 'Images', prune: true }" />
     <Button v-if="tab === 'networks'" data-test="prune-networks" label="Ungenutzte aufräumen" icon="pi pi-trash" severity="secondary" @click="pending = { kind: 'networks', label: 'Netzwerke', prune: true }" />
@@ -211,6 +214,7 @@ async function confirm() {
     @update:visible="(v) => !v && (pending = null)"
     @confirm="confirm"
   />
+  </template>
 </template>
 
 <style scoped>
