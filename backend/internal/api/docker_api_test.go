@@ -236,7 +236,7 @@ func TestDockerFolderRoute(t *testing.T) {
 	if w := s.do("GET", "/api/v1/docker/folders", ""); w.Code != 200 {
 		t.Fatalf("Übersicht %d %s", w.Code, w.Body)
 	}
-	for _, bad := range []string{"%2Fetc", "%2Fsrv%2Fpools%2F..%2F..%2Fetc", "relativ"} {
+	for _, bad := range []string{"%2Fsrv%2Fpools%2F..%2F..%2Fetc", "relativ"} // Wurzelprüfung (z. B. /etc) macht der Agent {
 		if w := s.do("GET", "/api/v1/docker/folders?path="+bad, ""); w.Code != 400 {
 			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
 		}
@@ -280,7 +280,7 @@ func TestDockerCreateFolderRoute(t *testing.T) {
 	if w.Code != 201 || !strings.Contains(w.Body.String(), `"/srv/pools/tank/Filme"`) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	for _, bad := range []string{`{"path":"/etc","name":"x"}`, `{"path":"/srv/pools/../../etc","name":"x"}`, `{kaputt`} {
+	for _, bad := range []string{`{"path":"/srv/pools/../../etc","name":"x"}`, `{kaputt`} {
 		if w := s.do("POST", "/api/v1/docker/folders", bad); w.Code != 400 {
 			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
 		}
