@@ -368,3 +368,29 @@ func TestGetPathsStaleStacks(t *testing.T) {
 		t.Fatalf("%+v %v", info, err)
 	}
 }
+
+func TestDockerStatusReportsConfigured(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	if st, _ := DockerStatus(context.Background(), d); st.Configured {
+		t.Fatal("frisch: nicht eingerichtet")
+	}
+	curPaths.Store(&twoPools)
+	if st, _ := DockerStatus(context.Background(), d); !st.Configured {
+		t.Fatal("eingerichtet erwartet")
+	}
+}
+
+func TestPathsRPCsWorkWhenNotConfigured(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	c := rpcClient(t, d)
+	var info docker.PathsInfo
+	if err := c.Call(context.Background(), "docker.paths.get", nil, &info); err != nil || info.Configured {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if err := c.Call(context.Background(), "docker.paths.set", twoPools, &info); err != nil || !info.Configured {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if err := c.Call(context.Background(), "stack.list", nil, nil); err != nil {
+		t.Fatalf("nach der Einrichtung entsperrt: %v", err)
+	}
+}

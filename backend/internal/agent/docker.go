@@ -504,6 +504,7 @@ func ContainerAction(ctx context.Context, d Deps, id, action string) error {
 // DockerStatus meldet, ob Docker installiert und aktiv ist.
 func DockerStatus(ctx context.Context, d Deps) (docker.Status, error) {
 	var st docker.Status
+	st.Configured = curPaths.Load() != nil
 	if res, err := d.Runner.Run(ctx, nil, "docker", "--version"); err != nil || res.ExitCode != 0 {
 		return st, nil
 	}

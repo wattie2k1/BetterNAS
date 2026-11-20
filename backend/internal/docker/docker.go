@@ -110,9 +110,11 @@ type RunState struct {
 
 // Status beschreibt, ob Docker verfügbar ist.
 type Status struct {
-	Installed bool   `json:"installed"`
-	Active    bool   `json:"active"`
-	Version   string `json:"version"`
+	Installed bool `json:"installed"`
+	Active    bool `json:"active"`
+	// Configured sagt, ob die Speicherorte (appdata, dockerdata) eingerichtet sind; sonst ist Docker gesperrt.
+	Configured bool   `json:"configured"`
+	Version    string `json:"version"`
 }
 
 // StackFiles sind compose.yaml und .env eines Stacks.

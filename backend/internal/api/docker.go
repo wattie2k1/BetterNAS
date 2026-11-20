@@ -45,6 +45,18 @@ func (s *server) registerDocker(mux *http.ServeMux) {
 		st, err := m.Status(r.Context())
 		reply(w, st, err)
 	})
+	mux.HandleFunc("GET /api/v1/docker/paths", func(w http.ResponseWriter, r *http.Request) {
+		info, err := m.Paths(r.Context())
+		reply(w, info, err)
+	})
+	mux.HandleFunc("PUT /api/v1/docker/paths", func(w http.ResponseWriter, r *http.Request) {
+		var in docker.Paths
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		info, err := m.SetPaths(r.Context(), actor(r), in)
+		reply(w, info, err)
+	})
 	mux.HandleFunc("GET /api/v1/docker/updates", func(w http.ResponseWriter, r *http.Request) {
 		rep, err := m.Updates(r.Context())
 		reply(w, rep, err)

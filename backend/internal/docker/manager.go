@@ -83,6 +83,26 @@ func (m *Manager) Status(ctx context.Context) (Status, error) {
 	return st, err
 }
 
+// Paths liefert den Zustand der Docker-Speicherorte.
+func (m *Manager) Paths(ctx context.Context) (PathsInfo, error) {
+	var info PathsInfo
+	err := m.agent.Call(ctx, "docker.paths.get", nil, &info)
+	return info, err
+}
+
+// SetPaths legt die Docker-Speicherorte fest (der Agent prüft sie und richtet bei der ersten Einstellung Docker ein).
+func (m *Manager) SetPaths(ctx context.Context, actor string, in Paths) (PathsInfo, error) {
+	for _, p := range []string{in.Appdata, in.Dockerdata} {
+		if _, err := CleanRoot(p, true); err != nil {
+			return PathsInfo{}, err
+		}
+	}
+	var info PathsInfo
+	err := m.agent.Call(ctx, "docker.paths.set", in, &info)
+	m.record(ctx, actor, "docker.paths.set", "appdata="+in.Appdata+",dockerdata="+in.Dockerdata, err)
+	return info, err
+}
+
 // ListStacks liefert alle Stacks mit Laufzustand.
 func (m *Manager) ListStacks(ctx context.Context) ([]StackInfo, error) {
 	list := []StackInfo{}
