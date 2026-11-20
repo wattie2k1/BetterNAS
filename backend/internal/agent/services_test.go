@@ -13,6 +13,7 @@ const managedSmb = "# Verwaltet von BetterNAS – nicht manuell bearbeiten\n[glo
 
 func TestServiceActionWhitelist(t *testing.T) {
 	d, f, _ := vmEnv(t)
+	useLegacyPaths(t) // Docker ist nur nach der Einrichtung der Speicherorte startbar
 	ctx := context.Background()
 	if err := ServiceAction(ctx, d, "docker", "restart"); err != nil || !f.Called("systemctl restart docker") {
 		t.Fatal(err, f.Calls)

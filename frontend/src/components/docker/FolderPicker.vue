@@ -17,7 +17,7 @@ const newName = ref('')
 const createError = ref('')
 const saving = ref(false)
 
-const ROOT_LABEL: Record<string, string> = { pools: 'Speicherpools', appdata: 'App-Daten' }
+const ROOT_LABEL: Record<string, string> = { pools: 'Speicherpools', disks: 'Einzelne Platten', srv: 'Dateisystem /srv', mnt: 'Eingehängte Laufwerke /mnt', media: 'Wechseldatenträger /media' }
 
 async function load(path: string) {
   loading.value = true
@@ -38,7 +38,7 @@ watch(
     list.value = null
     creating.value = false
     const s = (props.start ?? '').replace(/\/+$/, '')
-    const inRoots = s === '/srv/pools' || s.startsWith('/srv/pools/') || s === '/srv/appdata' || s.startsWith('/srv/appdata/')
+    const inRoots = ['/srv/', '/mnt/', '/media/'].some((r) => s.startsWith(r))
     await load(inRoots ? s : '')
     // Existiert der bisherige Ordner nicht (mehr), mit der Übersicht beginnen.
     if (error.value && inRoots) await load('')
@@ -50,8 +50,8 @@ const current = computed(() => list.value?.path ?? '')
 
 // --- Neuer Ordner ---
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.+@-]{0,63}$/
-/** Direkt in der Pool-Übersicht und in der Bereichs-Übersicht lassen sich keine Ordner anlegen. */
-const canCreate = computed(() => current.value !== '' && current.value !== '/srv/pools')
+/** Direkt in der Pool- oder Platten-Übersicht und in der Bereichs-Übersicht lassen sich keine Ordner anlegen. */
+const canCreate = computed(() => current.value !== '' && current.value !== '/srv/pools' && current.value !== '/srv/disks')
 const nameProblem = computed(() => {
   const n = newName.value
   if (!n) return ''
@@ -116,7 +116,7 @@ const choose = () => {
         severity="secondary"
         text
         :disabled="loading || !canCreate"
-        :title="canCreate ? 'Legt in diesem Ordner einen neuen Ordner an' : 'Öffne zuerst einen Pool oder die App-Daten'"
+        :title="canCreate ? 'Legt in diesem Ordner einen neuen Ordner an' : 'Öffne zuerst einen Pool oder eine Platte'"
         @click="startCreate"
       />
     </div>
@@ -136,7 +136,7 @@ const choose = () => {
       </li>
       <li v-if="list && !list.dirs.length" class="empty">Keine Unterordner.</li>
     </ul>
-    <small class="hint">Es werden vorhandene Ordner der Speicherpools und der App-Daten angezeigt.</small>
+    <small class="hint">Angezeigt werden Ordner unter /srv, /mnt und /media sowie die Speicherpools und Platten.</small>
     <template #footer>
       <Button label="Abbrechen" text @click="emit('update:visible', false)" />
       <Button data-test="folder-select" label="Diesen Ordner wählen" icon="pi pi-check" :disabled="loading || current === ''" @click="choose" />

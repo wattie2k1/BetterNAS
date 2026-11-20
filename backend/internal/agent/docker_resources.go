@@ -7,7 +7,6 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
-	"github.com/betternas/betternas/internal/rpc"
 )
 
 func dockerErr(err error) error {
@@ -175,7 +174,7 @@ func PruneResources(ctx context.Context, d Deps, kind string, all bool) (docker.
 	return docker.PruneResult{Reclaimed: docker.ParseReclaimed(res.Stdout)}, nil
 }
 
-func registerDockerResources(s *rpc.Server, d Deps) {
+func registerDockerResources(s dockerReg, d Deps) {
 	s.Handle("image.list", func(ctx context.Context, _ json.RawMessage) (any, error) { return ListImages(ctx, d) })
 	s.Handle("network.list", func(ctx context.Context, _ json.RawMessage) (any, error) { return ListNetworks(ctx, d) })
 	s.Handle("volume.list", func(ctx context.Context, _ json.RawMessage) (any, error) { return ListVolumes(ctx, d) })

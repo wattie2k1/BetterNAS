@@ -11,6 +11,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AutoUpdateDialog from '@/components/docker/AutoUpdateDialog.vue'
 import UpdateDialog from '@/components/docker/UpdateDialog.vue'
 import RollbackDialog from '@/components/docker/RollbackDialog.vue'
+import DockerNotConfigured from '@/components/docker/DockerNotConfigured.vue'
 import { useDockerStore } from '@/stores/docker'
 import { dockerApi, type AutoUpdateConfig, type BackupPlan, type RunOptions, type StackAction, type StackCheck, type StackFiles, type StackInfo } from '@/api/docker'
 
@@ -28,7 +29,10 @@ const names = computed(() => store.stacks.map((s) => s.name))
 const dockerDown = computed(() => store.status && (!store.status.installed || !store.status.active))
 
 const checking = ref(false)
-onMounted(() => Promise.all([store.refresh(), store.loadUpdates(), store.loadAutoUpdate()]))
+onMounted(async () => {
+  await store.refresh()
+  if (store.configured) await Promise.all([store.loadUpdates(), store.loadAutoUpdate()])
+})
 
 const showAuto = ref(false)
 const autoBusy = ref(false)
@@ -200,6 +204,8 @@ async function remove() {
 </script>
 
 <template>
+  <DockerNotConfigured v-if="!store.configured" />
+  <template v-else>
   <div class="toolbar">
     <span v-if="checkedAt" class="sub" data-test="checked-at">Zuletzt auf Updates geprüft: {{ checkedAt }}</span>
     <Button data-test="check-updates" label="Auf Updates prüfen" icon="pi pi-sync" severity="secondary" :loading="checking" :disabled="!!dockerDown || !store.stacks.length" @click="checkUpdates" />
@@ -277,6 +283,7 @@ async function remove() {
     @update:visible="(v) => !v && (deleting = null)"
     @confirm="remove"
   />
+  </template>
 </template>
 
 <style scoped>

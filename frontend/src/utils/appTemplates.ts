@@ -62,7 +62,16 @@ export interface AppTemplate {
   compose: string
 }
 
-const appdata = (sub: string) => (s: string) => `/srv/appdata/${s}/${sub}`
+/** Speicherorte für Docker-Daten. Der Store setzt sie nach dem Laden von /api/v1/docker/paths (setRoots). */
+export const roots = { appdata: '/srv/appdata', dockerdata: '/srv/dockerdata' }
+export function setRoots(r: { appdata: string; dockerdata: string }) {
+  if (r.appdata) roots.appdata = r.appdata
+  if (r.dockerdata) roots.dockerdata = r.dockerdata
+}
+/** Einstellungen der App (klein): unter appdata. */
+const appdata = (sub: string) => (s: string) => `${roots.appdata}/${s}/${sub}`
+/** Daten, Datenbanken, Caches (groß): unter dockerdata. */
+const dockerdata = (sub: string) => (s: string) => `${roots.dockerdata}/${s}/${sub}`
 /** IPv4-Adresse, unter der diese Oberfläche erreicht wird (Vorgabe für Dienste, die eine eigene Adresse brauchen, z. B. DNS). */
 const hostIp = () => {
   const h = typeof location === 'undefined' ? '' : location.hostname
@@ -100,7 +109,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8096' },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { key: 'CACHE_DIR', label: 'Ordner für Cache', kind: 'path', def: appdata('cache') },
+      { key: 'CACHE_DIR', label: 'Ordner für Cache', kind: 'path', def: dockerdata('cache') },
       { key: 'MEDIA_DIR', label: 'Medienordner (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: MEDIA_HINT },
     ],
     device: {
@@ -130,8 +139,8 @@ export const APP_TEMPLATES: AppTemplate[] = [
     stack: 'nextcloud',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8081' },
-      { key: 'DATA_DIR', label: 'Ordner für Nextcloud-Dateien', kind: 'path', def: appdata('html') },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DATA_DIR', label: 'Ordner für Nextcloud-Dateien', kind: 'path', def: dockerdata('html') },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('db') },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
       { key: 'DB_ROOT_PASSWORD', label: 'Datenbank-Root-Passwort', kind: 'secret' },
     ],
@@ -192,7 +201,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     stack: 'vaultwarden',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8082' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   vaultwarden:
@@ -239,7 +248,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     stack: 'uptime-kuma',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3001' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   uptime-kuma:
@@ -261,7 +270,7 @@ export const APP_TEMPLATES: AppTemplate[] = [
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '2283' },
       { key: 'UPLOAD_DIR', label: 'Ordner für Fotos und Videos', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Fotos. Hier liegen alle hochgeladenen Dateien.' },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('postgres'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('postgres'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
     ],
     compose: `services:
@@ -314,10 +323,10 @@ volumes:
     stack: 'paperless',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8000' },
-      { key: 'CONSUME_DIR', label: 'Eingangsordner (Scans hier ablegen)', kind: 'path', def: appdata('consume'), hint: 'Dateien in diesem Ordner werden automatisch importiert, z. B. von einem Scanner per Freigabe.' },
+      { key: 'CONSUME_DIR', label: 'Eingangsordner (Scans hier ablegen)', kind: 'path', def: dockerdata('consume'), hint: 'Dateien in diesem Ordner werden automatisch importiert, z. B. von einem Scanner per Freigabe.' },
       { key: 'MEDIA_DIR', label: 'Ordner für die Dokumente', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Dokumente.' },
-      { key: 'DATA_DIR', label: 'Ordner für Einstellungen und Index', kind: 'path', def: appdata('data') },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DATA_DIR', label: 'Ordner für Einstellungen und Index', kind: 'path', def: dockerdata('data') },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('db') },
       { key: 'ADMIN_USER', label: 'Administrator-Name', kind: 'text', def: () => 'admin' },
       { key: 'ADMIN_PASSWORD', label: 'Administrator-Passwort', kind: 'secret' },
       { key: 'SECRET_KEY', label: 'Geheimer Schlüssel', kind: 'secret' },
@@ -401,7 +410,7 @@ volumes:
       { key: 'SETUP_PORT', label: 'Port der Ersteinrichtung', kind: 'port', def: () => '3000', hint: 'Dort startet der Einrichtungsassistent. Wähle darin als Port der Oberfläche 80.' },
       { key: 'WEB_PORT', label: 'Web-Port der Oberfläche', kind: 'port', def: () => '8054', hint: 'Unter diesem Port erreichst du AdGuard Home nach der Einrichtung.' },
       { key: 'CONF_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('conf') },
-      { key: 'WORK_DIR', label: 'Ordner für Daten und Statistik', kind: 'path', def: appdata('work') },
+      { key: 'WORK_DIR', label: 'Ordner für Daten und Statistik', kind: 'path', def: dockerdata('work') },
     ],
     compose: `services:
   adguardhome:
@@ -426,7 +435,7 @@ volumes:
     stack: 'navidrome',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '4533' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
       { key: 'MUSIC_DIR', label: 'Musikordner (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Musik' },
     ],
     compose: `services:
@@ -791,7 +800,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '13378' },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { key: 'METADATA_DIR', label: 'Ordner für Metadaten', kind: 'path', def: appdata('metadata') },
+      { key: 'METADATA_DIR', label: 'Ordner für Metadaten', kind: 'path', def: dockerdata('metadata') },
       { key: 'AUDIOBOOKS_DIR', label: 'Ordner für Hörbücher', kind: 'path', def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Hoerbuecher' },
       { key: 'PODCASTS_DIR', label: 'Ordner für Podcasts', kind: 'path', pool: true, def: () => '/srv/pools', hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Podcasts' },
     ],
@@ -822,7 +831,7 @@ volumes:
       { key: 'SERVER_PORT', label: 'Port für weitere Knoten', kind: 'port', def: () => '8266', hint: 'Über diesen Port melden sich zusätzliche Tdarr-Knoten am Server an.' },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
       { ...dataField, label: 'Medienordner (wird verändert)', hint: 'Tdarr ersetzt Dateien in diesem Ordner. Vorher eine Sicherung bedenken.' },
-      { key: 'TRANSCODE_DIR', label: 'Ordner für Zwischendateien', kind: 'path', def: appdata('transcode'), hint: 'Auf einer lokalen, schnellen Platte, nicht auf dem Pool.' },
+      { key: 'TRANSCODE_DIR', label: 'Ordner für Zwischendateien', kind: 'path', def: dockerdata('transcode'), hint: 'Auf einer lokalen, schnellen Platte, nicht auf dem Pool.' },
       ...idFields,
     ],
     device: {
@@ -867,9 +876,9 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8087' },
       { key: 'ROMS_DIR', label: 'Ordner der Spielesammlung', kind: 'path', pool: true, def: () => '/srv/pools', hint: 'Darin erwartet RomM den Unterordner roms mit einem Ordner je Plattform, z. B. <Ordner>/roms/snes.' },
-      { key: 'ASSETS_DIR', label: 'Ordner für Spielstände und Medien', kind: 'path', def: appdata('assets') },
+      { key: 'ASSETS_DIR', label: 'Ordner für Spielstände und Medien', kind: 'path', def: dockerdata('assets') },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('mariadb'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('mariadb'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
       { key: 'AUTH_SECRET', label: 'Geheimer Schlüssel für Anmeldungen', kind: 'secret' },
     ],
@@ -922,7 +931,7 @@ volumes:
     stack: 'wikijs',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3005' },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('postgres'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('postgres'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
     ],
     compose: `services:
@@ -960,7 +969,7 @@ volumes:
     stack: 'mealie',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '9925' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   mealie:
@@ -1010,7 +1019,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3006' },
       { key: 'SSH_PORT', label: 'SSH-Port für Git', kind: 'port', def: () => '2222', hint: 'Nicht 22: Dieser Port gehört dem SSH-Zugang des NAS.' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   gitea:
@@ -1037,7 +1046,7 @@ volumes:
     notice: 'Portainer bekommt Zugriff auf den Docker-Socket. Wer Portainer steuert, hat damit Vollzugriff auf alle Container und praktisch auf das ganze NAS. Nur im Heimnetz erreichbar lassen und ein starkes Passwort setzen.',
     fields: [
       { key: 'PORT', label: 'Web-Port (HTTPS)', kind: 'port', def: () => '9443', hint: 'Portainer spricht nur HTTPS mit einem selbst signierten Zertifikat. Beim ersten Aufruf Administrator-Passwort setzen, bevor die Einrichtung abläuft.' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   portainer:
@@ -1216,7 +1225,7 @@ volumes:
       { key: 'ADMIN_PORT', label: 'Port der Verwaltungsoberfläche', kind: 'port', def: () => '8181' },
       { key: 'HTTP_PORT', label: 'Port für HTTP', kind: 'port', def: () => '8880', hint: 'Am Router von Port 80 auf diesen Port weiterleiten.' },
       { key: 'HTTPS_PORT', label: 'Port für HTTPS', kind: 'port', def: () => '8444', hint: 'Am Router von Port 443 auf diesen Port weiterleiten.' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
       { key: 'CERT_DIR', label: 'Ordner für Zertifikate', kind: 'path', def: appdata('letsencrypt') },
     ],
     compose: `services:
@@ -1243,7 +1252,7 @@ volumes:
     fields: [
       { key: 'WEB_PORT', label: 'Port der Weboberfläche', kind: 'port', def: () => '51821' },
       { key: 'VPN_PORT', label: 'VPN-Port (UDP)', kind: 'port', def: () => '51820', hint: 'Diesen UDP-Port am Router auf das NAS weiterleiten.' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   wg-easy:
@@ -1298,7 +1307,7 @@ volumes:
     stack: 'linkding',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '9091' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
       { key: 'ADMIN_USER', label: 'Name des Administrators', kind: 'text', def: () => 'admin' },
       { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators', kind: 'secret' },
     ],
@@ -1324,8 +1333,8 @@ volumes:
     stack: 'freshrss',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8093' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
-      { key: 'EXT_DIR', label: 'Ordner für Erweiterungen', kind: 'path', def: appdata('extensions') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
+      { key: 'EXT_DIR', label: 'Ordner für Erweiterungen', kind: 'path', def: dockerdata('extensions') },
     ],
     compose: `services:
   freshrss:
@@ -1457,7 +1466,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3008' },
       { key: 'SSH_PORT', label: 'SSH-Port für Git', kind: 'port', def: () => '2223', hint: 'Nicht 22: Dieser Port gehört dem SSH-Zugang des NAS.' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   forgejo:
@@ -1485,7 +1494,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8445' },
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
-      { key: 'WORKSPACE_DIR', label: 'Arbeitsordner', kind: 'path', def: appdata('workspace'), hint: 'Der Ordner, den code-server als Projektordner öffnet.' },
+      { key: 'WORKSPACE_DIR', label: 'Arbeitsordner', kind: 'path', def: dockerdata('workspace'), hint: 'Der Ordner, den code-server als Projektordner öffnet.' },
       { key: 'PASSWORD', label: 'Passwort', kind: 'secret' },
       ...idFields,
     ],
@@ -1597,7 +1606,7 @@ volumes:
     notice: 'Maintainerr kann Medien über Radarr und Sonarr löschen. Teste Regeln zuerst mit langer Wartezeit und ohne automatisches Löschen.',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '6246' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   maintainerr:
@@ -1650,7 +1659,7 @@ volumes:
     stack: 'grafana',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3009' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
       { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators (Benutzer admin)', kind: 'secret' },
     ],
     compose: `services:
@@ -1677,7 +1686,7 @@ volumes:
     notice: 'Die Daten sind unverschlüsselt und enthalten deine Finanzen. Das Passwort legst du beim ersten Aufruf fest. Von außen nur über HTTPS erreichbar machen.',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '5006' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   actual-budget:
@@ -1699,7 +1708,7 @@ volumes:
     notice: 'Der Editor ist ohne Anmeldung offen und kann Programmcode im Container ausführen. Nur im Heimnetz erreichbar lassen und bei Bedarf in der settings.js eine Anmeldung einrichten.',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '1880' },
-      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Daten', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   node-red:
@@ -1724,7 +1733,7 @@ volumes:
     notice: 'Der Server startet erst, wenn du die Minecraft-EULA (minecraft.net/eula) akzeptierst: Trage dazu im Feld „EULA“ den Wert TRUE ein. Für Spieler von außen leitest du den Port am Router auf das NAS weiter und öffnest ihn in der BetterNAS-Firewall.',
     fields: [
       { key: 'PORT', label: 'Spiel-Port', kind: 'port', def: () => '25565' },
-      { key: 'DATA_DIR', label: 'Ordner für die Welt', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für die Welt', kind: 'path', def: dockerdata('data') },
       { key: 'EULA', label: 'EULA akzeptieren (TRUE oder FALSE)', kind: 'text', def: () => 'FALSE' },
       { key: 'MEMORY', label: 'Arbeitsspeicher für den Server', kind: 'text', def: () => '2G', hint: 'z. B. 2G oder 4G' },
     ],
@@ -1773,7 +1782,7 @@ volumes:
     notice: 'Die Registry läuft ohne Anmeldung und ohne Verschlüsselung. Docker-Clients lassen sie nur zu, wenn die Adresse in deren daemon.json unter „insecure-registries“ steht. Nur im Heimnetz erreichbar lassen.',
     fields: [
       { key: 'PORT', label: 'Port', kind: 'port', def: () => '5000' },
-      { key: 'DATA_DIR', label: 'Ordner für Images', kind: 'path', def: appdata('data') },
+      { key: 'DATA_DIR', label: 'Ordner für Images', kind: 'path', def: dockerdata('data') },
     ],
     compose: `services:
   registry:
@@ -1794,7 +1803,7 @@ volumes:
     stack: 'miniflux',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8100' },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('db') },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
       { key: 'ADMIN_USER', label: 'Name des Administrators', kind: 'text', def: () => 'admin' },
       { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators', kind: 'secret' },
@@ -1839,7 +1848,7 @@ volumes:
     notice: 'Beim ersten Aufruf legst du ein Konto an und trägst die Adresse und einen API-Schlüssel von Jellyfin ein (Jellyfin → Dashboard → API-Schlüssel).',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '3010' },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('db') },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
       { key: 'JWT_SECRET', label: 'Geheimer Schlüssel für Anmeldungen', kind: 'secret' },
     ],
@@ -1888,7 +1897,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '2342' },
       { key: 'PHOTOS_DIR', label: 'Ordner mit Fotos und Videos', kind: 'path', def: () => '/srv/pools', pool: true, hint: 'Ordner auf einem Pool, z. B. /srv/pools/<Pool>/Fotos. PhotoPrism liest hier und kann Dateien importieren.' },
-      { key: 'STORAGE_DIR', label: 'Ordner für Datenbank, Vorschaubilder und Cache', kind: 'path', def: appdata('storage'), hint: 'Auf einer lokalen Platte; kann groß werden.' },
+      { key: 'STORAGE_DIR', label: 'Ordner für Datenbank, Vorschaubilder und Cache', kind: 'path', def: dockerdata('storage'), hint: 'Auf einer lokalen Platte; kann groß werden.' },
       { key: 'ADMIN_PASSWORD', label: 'Passwort des Administrators (Benutzer admin)', kind: 'secret' },
     ],
     compose: `services:
@@ -1920,7 +1929,7 @@ volumes:
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '22300' },
       { key: 'BASE_URL', label: 'Basisadresse', kind: 'text', def: () => (hostIp() ? `http://${hostIp()}:22300` : ''), hint: 'Mit Port, z. B. http://192.168.1.10:22300. Bei geändertem Port hier anpassen.' },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db') },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('db') },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
     ],
     compose: `services:
@@ -1966,7 +1975,7 @@ volumes:
     notice: 'Der Projektordner wird als Webwurzel eingebunden (index.php liegt direkt darin; bei Laravel und Symfony zeigt der Webserver auf den Ordner public). Der Dienst läuft mit der angegebenen Benutzer-ID: Lege den Ordner vorher an und gib ihm diese Rechte, sonst kann PHP nicht hineinschreiben. Fehlermeldungen werden im Browser angezeigt und OPcache ist aus – das ist für die Entwicklung gedacht, nicht für öffentlich erreichbare Seiten. Weitere PHP-Erweiterungen brauchen ein eigenes Image.',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8110' },
-      { key: 'WEB_DIR', label: 'Projektordner (Webwurzel)', kind: 'path', def: appdata('html'), hint: 'Ordner mit deinem Projekt, z. B. /srv/pools/<Pool>/Web/meineseite.' },
+      { key: 'WEB_DIR', label: 'Projektordner (Webwurzel)', kind: 'path', def: dockerdata('html'), hint: 'Ordner mit deinem Projekt, z. B. /srv/pools/<Pool>/Web/meineseite.' },
       { key: 'PHP_VERSION', label: 'PHP-Version', kind: 'text', def: () => '8.4', hint: 'z. B. 8.2, 8.3 oder 8.4' },
       ...idFields,
     ],
@@ -1996,8 +2005,8 @@ volumes:
     notice: 'Die Datenbank erreichst du aus PHP mit Host db, Datenbank php und Benutzer php (Passwort wie unten eingetragen). Die Werte stehen auch als Umgebungsvariablen DB_HOST, DB_DATABASE, DB_USERNAME und DB_PASSWORD bereit (passt zu Laravel). Der Projektordner wird als Webwurzel eingebunden (bei Laravel und Symfony zeigt der Webserver auf den Ordner public). Der Dienst läuft mit der angegebenen Benutzer-ID: Lege den Ordner vorher an und gib ihm diese Rechte. Fehlermeldungen werden im Browser angezeigt und OPcache ist aus – das ist für die Entwicklung gedacht, nicht für öffentlich erreichbare Seiten.',
     fields: [
       { key: 'PORT', label: 'Web-Port', kind: 'port', def: () => '8111' },
-      { key: 'WEB_DIR', label: 'Projektordner (Webwurzel)', kind: 'path', def: appdata('html'), hint: 'Ordner mit deinem Projekt, z. B. /srv/pools/<Pool>/Web/meineseite.' },
-      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: appdata('db'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
+      { key: 'WEB_DIR', label: 'Projektordner (Webwurzel)', kind: 'path', def: dockerdata('html'), hint: 'Ordner mit deinem Projekt, z. B. /srv/pools/<Pool>/Web/meineseite.' },
+      { key: 'DB_DIR', label: 'Ordner für die Datenbank', kind: 'path', def: dockerdata('db'), hint: 'Auf einer lokalen Platte, nicht auf einer Netzwerkfreigabe.' },
       { key: 'DB_PASSWORD', label: 'Datenbank-Passwort', kind: 'secret' },
       { key: 'DB_ROOT_PASSWORD', label: 'Datenbank-Root-Passwort', kind: 'secret' },
       { key: 'PHP_VERSION', label: 'PHP-Version', kind: 'text', def: () => '8.4', hint: 'z. B. 8.2, 8.3 oder 8.4' },

@@ -49,6 +49,7 @@ func TestDockerLifecycle(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	if st, _ := DockerStatus(ctx, d); !st.Active {
 		t.Skip("Docker-Dienst läuft nicht")
 	}
@@ -166,6 +167,7 @@ func TestDockerOps(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/"), Stream: sysexec.NewStreamer()}
+	useLegacyPaths(t)
 	if st, _ := DockerStatus(ctx, d); !st.Active {
 		t.Skip("Docker-Dienst läuft nicht")
 	}
@@ -293,6 +295,7 @@ func TestDockerRollback(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	if st, _ := DockerStatus(ctx, d); !st.Active {
 		t.Skip("Docker-Dienst läuft nicht")
 	}
@@ -384,6 +387,7 @@ func TestDockerFolders(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	base := "/srv/appdata/bnasit-folders"
 	_ = os.RemoveAll(base)
 	t.Cleanup(func() { _ = os.RemoveAll(base) })
@@ -437,6 +441,7 @@ func TestDockerDevices(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	if st, _ := DockerStatus(ctx, d); !st.Active {
 		t.Skip("Docker-Dienst läuft nicht")
 	}
@@ -493,6 +498,7 @@ func TestDockerBackupRollback(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	if st, _ := DockerStatus(ctx, d); !st.Active {
 		t.Skip("Docker-Dienst läuft nicht")
 	}
@@ -664,6 +670,7 @@ func TestDockerCreateFolder(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	base := "/srv/appdata/bnasit-create"
 	_ = os.RemoveAll(base)
 	t.Cleanup(func() { _ = os.RemoveAll(base) })
@@ -739,6 +746,7 @@ func TestDockerProxy(t *testing.T) {
 	}
 	ctx := context.Background()
 	d := Deps{Runner: sysexec.NewRunner(), FS: sysexec.NewRootFS("/")}
+	useLegacyPaths(t)
 	if st, _ := DockerStatus(ctx, d); !st.Active {
 		t.Skip("Docker-Dienst läuft nicht")
 	}
@@ -764,7 +772,7 @@ func TestDockerProxy(t *testing.T) {
 		}
 		_ = DeleteStack(ctx, d, docker.ProxyStack)
 		_ = exec.Command("docker", "rm", "-f", "bnasprx-a", "bnasprx-b").Run()
-		_ = os.RemoveAll(docker.ProxyDir)
+		_ = os.RemoveAll(proxyDir())
 	})
 
 	// Zwei kleine Webserver als Ziele.
@@ -841,7 +849,7 @@ func TestDockerProxy(t *testing.T) {
 	}
 
 	// Eine kaputte Konfiguration lehnt Caddy ab, die laufende bleibt.
-	if err := d.FS.WriteFile(proxyNew, []byte("a.nas.local {\n\tunbekannte_direktive 1\n}\n"), 0o644); err != nil {
+	if err := d.FS.WriteFile(proxyNew(), []byte("a.nas.local {\n\tunbekannte_direktive 1\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	err := ProxyValidate(ctx, d)
@@ -849,7 +857,7 @@ func TestDockerProxy(t *testing.T) {
 		t.Fatalf("kaputte Konfiguration akzeptiert: %v", err)
 	}
 	t.Logf("Caddy-Meldung: %v", err)
-	if d.FS.Exists(proxyNew) {
+	if d.FS.Exists(proxyNew()) {
 		t.Fatal("abgelehnte Datei bleibt liegen")
 	}
 	if got := fetch("a.nas.local", "18443"); got != "antwort-von-bnasprx-a" {

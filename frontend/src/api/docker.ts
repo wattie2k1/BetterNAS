@@ -3,7 +3,21 @@ import { api, apiFetch } from './client'
 export interface DockerStatus {
   installed: boolean
   active: boolean
+  /** Speicherorte eingerichtet; sonst ist Docker gesperrt. */
+  configured: boolean
   version: string
+}
+
+/** Speicherorte der Docker-Daten: appdata (Einstellungen) und dockerdata (Daten, Datenbanken, Images). */
+export interface DockerPaths {
+  configured: boolean
+  appdata: string
+  dockerdata: string
+  warnings: string[]
+  /** Warum die Speicherorte nicht geladen werden konnten (z. B. kaputte paths.json). */
+  problem?: string
+  /** Stacks mit Pfaden aus einer früheren Einstellung. */
+  staleStacks: number
 }
 
 export interface StackInfo {
@@ -196,6 +210,8 @@ export const stackIconUrl = (name: string, version: string) => `/api/v1/stacks/$
 
 export const dockerApi = {
   status: () => api.get<DockerStatus>('/api/v1/docker/status'),
+  paths: () => api.get<DockerPaths>('/api/v1/docker/paths'),
+  setPaths: (p: { appdata: string; dockerdata: string }) => api.put<DockerPaths>('/api/v1/docker/paths', p),
   stacks: () => api.get<StackInfo[]>('/api/v1/stacks'),
   stack: (name: string) => api.get<StackFiles>(`/api/v1/stacks/${enc(name)}`),
   create: (s: StackFiles) => api.post<{ name: string }>('/api/v1/stacks', stackBody(s)),

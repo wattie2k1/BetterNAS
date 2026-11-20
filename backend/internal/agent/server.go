@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 
@@ -30,6 +31,9 @@ var mutate sync.Mutex
 
 // Register registriert alle Agent-Methoden.
 func Register(s *rpc.Server, d Deps) {
+	if err := initPaths(d); err != nil {
+		log.Printf("docker: %v", err)
+	}
 	s.Handle("auth.verify", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var req struct {
 			Username string `json:"username"`
@@ -336,13 +340,14 @@ func Register(s *rpc.Server, d Deps) {
 		}
 		return SnapraidStatus(ctx, d, req.Pool)
 	})
-	registerDocker(s, d)
-	registerDockerOps(s, d)
-	registerDockerUpdates(s, d)
-	registerDockerResources(s, d)
-	registerDockerFolders(s, d)
-	registerDockerDevices(s, d)
-	registerDockerProxy(s, d)
+	dr := dockerReg{s}
+	registerDocker(dr, d)
+	registerDockerOps(dr, d)
+	registerDockerUpdates(dr, d)
+	registerDockerResources(dr, d)
+	registerDockerFolders(dr, d)
+	registerDockerDevices(dr, d)
+	registerDockerProxy(dr, d)
 	registerVM(s, d)
 	registerBridge(s, d)
 	registerNetwork(s, d)

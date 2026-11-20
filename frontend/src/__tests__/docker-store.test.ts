@@ -20,6 +20,37 @@ function route(map: Record<string, unknown | (() => Promise<Response>)>) {
 beforeEach(() => setActivePinia(createPinia()))
 afterEach(() => vi.unstubAllGlobals())
 
+describe('Docker-Store: Speicherorte', () => {
+  it('lädt bei nicht eingerichtetem Docker weder Stacks noch Container', async () => {
+    const fn = route({ 'GET /api/v1/docker/status': { installed: true, active: false, configured: false, version: '' } })
+    const s = useDockerStore()
+    await s.refresh()
+    expect(s.configured).toBe(false)
+    expect(s.stacks).toEqual([])
+    expect(fn.mock.calls.map((c) => c[0])).toEqual(['/api/v1/docker/status'])
+    expect(s.error).toBe('')
+  })
+
+  it('speichert die Speicherorte und gibt sie an die Vorlagen weiter', async () => {
+    const { roots, setRoots } = await import('@/utils/appTemplates')
+    const before = { ...roots }
+    const paths = { configured: true, appdata: '/srv/pools/a/cfg', dockerdata: '/srv/pools/b/dd', warnings: [], staleStacks: 0 }
+    route({
+      'PUT /api/v1/docker/paths': paths,
+      'GET /api/v1/docker/status': { installed: true, active: true, configured: true, version: '26' },
+      'GET /api/v1/stacks': [],
+      'GET /api/v1/containers': [],
+    })
+    const s = useDockerStore()
+    const r = await s.savePaths({ appdata: '/srv/pools/a/cfg', dockerdata: '/srv/pools/b/dd' })
+    expect(r.configured).toBe(true)
+    expect(s.configured).toBe(true)
+    expect(roots.appdata).toBe('/srv/pools/a/cfg')
+    expect(roots.dockerdata).toBe('/srv/pools/b/dd')
+    setRoots(before)
+  })
+})
+
 describe('Docker-Store', () => {
   it('lädt Status, Stacks und Container', async () => {
     route({

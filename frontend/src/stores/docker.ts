@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   dockerApi,
   stackIconUrl,
@@ -14,12 +14,14 @@ import {
   type UpdateReport,
   type VolumeInfo,
   type DockerStatus,
+  type DockerPaths,
   type StackAction,
   type StackFiles,
   type StackInfo,
 } from '@/api/docker'
 import type { EventMessage } from '@/api/ws'
 import { pollWhileVisible } from '@/utils/poll'
+import { setRoots } from '@/utils/appTemplates'
 import { useJobsStore } from './jobs'
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -28,6 +30,9 @@ export const STATS_INTERVAL_MS = 5000
 
 export const useDockerStore = defineStore('docker', () => {
   const status = ref<DockerStatus | null>(null)
+  const paths = ref<DockerPaths | null>(null)
+  /** Docker ist eingerichtet (Speicherorte gesetzt). Solange der Status unbekannt ist, gilt es als eingerichtet. */
+  const configured = computed(() => status.value?.configured !== false)
   const stacks = ref<StackInfo[]>([])
   const containers = ref<ContainerInfo[]>([])
   const loading = ref(false)
@@ -44,6 +49,14 @@ export const useDockerStore = defineStore('docker', () => {
     loading.value = true
     try {
       status.value = await dockerApi.status()
+      if (status.value.configured === false) {
+        // Ohne Speicherorte ist Docker gesperrt: nichts weiter laden.
+        stacks.value = []
+        containers.value = []
+        error.value = ''
+        return
+      }
+      if (!paths.value?.configured) await loadPaths()
       if (status.value.active) {
         ;[stacks.value, containers.value] = await Promise.all([dockerApi.stacks(), dockerApi.containers()])
       } else {
@@ -57,6 +70,25 @@ export const useDockerStore = defineStore('docker', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  /** Lädt die Speicherorte und gibt sie an die Vorlagen weiter. */
+  async function loadPaths() {
+    try {
+      paths.value = await dockerApi.paths()
+      if (paths.value.configured) setRoots(paths.value)
+    } catch {
+      /* Die Speicherorte sind nur für Vorgaben nötig: Fehler nicht anzeigen */
+    }
+  }
+
+  /** Speichert die Speicherorte (Ersteinrichtung oder Änderung) und lädt den Zustand neu. */
+  async function savePaths(p: { appdata: string; dockerdata: string }): Promise<DockerPaths> {
+    const r = await dockerApi.setPaths(p)
+    paths.value = r
+    if (r.configured) setRoots(r)
+    await refresh()
+    return r
   }
 
   async function loadStats() {
@@ -179,6 +211,10 @@ export const useDockerStore = defineStore('docker', () => {
 
   return {
     status,
+    paths,
+    configured,
+    loadPaths,
+    savePaths,
     stacks,
     containers,
     loading,

@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import LogsDialog from '@/components/docker/LogsDialog.vue'
 import ShellDialog from '@/components/docker/ShellDialog.vue'
 import { formatBytes } from '@/utils/format'
+import DockerNotConfigured from '@/components/docker/DockerNotConfigured.vue'
 import { useDockerStore } from '@/stores/docker'
 import type { ContainerAction, ContainerInfo } from '@/api/docker'
 
@@ -22,7 +23,7 @@ const shellFor = ref<ContainerInfo | null>(null)
 
 onMounted(async () => {
   await store.refresh()
-  store.startStats()
+  if (store.configured) store.startStats()
 })
 onUnmounted(() => store.stopStats())
 
@@ -66,6 +67,8 @@ async function act(c: ContainerInfo, action: ContainerAction) {
 </script>
 
 <template>
+  <DockerNotConfigured v-if="!store.configured" />
+  <template v-else>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
   <Message v-if="dockerDown" severity="warn" :closable="false" data-test="docker-down">
     {{ store.status?.installed ? 'Der Docker-Dienst läuft nicht.' : 'Docker ist nicht installiert.' }}
@@ -143,6 +146,7 @@ async function act(c: ContainerInfo, action: ContainerAction) {
     @update:visible="(v) => !v && (removing = null)"
     @confirm="act(removing!, 'remove')"
   />
+  </template>
 </template>
 
 <style scoped>

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import ServicesSettings from '@/views/settings/ServicesSettings.vue'
@@ -9,6 +10,8 @@ import { servicesApi } from '@/api/system'
 
 vi.mock('@/api/system', () => ({ servicesApi: { list: vi.fn(), act: vi.fn(), smb: vi.fn(), setSmb: vi.fn(), docker: vi.fn(), setDocker: vi.fn() } }))
 const plugins = [PrimeVue, ToastService]
+// Die Docker-Einstellungen nutzen den Docker-Store (Speicherorte); dessen Abfragen laufen hier ins Leere.
+const dockerPlugins = () => [createPinia(), PrimeVue, ToastService]
 beforeEach(() => vi.clearAllMocks())
 
 describe('ServicesSettings', () => {
@@ -51,7 +54,7 @@ describe('DockerSettings', () => {
   it('speichert und weist auf den Neustart hin', async () => {
     vi.mocked(servicesApi.docker).mockResolvedValue({ dataRoot: '/srv/appdata/docker', logMaxSize: '10m', logMaxFile: 3, registryMirrors: [], liveRestore: false })
     vi.mocked(servicesApi.setDocker).mockResolvedValue()
-    const w = mount(DockerSettings, { global: { plugins } })
+    const w = mount(DockerSettings, { global: { plugins: dockerPlugins() } })
     await flushPromises()
     expect(w.find('[data-test="docker-dataroot"]').text()).toBe('/srv/appdata/docker')
     await w.find('#d-size').setValue('50m')
@@ -65,7 +68,7 @@ describe('DockerSettings', () => {
   it('zeigt Fehler', async () => {
     vi.mocked(servicesApi.docker).mockResolvedValue({ dataRoot: '/x', logMaxSize: '10m', logMaxFile: 3, registryMirrors: [], liveRestore: false })
     vi.mocked(servicesApi.setDocker).mockRejectedValue(new Error('Ungültige Log-Größe'))
-    const w = mount(DockerSettings, { global: { plugins } })
+    const w = mount(DockerSettings, { global: { plugins: dockerPlugins() } })
     await flushPromises()
     await w.find('#d-size').setValue('x')
     await w.find('form').trigger('submit')

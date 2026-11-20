@@ -17,7 +17,6 @@ mkdir -p "$ROOT/usr/share/betternas/web"
 cp -a "$SRC/frontend/dist/." "$ROOT/usr/share/betternas/web/"
 install -D -m 0644 "$SRC/packaging/apt/betternas-archive-keyring.gpg" "$ROOT/usr/share/keyrings/betternas-archive-keyring.gpg"
 install -D -m 0644 "$SRC/packaging/samba/smb.conf" "$ROOT/usr/share/betternas/smb.conf"
-install -D -m 0644 "$SRC/packaging/docker/daemon.json" "$ROOT/usr/share/betternas/docker-daemon.json"
 # Kernel aus trixie-backports: Quelle + Pin als Konfigurationsdateien (dpkg respektiert vom Nutzer gelöschte Dateien).
 install -D -m 0644 "$SRC/packaging/apt/betternas-backports.sources" "$ROOT/etc/apt/sources.list.d/betternas-backports.sources"
 install -D -m 0644 "$SRC/packaging/apt/betternas-kernel.pref" "$ROOT/etc/apt/preferences.d/betternas-kernel.pref"

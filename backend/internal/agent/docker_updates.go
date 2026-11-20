@@ -9,7 +9,6 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
-	"github.com/betternas/betternas/internal/rpc"
 )
 
 const imageCheckTimeout = 45 * time.Second
@@ -112,7 +111,7 @@ func ImageDigests(ctx context.Context, d Deps, images []string) ([]docker.ImageS
 	return out, nil
 }
 
-func registerDockerUpdates(s *rpc.Server, d Deps) {
+func registerDockerUpdates(s dockerReg, d Deps) {
 	s.Handle("stack.images", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var req struct{ Name string }
 		if err := decode(p, &req); err != nil {

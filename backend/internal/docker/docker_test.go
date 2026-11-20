@@ -27,12 +27,6 @@ func TestContainerIDAndUnitValidation(t *testing.T) {
 	}
 }
 
-func TestStackDir(t *testing.T) {
-	if got := StackDir("media"); got != "/srv/appdata/stacks/media" {
-		t.Fatal(got)
-	}
-}
-
 func TestParseContainers(t *testing.T) {
 	out := []byte(`{"ID":"aaaaaaaaaaaabbbbbbbbbbbb","Names":"web","Image":"nginx","State":"running","Status":"Up 2 hours","Ports":"0.0.0.0:8080->80/tcp, :::8080->80/tcp","Labels":"a=b,com.docker.compose.project=media","CreatedAt":"2026-11-16 10:00:00 +0100 CET"}
 {"ID":"cccccccccccc","Names":"alone","Image":"busybox","State":"exited","Status":"Exited (0) 1 hour ago","Ports":"","Labels":"","CreatedAt":"x"}

@@ -57,7 +57,11 @@ func (dockerAgentStub) Call(_ context.Context, method string, _, result any) err
 	case "folder.list":
 		out = docker.FolderList{Path: "/srv/pools", Dirs: []docker.Folder{{Name: "tank", Path: "/srv/pools/tank"}}}
 	case "docker.status":
-		out = docker.Status{Installed: true, Active: true, Version: "26"}
+		out = docker.Status{Installed: true, Active: true, Configured: true, Version: "26"}
+	case "docker.paths.get":
+		out = docker.PathsInfo{Configured: false, Warnings: []string{}}
+	case "docker.paths.set":
+		out = docker.PathsInfo{Configured: true, Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd", Warnings: []string{"w"}}
 	}
 	if result != nil && out != nil {
 		b, _ := json.Marshal(out)
@@ -236,7 +240,7 @@ func TestDockerFolderRoute(t *testing.T) {
 	if w := s.do("GET", "/api/v1/docker/folders", ""); w.Code != 200 {
 		t.Fatalf("Übersicht %d %s", w.Code, w.Body)
 	}
-	for _, bad := range []string{"%2Fetc", "%2Fsrv%2Fpools%2F..%2F..%2Fetc", "relativ"} {
+	for _, bad := range []string{"%2Fsrv%2Fpools%2F..%2F..%2Fetc", "relativ"} { // Wurzelprüfung (z. B. /etc) macht der Agent
 		if w := s.do("GET", "/api/v1/docker/folders?path="+bad, ""); w.Code != 400 {
 			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
 		}
@@ -280,7 +284,7 @@ func TestDockerCreateFolderRoute(t *testing.T) {
 	if w.Code != 201 || !strings.Contains(w.Body.String(), `"/srv/pools/tank/Filme"`) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	for _, bad := range []string{`{"path":"/etc","name":"x"}`, `{"path":"/srv/pools/../../etc","name":"x"}`, `{kaputt`} {
+	for _, bad := range []string{`{"path":"/srv/pools/../../etc","name":"x"}`, `{kaputt`} {
 		if w := s.do("POST", "/api/v1/docker/folders", bad); w.Code != 400 {
 			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
 		}
@@ -315,5 +319,24 @@ func TestDockerProxyRoutes(t *testing.T) {
 		t.Fatalf("apply %d %s", w.Code, w.Body)
 	} else {
 		s.waitJob(t, w.Body.Bytes())
+	}
+}
+
+func TestDockerPathsRoutes(t *testing.T) {
+	s := newDockerAPI(t)
+	if w := s.do("GET", "/api/v1/docker/paths", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"configured":false`) {
+		t.Fatalf("get %d %s", w.Code, w.Body)
+	}
+	if w := s.do("GET", "/api/v1/docker/status", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"configured":true`) {
+		t.Fatalf("status %d %s", w.Code, w.Body)
+	}
+	w := s.do("PUT", "/api/v1/docker/paths", `{"appdata":"/srv/pools/a/cfg","dockerdata":"/srv/pools/b/dd"}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"dockerdata":"/srv/pools/b/dd"`) || !strings.Contains(w.Body.String(), `"warnings":["w"]`) {
+		t.Fatalf("put %d %s", w.Code, w.Body)
+	}
+	for _, bad := range []string{`{kaputt`, `{"appdata":"","dockerdata":"/srv/pools/b"}`, `{"appdata":"/srv/pools/a/../../etc","dockerdata":"/srv/pools/b"}`, `{"appdata":"relativ","dockerdata":"/srv/pools/b"}`} {
+		if w := s.do("PUT", "/api/v1/docker/paths", bad); w.Code != 400 {
+			t.Errorf("%s: %d %s", bad, w.Code, w.Body)
+		}
 	}
 }

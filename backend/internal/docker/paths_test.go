@@ -1,0 +1,122 @@
+package docker
+
+import "testing"
+
+func TestCleanRoot(t *testing.T) {
+	cases := []struct {
+		in     string
+		legacy bool
+		want   string
+		ok     bool
+	}{
+		{"/srv/pools/tank/docker/", false, "/srv/pools/tank/docker", true},
+		{"/srv/pools", false, "", false},
+		{"/srv/disks", false, "", false},
+		{"/srv/pools/../etc", false, "", false},
+		{"/etc/x", false, "", false},
+		{"/etc", false, "", false},
+		{"/var/lib/docker", false, "", false},
+		{"/usr/local/x", false, "", false},
+		{"/", false, "", false},
+		{"/srv", false, "", false},
+		{"/mnt", false, "", false},
+		{"/srv/parity/p1", false, "", false},
+		{"/srv/vms/disks", false, "", false},
+		{"relativ/pfad", false, "", false},
+		{"/srv/dockerdata", false, "/srv/dockerdata", true},
+		{"/srv/dockerdata/", false, "/srv/dockerdata", true},
+		{"/mnt/ssd/docker", false, "/mnt/ssd/docker", true},
+		{"/srv/appdata", false, "/srv/appdata", true},
+		{"/srv/appdata", true, "/srv/appdata", true},
+		{"/srv/disks/ab/dd", false, "/srv/disks/ab/dd", true},
+		{"/srv/pools/Mein Pool/x y", false, "", false}, // Leerzeichen: Vorlagen, Proxy und Skripte kommen damit nicht zurecht
+		{"/srv/pools/a\x00b", false, "", false},
+		{"/srv/pools/t/x';touch /root/p;'", false, "", false},
+		{"/srv/pools/t/$(id)", false, "", false},
+		{"/srv/pools/t/a\nb", false, "", false},
+		{"/srv/pools/t/Daten#1", false, "", false},
+		{"/srv/pools/t/Üml", false, "", false},
+		{"/srv/pools/t/a:b", false, "", false},
+		{"/srv/pools/tank/App-Daten_1.2+x@y", false, "/srv/pools/tank/App-Daten_1.2+x@y", true},
+	}
+	for _, c := range cases {
+		got, err := CleanRoot(c.in, c.legacy)
+		if (err == nil) != c.ok || got != c.want {
+			t.Errorf("CleanRoot(%q,%v) = %q, %v", c.in, c.legacy, got, err)
+		}
+	}
+}
+
+func TestPathsValidate(t *testing.T) {
+	cases := []struct {
+		p      Paths
+		legacy bool
+		ok     bool
+	}{
+		{Paths{Appdata: "/srv/pools/a/x", Dockerdata: "/srv/pools/a/x"}, false, false},
+		{Paths{Appdata: "/srv/pools/a", Dockerdata: "/srv/pools/a/b"}, false, false},
+		{Paths{Appdata: "/srv/pools/a/b", Dockerdata: "/srv/pools/a"}, false, false},
+		{LegacyPaths, true, true},
+		{LegacyPaths, false, false},
+		{Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}, false, true},
+		{Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/a/dd"}, false, true},
+		{Paths{Appdata: "", Dockerdata: "/srv/pools/b/dd"}, false, false},
+	}
+	for i, c := range cases {
+		if err := c.p.Validate(c.legacy); (err == nil) != c.ok {
+			t.Errorf("case %d %+v: %v", i, c.p, err)
+		}
+	}
+}
+
+func TestPathsDirs(t *testing.T) {
+	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
+	for got, want := range map[string]string{
+		p.StacksDir():     "/srv/pools/a/cfg/stacks",
+		p.ProxyDir():      "/srv/pools/a/cfg/reverse-proxy",
+		p.BackupBase():    "/srv/pools/a/cfg/backups/stacks",
+		p.DataRoot():      "/srv/pools/b/dd/docker",
+		p.StackDir("web"): "/srv/pools/a/cfg/stacks/web",
+	} {
+		if got != want {
+			t.Errorf("got %q want %q", got, want)
+		}
+	}
+}
+
+func TestPathsReserved(t *testing.T) {
+	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
+	for _, c := range []struct {
+		root, first string
+		want        bool
+	}{
+		{p.Appdata, "stacks", true}, {p.Appdata, "reverse-proxy", true}, {p.Appdata, "backups", true}, {p.Appdata, "emby", false},
+		{p.Dockerdata, "docker", true}, {p.Dockerdata, "stacks", false}, {p.Dockerdata, "emby", false},
+		{"/srv/pools/x", "stacks", false},
+	} {
+		if got := p.Reserved(c.root, c.first); got != c.want {
+			t.Errorf("Reserved(%q,%q)=%v", c.root, c.first, got)
+		}
+	}
+	l := LegacyPaths
+	for _, n := range []string{"stacks", "docker", "backups", "reverse-proxy"} {
+		if !l.Reserved("/srv/appdata", n) {
+			t.Errorf("legacy %s", n)
+		}
+	}
+}
+
+func TestPathsReservedPreviousRoots(t *testing.T) {
+	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd", Previous: []string{"/srv/appdata"}}
+	for _, n := range []string{"stacks", "docker", "backups", "reverse-proxy"} {
+		if !p.Reserved("/srv/appdata", n) {
+			t.Errorf("früherer Wurzelpfad: %s muss reserviert sein", n)
+		}
+	}
+	if p.Reserved("/srv/appdata", "emby") {
+		t.Error("emby ist nicht reserviert")
+	}
+	if got := p.Roots(); len(got) != 3 || got[0] != "/srv/pools/a/cfg" || got[2] != "/srv/appdata" {
+		t.Fatalf("%v", got)
+	}
+}

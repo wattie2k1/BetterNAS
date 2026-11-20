@@ -4,8 +4,6 @@ package docker
 import "regexp"
 
 const (
-	// StacksDir enthält je Stack ein Verzeichnis mit compose.yaml und .env.
-	StacksDir   = "/srv/appdata/stacks"
 	ComposeFile = "compose.yaml"
 	EnvFile     = ".env"
 
@@ -30,9 +28,6 @@ var StackActions = map[string]bool{"up": true, "down": true, "stop": true, "star
 
 // ContainerActions sind die erlaubten Aktionen auf einem Container.
 var ContainerActions = map[string]bool{"start": true, "stop": true, "restart": true, "remove": true}
-
-// StackDir ist das Verzeichnis eines Stacks. Der Name muss vorher mit StackNameRe geprüft sein.
-func StackDir(name string) string { return StacksDir + "/" + name }
 
 // Container ist ein Docker-Container in der Liste.
 type Container struct {
@@ -115,9 +110,11 @@ type RunState struct {
 
 // Status beschreibt, ob Docker verfügbar ist.
 type Status struct {
-	Installed bool   `json:"installed"`
-	Active    bool   `json:"active"`
-	Version   string `json:"version"`
+	Installed bool `json:"installed"`
+	Active    bool `json:"active"`
+	// Configured sagt, ob die Speicherorte (appdata, dockerdata) eingerichtet sind; sonst ist Docker gesperrt.
+	Configured bool   `json:"configured"`
+	Version    string `json:"version"`
 }
 
 // StackFiles sind compose.yaml und .env eines Stacks.
