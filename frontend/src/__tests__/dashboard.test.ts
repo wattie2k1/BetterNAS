@@ -11,13 +11,16 @@ const info = (total: number, idle: number) => ({
   cpuTotalTicks: total, cpuIdleTicks: idle, load: [0.5, 0.25, 0.1], memTotalBytes: 2e9, memAvailableBytes: 1e9, version: '0.4.0',
 })
 
+let stubSamples: unknown[] = []
+beforeEach(() => { stubSamples = [] })
+
 function stubFetch(samples: ReturnType<typeof info>[]) {
   let n = 0
   vi.stubGlobal(
     'fetch',
     vi.fn().mockImplementation(async (url: string) => {
       const u = String(url)
-      const body = u.includes('/system/info') ? samples[Math.min(n++, samples.length - 1)] : u.includes('/docker/status') ? { installed: true, active: true, version: '27' } : []
+      const body = u.includes('/system/samples') ? stubSamples : u.includes('/system/info') ? samples[Math.min(n++, samples.length - 1)] : u.includes('/docker/status') ? { installed: true, active: true, version: '27' } : []
       return new Response(JSON.stringify(body), { status: 200 })
     }),
   )
@@ -50,6 +53,20 @@ describe('Dashboard: Arbeitsspeicher-Kachel', () => {
     expect(w.find('[data-test="mem-history"] svg').exists()).toBe(true)
     expect(w.find('[data-test="mem-stats"]').text()).toContain('50 %')
     expect(w.find('[data-test="tile-memory"]').text()).toContain('Verfügbar')
+    w.unmount()
+  })
+})
+
+describe('Dashboard: Verlauf beim Öffnen', () => {
+  it('zeigt die Graphen sofort aus dem Verlauf des Servers', async () => {
+    vi.useFakeTimers()
+    const t = Date.now()
+    const x = (i: number, total: number, idle: number) => ({ at: t - (3 - i) * 5000, cpuTotalTicks: total, cpuIdleTicks: idle, memTotalBytes: 2e9, memAvailableBytes: 1e9, net: [] })
+    stubSamples = [x(0, 1000, 800), x(1, 2000, 1300), x(2, 3000, 1800)]
+    stubFetch([info(4000, 2300)])
+    const w = mountDash()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(w.find('[data-test="mem-history"] svg').exists()).toBe(true)
     w.unmount()
   })
 })

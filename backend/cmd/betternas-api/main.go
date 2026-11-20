@@ -167,6 +167,8 @@ func main() {
 			}
 		}
 	}()
+	sampler := system.NewSampler()
+	go sampler.Run(ctx, agent)
 	go sm.RunHistory(ctx)
 	go sm.RunPower(ctx)
 	go sm.RunSelfTests(ctx)
@@ -186,7 +188,7 @@ func main() {
 		tm = tlsmgr.New(d, cfg.TLSDir, certs, ns)
 		go tm.Run(ctx)
 	}
-	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: dm, VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, TLS: tm, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore})
+	handler := api.NewServer(cfg, api.Deps{DB: d, Agent: agent, Jobs: jm, Hub: hub, Auth: handlers, Storage: sm, Users: um, Shares: shm, Updates: system.NewUpdates(d, agent, jm, hub), Docker: dm, VMs: vm.NewManager(d, agent, hub), Network: netcfg.NewManager(d, agent), SystemSettings: system.NewSettings(d, agent), Certs: certs, TLS: tm, Notify: ns, Monitor: mon, Backup: bm, TOTP: totpStore, Sampler: sampler})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

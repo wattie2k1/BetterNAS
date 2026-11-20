@@ -76,7 +76,7 @@ async function load() {
 }
 
 /** Auslastung seit der letzten Abfrage aus den kumulierten Zählern des Kernels. */
-function updateCpu(i: SystemInfo) {
+function updateCpu(i: Pick<SystemInfo, 'cpuTotalTicks' | 'cpuIdleTicks'>) {
   const total = i.cpuTotalTicks
   const idle = i.cpuIdleTicks
   if (lastTicks && total > lastTicks.total) {
@@ -88,22 +88,36 @@ function updateCpu(i: SystemInfo) {
 }
 
 /** Belegung in Prozent für den Verlauf der Speicher-Kachel. */
-function updateMem(i: SystemInfo) {
+function updateMem(i: Pick<SystemInfo, 'memTotalBytes' | 'memAvailableBytes'>) {
   if (!i.memTotalBytes) return
   const used = ((i.memTotalBytes - i.memAvailableBytes) / i.memTotalBytes) * 100
   memHistory.value = [...memHistory.value, Math.max(0, Math.min(100, used))].slice(-HISTORY_MAX)
 }
 
 /** Datenrate aus den Byte-Zählern der Netzwerkkarten seit der letzten Abfrage. */
-function updateNet(i: SystemInfo) {
+function updateNet(i: Pick<SystemInfo, 'net'>, at = Date.now()) {
   if (!i.net?.length) return
-  const cur = { at: Date.now(), net: i.net }
+  const cur = { at, net: i.net }
   const r = netRates(lastNet, cur)
   lastNet = cur
   if (!r) return
   netNow.value = r
   netRx.value = [...netRx.value, r.rx].slice(-HISTORY_MAX)
   netTx.value = [...netTx.value, r.tx].slice(-HISTORY_MAX)
+}
+
+/** Verlauf der letzten Minuten vom Server holen, damit die Graphen schon beim Öffnen gefüllt sind. */
+async function loadSamples() {
+  try {
+    const samples = await api.get<(Pick<SystemInfo, 'cpuTotalTicks' | 'cpuIdleTicks' | 'memTotalBytes' | 'memAvailableBytes' | 'net'> & { at: number })[]>('/api/v1/system/samples')
+    for (const x of samples) {
+      updateCpu(x)
+      updateMem(x)
+      updateNet(x, x.at)
+    }
+  } catch {
+    // Verlauf ist optional; die Graphen füllen sich dann wie bisher durch eigene Messungen
+  }
 }
 
 async function loadSnapraid() {
@@ -120,11 +134,12 @@ async function loadSnapraid() {
   }
 }
 
-onMounted(() => {
-  load()
+onMounted(async () => {
   void notifications.loadAlerts()
   loadSnapraid()
-  firstCpu = setTimeout(load, 1500) // zweite Messung, damit die CPU-Kachel schnell einen Wert zeigt
+  await loadSamples() // vor der ersten Live-Messung, damit die Reihenfolge stimmt
+  load()
+  if (!cpuHistory.value.length) firstCpu = setTimeout(load, 1500) // ohne Verlauf: zweite Messung, damit die CPU-Kachel schnell einen Wert zeigt
   stopTimer = pollWhileVisible(load, 5000)
   stopSnapTimer = pollWhileVisible(loadSnapraid, 60000) // Sync-/Scrub-Stand ändert sich im Hintergrund
 })

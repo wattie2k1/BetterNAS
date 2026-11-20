@@ -67,6 +67,8 @@ type Deps struct {
 	TLS *tlsmgr.Manager
 	// Monitor ist optional (nil = keine aktiven Meldungen).
 	Monitor *monitor.Monitor
+	// Sampler ist optional (nil = kein Verlauf für das Dashboard).
+	Sampler *system.Sampler
 }
 
 type server struct {
@@ -87,6 +89,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	api.HandleFunc("POST /api/v1/auth/logout", deps.Auth.Logout)
 	api.HandleFunc("GET /api/v1/auth/me", deps.Auth.Me)
 	api.HandleFunc("GET /api/v1/system/info", s.systemInfo)
+	api.HandleFunc("GET /api/v1/system/samples", s.systemSamples)
 	api.HandleFunc("GET /api/v1/system/reboot-required", s.rebootRequired)
 	api.HandleFunc("GET /api/v1/jobs", s.listJobs)
 	api.HandleFunc("GET /api/v1/jobs/{id}", s.getJob)

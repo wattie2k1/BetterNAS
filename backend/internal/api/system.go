@@ -19,6 +19,15 @@ func (s *server) systemInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
+// systemSamples liefert die letzten Messungen der Systemzähler für den Verlauf im Dashboard.
+func (s *server) systemSamples(w http.ResponseWriter, r *http.Request) {
+	out := []system.Sample{}
+	if s.deps.Sampler != nil {
+		out = s.deps.Sampler.History()
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // rebootRequired meldet, ob der Server nach Updates (z. B. neuer Kernel) neu gestartet werden muss.
 func (s *server) rebootRequired(w http.ResponseWriter, r *http.Request) {
 	checker := s.deps.RebootChecker
