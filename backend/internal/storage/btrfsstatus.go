@@ -59,6 +59,9 @@ type BtrfsStatus struct {
 	// Errors ist die Summe aller Fehlerzähler aller Platten.
 	Errors uint64      `json:"errors"`
 	Scrub  *BtrfsScrub `json:"scrub,omitempty"`
+	// Op ist die laufende oder zuletzt beendete Wartung; Replace der Plattenersatz (nur wenn einer läuft oder lief).
+	Op      *BtrfsOp      `json:"op,omitempty"`
+	Replace *BtrfsReplace `json:"replace,omitempty"`
 }
 
 var (

@@ -9,18 +9,6 @@ import (
 	"github.com/betternas/betternas/internal/storage"
 )
 
-// btrfsMetadata wählt das Metadaten-Profil: Bei „single“ über mehrere Platten liegen die Metadaten
-// gespiegelt, damit der Ausfall einer Platte die übrigen Dateien nicht mitreißt.
-func btrfsMetadata(profile string, disks int) string {
-	if profile != "single" {
-		return profile
-	}
-	if disks > 1 {
-		return "raid1"
-	}
-	return "dup"
-}
-
 // BtrfsCreate löscht die bestätigten Platten und legt ein gemeinsames btrfs-Dateisystem an.
 // Jede Platte wird vorher gegen die Bestätigung des Nutzers geprüft (Gerät, Größe, nicht eingehängt).
 func BtrfsCreate(ctx context.Context, d Deps, req storage.BtrfsCreateRequest) (storage.BtrfsCreateResult, error) {
@@ -45,18 +33,9 @@ func BtrfsCreate(ctx context.Context, d Deps, req storage.BtrfsCreateRequest) (s
 			return storage.BtrfsCreateResult{}, apierr.New(apierr.InvalidParams, "Datenträger doppelt: "+want.DiskID)
 		}
 		seen[want.DiskID] = true
-		disk, ok := findDisk(disks, func(x storage.Disk) bool { return x.ID == want.DiskID })
-		switch {
-		case !ok:
-			return storage.BtrfsCreateResult{}, apierr.New(apierr.NotFound, "Datenträger nicht gefunden: "+want.DiskID)
-		case disk.System:
-			return storage.BtrfsCreateResult{}, apierr.New(apierr.SystemDisk, "Die Systemplatte kann nicht verwendet werden")
-		case !disk.Manageable:
-			return storage.BtrfsCreateResult{}, apierr.New(apierr.Conflict, "Datenträger kann nicht verwaltet werden: "+disk.Reason)
-		case disk.Device != want.Device || disk.SizeBytes != want.SizeBytes:
-			return storage.BtrfsCreateResult{}, apierr.New(apierr.Conflict, "Ein Datenträger hat sich seit der Vorschau verändert. Bitte erneut prüfen.")
-		case len(disk.Mountpoints()) > 0:
-			return storage.BtrfsCreateResult{}, apierr.New(apierr.Conflict, "Der Datenträger ist eingehängt: "+strings.Join(disk.Mountpoints(), ", "))
+		disk, err := resolveTarget(disks, want)
+		if err != nil {
+			return storage.BtrfsCreateResult{}, err
 		}
 		devices = append(devices, disk.Device)
 	}
@@ -69,7 +48,7 @@ func BtrfsCreate(ctx context.Context, d Deps, req storage.BtrfsCreateRequest) (s
 		parts = append(parts, part)
 	}
 	label := storage.BtrfsLabel(req.Name)
-	args := append([]string{"-f", "-L", label, "-d", req.Profile, "-m", btrfsMetadata(req.Profile, len(parts))}, parts...)
+	args := append([]string{"-f", "-L", label, "-d", req.Profile, "-m", storage.BtrfsMetadataProfile(req.Profile, len(parts))}, parts...)
 	if _, err := run(ctx, d.Runner, nil, "mkfs.btrfs", args...); err != nil {
 		return storage.BtrfsCreateResult{}, err
 	}
@@ -129,12 +108,22 @@ func BtrfsStatus(ctx context.Context, d Deps, req BtrfsStatusRequest) (storage.B
 	var stats map[string]storage.BtrfsErrors
 	var usage storage.BtrfsUsage
 	var scrub *storage.BtrfsScrub
+	var op *storage.BtrfsOp
+	var rep *storage.BtrfsReplace
 	if mounted {
+		if o, err := BtrfsOpStatus(ctx, d, req.Name); err == nil && o.Op != "" {
+			op = &o
+		}
+		if r := storage.ParseBtrfsReplace(output(ctx, d, btrfsBin, "replace", "status", "-1", where)); r.State != "never" {
+			rep = &r
+		}
 		stats = storage.ParseBtrfsStats(output(ctx, d, "btrfs", "device", "stats", where))
 		usage = storage.ParseBtrfsUsage(output(ctx, d, "btrfs", "filesystem", "usage", "-b", where))
 		scrub = storage.ParseBtrfsScrub(output(ctx, d, "btrfs", "scrub", "status", "-R", where))
 	}
-	return storage.AssembleBtrfsStatus(devs, missing, stats, usage, mounted, scrub), nil
+	st := storage.AssembleBtrfsStatus(devs, missing, stats, usage, mounted, scrub)
+	st.Op, st.Replace = op, rep
+	return st, nil
 }
 
 // BtrfsScrub startet eine Prüfung (über die Dienst-Unit, die auch der Timer nutzt) oder bricht sie ab.
@@ -177,4 +166,23 @@ func syncScrubTimers(ctx context.Context, d Deps, pools []storage.Pool, stale []
 	for _, name := range stale {
 		_, _ = d.Runner.Run(ctx, nil, "systemctl", "disable", "--now", scrubTimer(name))
 	}
+}
+
+// resolveTarget prüft eine vom Nutzer bestätigte Platte: vorhanden, verwaltbar, keine Systemplatte,
+// Gerät und Größe unverändert, nicht eingehängt.
+func resolveTarget(disks []storage.Disk, want storage.BtrfsDisk) (storage.Disk, error) {
+	disk, ok := findDisk(disks, func(x storage.Disk) bool { return x.ID == want.DiskID })
+	switch {
+	case !ok:
+		return storage.Disk{}, apierr.New(apierr.NotFound, "Datenträger nicht gefunden: "+want.DiskID)
+	case disk.System:
+		return storage.Disk{}, apierr.New(apierr.SystemDisk, "Die Systemplatte kann nicht verwendet werden")
+	case !disk.Manageable:
+		return storage.Disk{}, apierr.New(apierr.Conflict, "Datenträger kann nicht verwaltet werden: "+disk.Reason)
+	case disk.Device != want.Device || disk.SizeBytes != want.SizeBytes:
+		return storage.Disk{}, apierr.New(apierr.Conflict, "Ein Datenträger hat sich seit der Vorschau verändert. Bitte erneut prüfen.")
+	case len(disk.Mountpoints()) > 0:
+		return storage.Disk{}, apierr.New(apierr.Conflict, "Der Datenträger ist eingehängt: "+strings.Join(disk.Mountpoints(), ", "))
+	}
+	return disk, nil
 }

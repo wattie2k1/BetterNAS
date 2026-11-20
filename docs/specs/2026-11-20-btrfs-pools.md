@@ -174,6 +174,24 @@ Pfade und Geräte werden nur aus dem Soll-Zustand abgeleitet, nie aus freien Ein
   Fehlerzähler > 0 sind) und `pool-scrub:<pool>` (kritisch bei nicht reparierbaren Fehlern eines
   beendeten Laufs). Die Fehlerzähler lassen sich erst in Etappe 3 zurücksetzen (`btrfs device stats -z`).
 
+**Stand Etappe 3 (umgesetzt):**
+- Agent: `pool.btrfs.replace.start|status`, `device.add`, `resize`, `op.start|status` (Balance, Platte
+  entfernen, Profilwechsel in der transienten Unit `betternas-btrfs-op-<pool>.service` mit
+  `RemainAfterExit`, Fortschritt aus `btrfs balance status`), `mountdegraded`, `resetstats`.
+  Nie zwei Wartungen gleichzeitig (Agent prüft Unit und `btrfs replace status`, der Manager reserviert
+  den Pool).
+- Degradiert einhängen geschieht per `mount -o degraded` statt über die Unit: Die Unit wartet auf die
+  Geräte-Unit, die erst „fertig" ist, wenn alle Platten da sind. Es gilt bis zum nächsten Neustart.
+- Eine nicht mehr gelistete fehlende Platte hat vor dem degradierten Einhängen keine devid; Ersetzen
+  verlangt deshalb zuerst „Degradiert einhängen" (danach zeigt `btrfs filesystem show` die devid).
+  Entfernen einer fehlenden Platte geht über `device remove missing`.
+- API: `POST /pools/{n}/btrfs/replace` (`oldDiskId`, `diskId`, Token, `confirmName`), `POST …/devices`
+  (Hinzufügen, optional `balance`), `DELETE …/devices/{id}?confirm=<pool>`, `POST …/balance`
+  (`usage`), `POST …/convert` (`profile`, bei weniger Redundanz `confirmName`),
+  `POST …/mount-degraded`, `POST …/reset-errors`. Die langen Abläufe sind Jobs, die die
+  Speicher-Sperre nur für die Änderung des Soll-Zustands halten.
+- Entfernen ist nur erlaubt, solange die Plattenzahl über dem Minimum des Profils bleibt.
+
 ## 8. GUI
 
 - Pool-Dialog: erste Auswahl „Typ" mit zwei Karten. Gut erklärt, mit Warnung vor Datenverlust bei

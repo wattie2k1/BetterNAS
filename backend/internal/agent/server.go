@@ -94,6 +94,79 @@ func Register(s *rpc.Server, d Deps) {
 		defer mutate.Unlock()
 		return map[string]bool{"ok": true}, BtrfsScrub(ctx, d, req)
 	})
+	// Wartung von btrfs-Pools: ändernde Methoden unter der gemeinsamen Sperre, Statusabfragen ohne.
+	btrfsMut := func(method string, fn func(ctx context.Context, p json.RawMessage) error) {
+		s.Handle(method, func(ctx context.Context, p json.RawMessage) (any, error) {
+			mutate.Lock()
+			defer mutate.Unlock()
+			if err := fn(ctx, p); err != nil {
+				return nil, err
+			}
+			return map[string]bool{"ok": true}, nil
+		})
+	}
+	btrfsMut("pool.btrfs.replace.start", func(ctx context.Context, p json.RawMessage) error {
+		var req storage.BtrfsReplaceRequest
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return BtrfsReplaceStart(ctx, d, req)
+	})
+	btrfsMut("pool.btrfs.device.add", func(ctx context.Context, p json.RawMessage) error {
+		var req storage.BtrfsAddRequest
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return BtrfsDeviceAdd(ctx, d, req)
+	})
+	btrfsMut("pool.btrfs.op.start", func(ctx context.Context, p json.RawMessage) error {
+		var req storage.BtrfsOpRequest
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return BtrfsOpStart(ctx, d, req)
+	})
+	btrfsMut("pool.btrfs.mountdegraded", func(ctx context.Context, p json.RawMessage) error {
+		var req storage.BtrfsMountRequest
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return BtrfsMountDegraded(ctx, d, req)
+	})
+	btrfsMut("pool.btrfs.resize", func(ctx context.Context, p json.RawMessage) error {
+		var req storage.BtrfsResizeRequest
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return BtrfsResize(ctx, d, req)
+	})
+	btrfsMut("pool.btrfs.resetstats", func(ctx context.Context, p json.RawMessage) error {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := decode(p, &req); err != nil {
+			return err
+		}
+		return BtrfsResetStats(ctx, d, req.Name)
+	})
+	s.Handle("pool.btrfs.op.status", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return BtrfsOpStatus(ctx, d, req.Name)
+	})
+	s.Handle("pool.btrfs.replace.status", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return BtrfsReplaceStatus(ctx, d, req.Name)
+	})
 	s.Handle("account.list", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return ListAccounts(ctx, d)
 	})

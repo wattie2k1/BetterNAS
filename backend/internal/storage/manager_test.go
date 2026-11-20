@@ -21,15 +21,19 @@ import (
 
 // fakeAgent simuliert den Agent auf Ebene der RPC-Methoden.
 type fakeAgent struct {
-	mu       sync.Mutex
-	disks    []Disk
-	calls    []string
-	applied  []State
-	btrfsReqs []BtrfsCreateRequest
-	btrfsStatus *BtrfsStatus
-	scrubCalls  []string
-	scrubErr    error
-	applyErr error
+	mu              sync.Mutex
+	disks           []Disk
+	calls           []string
+	applied         []State
+	btrfsReqs       []BtrfsCreateRequest
+	btrfsStatus     *BtrfsStatus
+	scrubCalls      []string
+	maint           []string // „Methode {json}“ der Wartungsaufrufe
+	maintErr        error
+	opStatuses      []BtrfsOp
+	replaceStatuses []BtrfsReplace
+	scrubErr        error
+	applyErr        error
 
 	snapApplied []snapraid.State
 	snapErr     error
@@ -50,10 +54,10 @@ type fakeAgent struct {
 	selfTestBusy map[string]int // Gerät → so viele disk.smart-Abfragen lang läuft der Test noch
 	selfTestFail bool
 
-	erases           []string
-	eraseHold        atomic.Bool // solange true, meldet disk.erase.status „läuft noch“ (macht den Test unabhängig vom Timing)
-	eraseResult      string
-	eraseError       string
+	erases        []string
+	eraseHold     atomic.Bool // solange true, meldet disk.erase.status „läuft noch“ (macht den Test unabhängig vom Timing)
+	eraseResult   string
+	eraseError    string
 	benchCalls    int
 	benchFail     bool
 	fsChecks      []string
@@ -176,6 +180,31 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 			return apierr.New(apierr.Internal, "kein btrfs")
 		}
 		out = *f.btrfsStatus
+	case "pool.btrfs.replace.start", "pool.btrfs.device.add", "pool.btrfs.op.start", "pool.btrfs.mountdegraded", "pool.btrfs.resetstats", "pool.btrfs.resize":
+		b, _ := json.Marshal(params)
+		f.maint = append(f.maint, method+" "+string(b))
+		if f.maintErr != nil {
+			return f.maintErr
+		}
+		out = map[string]bool{"ok": true}
+	case "pool.btrfs.op.status":
+		op := BtrfsOp{Op: "balance", Result: "ok", Progress: 100}
+		if len(f.opStatuses) > 0 {
+			op = f.opStatuses[0]
+			if len(f.opStatuses) > 1 {
+				f.opStatuses = f.opStatuses[1:]
+			}
+		}
+		out = op
+	case "pool.btrfs.replace.status":
+		r := BtrfsReplace{State: "finished", Percent: 100}
+		if len(f.replaceStatuses) > 0 {
+			r = f.replaceStatuses[0]
+			if len(f.replaceStatuses) > 1 {
+				f.replaceStatuses = f.replaceStatuses[1:]
+			}
+		}
+		out = r
 	case "pool.btrfs.scrub":
 		b, _ := json.Marshal(params)
 		var req map[string]string

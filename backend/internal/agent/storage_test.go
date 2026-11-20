@@ -380,7 +380,7 @@ func TestBtrfsMetadataProfile(t *testing.T) {
 		want    string
 	}{{"single", 1, "dup"}, {"single", 3, "raid1"}, {"raid1", 2, "raid1"}, {"raid1c3", 3, "raid1c3"}, {"raid10", 4, "raid10"}}
 	for _, c := range cases {
-		if got := btrfsMetadata(c.profile, c.disks); got != c.want {
+		if got := storage.BtrfsMetadataProfile(c.profile, c.disks); got != c.want {
 			t.Errorf("%s/%d: %s", c.profile, c.disks, got)
 		}
 	}
