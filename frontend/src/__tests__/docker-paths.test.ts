@@ -129,4 +129,27 @@ describe('Einstellungen → Docker: Speicherorte', () => {
     expect(document.querySelector('[data-test="paths-save"]')).toBeNull()
     w.unmount()
   })
+
+  it('zeigt eine kaputte paths.json an und sperrt die Einrichtung, statt sie zu überschreiben', async () => {
+    vi.mocked(servicesApi.docker).mockResolvedValue(daemon)
+    stub({
+      'GET /api/v1/docker/status': unconfigured,
+      'GET /api/v1/docker/paths': { configured: false, appdata: '', dockerdata: '', warnings: [], staleStacks: 0, problem: 'paths.json ist ungültig (kein gültiges JSON).' },
+    })
+    const w = mount(DockerSettings, { global: { plugins: plugins() }, attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-test="paths-problem"]').text()).toContain('paths.json ist ungültig')
+    expect(w.find('[data-test="paths-setup"]').attributes('disabled')).toBeDefined()
+    expect(document.querySelector('[data-test="paths-save"]')).toBeNull()
+    w.unmount()
+  })
+
+  it('blendet das Formular der daemon.json aus, solange Docker nicht eingerichtet ist', async () => {
+    vi.mocked(servicesApi.docker).mockResolvedValue(daemon)
+    stub({ 'GET /api/v1/docker/status': unconfigured, 'GET /api/v1/docker/paths': { configured: false, appdata: '', dockerdata: '', warnings: [], staleStacks: 0 } })
+    const w = mount(DockerSettings, { global: { plugins: plugins() }, attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-test="docker-save"]').exists()).toBe(false)
+    w.unmount()
+  })
 })

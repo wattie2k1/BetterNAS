@@ -37,7 +37,7 @@ run paths 'mkdir -p etc/betternas && echo {} > etc/betternas/paths.json'
 [ ! -s "$T/calls" ] || err "mit paths.json darf Docker nicht deaktiviert werden"
 
 run daemon 'mkdir -p etc/docker && echo {} > etc/docker/daemon.json'
-[ ! -s "$T/calls" ] || err "mit daemon.json darf Docker nicht deaktiviert werden"
+[ "$(cat "$T/calls")" = "systemctl disable docker.socket docker.service" ] || err "eine fremde daemon.json allein macht noch keine bestehende Installation (Agent: gesperrt, also auch deaktivieren): $(cat "$T/calls")"
 
 run stacks 'mkdir -p srv/appdata/stacks/emby && echo x > srv/appdata/stacks/emby/compose.yaml'
 [ ! -s "$T/calls" ] || err "mit Stacks darf Docker nicht deaktiviert werden"

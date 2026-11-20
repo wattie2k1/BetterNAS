@@ -64,7 +64,7 @@ function pick(p: string) {
   <Dialog :visible="visible" modal append-to="self" header="Speicherorte für Docker" :style="{ width: 'min(620px, 96vw)' }" @update:visible="emit('update:visible', $event)">
     <template v-if="!result">
       <p class="intro">
-        Wähle zwei Ordner auf einer Platte oder einem Pool (btrfs-Pool oder einzelne Platte; mergerfs-Pools sind für Docker ungeeignet). Lege sie bei Bedarf im Ordnerfenster neu an.
+        Wähle zwei Ordner auf einer Platte oder einem Pool (btrfs-Pool oder einzelne Platte; mergerfs-Pools sind für Docker ungeeignet). Lege sie im Ordnerfenster an, damit sie root gehören. Erlaubt sind Buchstaben ohne Umlaute, Ziffern und _ . + @ - (keine Leerzeichen).
       </p>
       <Message v-if="!configured" severity="info" :closable="false">Bis die Speicherorte festgelegt sind, ist Docker gesperrt. Beim ersten Speichern wird Docker eingerichtet und gestartet.</Message>
       <div class="field">

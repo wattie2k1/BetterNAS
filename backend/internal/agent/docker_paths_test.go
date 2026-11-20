@@ -3,7 +3,10 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/betternas/betternas/internal/sysexec"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -63,7 +66,7 @@ func TestInitPathsLegacyByStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := requirePaths()
-	if err != nil || p != docker.LegacyPaths || !d.FS.Exists(pathsFile) {
+	if err != nil || !samePaths(p, docker.LegacyPaths) || !d.FS.Exists(pathsFile) {
 		t.Fatalf("%+v %v", p, err)
 	}
 }
@@ -76,7 +79,7 @@ func TestInitPathsLegacyByDataRoot(t *testing.T) {
 	if err := initPaths(d); err != nil {
 		t.Fatal(err)
 	}
-	if p, err := requirePaths(); err != nil || p != docker.LegacyPaths {
+	if p, err := requirePaths(); err != nil || !samePaths(p, docker.LegacyPaths) {
 		t.Fatalf("%+v %v", p, err)
 	}
 }
@@ -152,7 +155,11 @@ type pathsFake struct {
 	fstype        map[string]string // Pfad → Dateisystemtyp (Vorgabe ext4)
 	dev           map[string]string // Pfad → Gerätenummer (Vorgabe 99, "/" ist 1)
 	failSystemctl bool
+	owner         map[string]string // Pfad → „uid mode“ (Vorgabe „0 755“)
+	ftype         map[string]string // Pfad → Dateityp (Vorgabe „directory“)
 }
+
+func samePaths(a, b docker.Paths) bool { return reflect.DeepEqual(a, b) }
 
 func pathsEnv(t *testing.T, pf *pathsFake) (Deps, *sysexec.FakeRunner) {
 	t.Helper()
@@ -184,10 +191,24 @@ func pathsEnv(t *testing.T, pf *pathsFake) (Deps, *sysexec.FakeRunner) {
 				return sysexec.Result{Stdout: []byte("1\n")}, true
 			}
 			return sysexec.Result{Stdout: []byte("99\n")}, true
-		case call == "systemctl enable --now docker.socket docker.service":
+		case strings.HasPrefix(call, "stat -c %u %a -- "):
+			p := strings.TrimPrefix(call, "stat -c %u %a -- ")
+			if v, ok := pf.owner[p]; ok {
+				return sysexec.Result{Stdout: []byte(v + "\n")}, true
+			}
+			return sysexec.Result{Stdout: []byte("0 755\n")}, true
+		case strings.HasPrefix(call, "stat -c %F -- "):
+			p := strings.TrimPrefix(call, "stat -c %F -- ")
+			if v, ok := pf.ftype[p]; ok {
+				return sysexec.Result{Stdout: []byte(v + "\n")}, true
+			}
+			return sysexec.Result{Stdout: []byte("directory\n")}, true
+		case call == "systemctl enable docker.socket docker.service" || call == "systemctl restart docker.service":
 			if pf.failSystemctl {
 				return sysexec.Result{ExitCode: 1, Stderr: []byte("boom")}, true
 			}
+			return sysexec.Result{}, true
+		case call == "systemctl daemon-reload":
 			return sysexec.Result{}, true
 		}
 		return sysexec.Result{}, false
@@ -205,7 +226,7 @@ func TestSetPathsFirstSetupWritesFilesAndStartsDocker(t *testing.T) {
 	}
 	b, _ := d.FS.ReadFile(pathsFile)
 	var got docker.Paths
-	if json.Unmarshal(b, &got) != nil || got != twoPools {
+	if json.Unmarshal(b, &got) != nil || !samePaths(got, twoPools) {
 		t.Fatalf("paths.json: %s", b)
 	}
 	m, err := readDaemon(d)
@@ -217,8 +238,10 @@ func TestSetPathsFirstSetupWritesFilesAndStartsDocker(t *testing.T) {
 			t.Errorf("%s fehlt", dir)
 		}
 	}
-	if !f.Called("systemctl enable --now docker.socket docker.service") {
-		t.Fatalf("%v", f.Calls)
+	for _, want := range []string{"systemctl daemon-reload", "systemctl enable docker.socket docker.service", "systemctl restart docker.service"} {
+		if !f.Called(want) {
+			t.Fatalf("%s fehlt: %v", want, f.Calls)
+		}
 	}
 	if _, err := requirePaths(); err != nil {
 		t.Fatal(err)
@@ -317,7 +340,7 @@ func TestSetPathsChangeLaterDoesNotTouchDaemonJsonOrSystemd(t *testing.T) {
 		t.Fatalf("daemon.json verändert: %s", after)
 	}
 	for _, c := range f.Calls[n:] {
-		if strings.HasPrefix(c, "systemctl") {
+		if strings.HasPrefix(c, "systemctl") && c != "systemctl daemon-reload" { // daemon-reload: neue Mount-Abhängigkeit
 			t.Fatalf("systemctl bei Änderung: %s", c)
 		}
 	}
@@ -392,5 +415,211 @@ func TestPathsRPCsWorkWhenNotConfigured(t *testing.T) {
 	}
 	if err := c.Call(context.Background(), "stack.list", nil, nil); err != nil {
 		t.Fatalf("nach der Einrichtung entsperrt: %v", err)
+	}
+}
+
+type failFS struct {
+	sysexec.FS
+	failPath string
+}
+
+func (f failFS) WriteFile(p string, data []byte, perm os.FileMode) error {
+	if p == f.failPath {
+		return errors.New("Platte voll")
+	}
+	return f.FS.WriteFile(p, data, perm)
+}
+
+func TestSetPathsRejectsForeignOrWritableRoot(t *testing.T) {
+	for name, owner := range map[string]string{"fremder Besitzer": "1000 755", "Gruppe schreibbar": "0 775", "alle schreibbar": "0 777"} {
+		d, _ := pathsEnv(t, &pathsFake{owner: map[string]string{"/srv/pools/a/cfg": owner}})
+		if _, err := SetPaths(context.Background(), d, twoPools); code(err) != apierr.InvalidParams {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestSetPathsRejectsSymlinkedSubdir(t *testing.T) {
+	for _, sub := range []string{"/srv/pools/a/cfg/stacks", "/srv/pools/a/cfg/reverse-proxy", "/srv/pools/a/cfg/backups", "/srv/pools/b/dd/docker"} {
+		d, _ := pathsEnv(t, &pathsFake{ftype: map[string]string{sub: "symbolic link"}})
+		if _, err := SetPaths(context.Background(), d, twoPools); code(err) != apierr.InvalidParams {
+			t.Errorf("%s: %v", sub, err)
+		}
+		if d.FS.Exists(pathsFile) {
+			t.Errorf("%s: paths.json darf nicht entstehen", sub)
+		}
+	}
+}
+
+func TestSetPathsStoresResolvedPath(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{links: map[string]string{"/srv/pools/a/cfg": "/srv/pools/a/real"}})
+	info, err := SetPaths(context.Background(), d, twoPools)
+	if err != nil || info.Appdata != "/srv/pools/a/real" {
+		t.Fatalf("%+v %v", info, err)
+	}
+	b, _ := d.FS.ReadFile(pathsFile)
+	if !strings.Contains(string(b), "/srv/pools/a/real") || strings.Contains(string(b), "a/cfg") {
+		t.Fatalf("%s", b)
+	}
+}
+
+func TestSetPathsWritesMountDropIn(t *testing.T) {
+	d, f := pathsEnv(t, &pathsFake{})
+	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
+		t.Fatal(err)
+	}
+	b, err := d.FS.ReadFile("/etc/systemd/system/docker.service.d/betternas-paths.conf")
+	if err != nil || !strings.Contains(string(b), "[Unit]\nRequiresMountsFor=/srv/pools/a/cfg /srv/pools/b/dd\n") {
+		t.Fatalf("%s %v", b, err)
+	}
+	if f.Index("systemctl daemon-reload") > f.Index("systemctl enable docker.socket") {
+		t.Fatalf("daemon-reload muss vor dem Start laufen: %v", f.Calls)
+	}
+}
+
+func TestSetPathsAddsDataRootToExistingDaemonJson(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	_ = d.FS.MkdirAll("/etc/docker", 0o755)
+	_ = d.FS.WriteFile(dockerDaemonFile, []byte(`{"log-driver":"local","registry-mirrors":["https://m.example"]}`), 0o644)
+	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
+		t.Fatal(err)
+	}
+	m, err := readDaemon(d)
+	if err != nil || m["data-root"] != "/srv/pools/b/dd/docker" || m["log-driver"] != "local" || m["registry-mirrors"] == nil {
+		t.Fatalf("%v %v", m, err)
+	}
+}
+
+func TestSetPathsFailedSecondSaveKeepsOldConfig(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := d.FS.ReadFile(pathsFile)
+	d2 := Deps{Runner: d.Runner, FS: failFS{d.FS, pathsFile}}
+	if _, err := SetPaths(context.Background(), d2, docker.Paths{Appdata: twoPools.Appdata, Dockerdata: "/srv/pools/c/neu"}); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	p, err := requirePaths()
+	if err != nil || p.Dockerdata != twoPools.Dockerdata {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if after, _ := d.FS.ReadFile(pathsFile); string(after) != string(before) {
+		t.Fatalf("paths.json verändert: %s", after)
+	}
+}
+
+func TestSetPathsRemembersPreviousRoots(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	curPaths.Store(&docker.Paths{Appdata: "/srv/appdata", Dockerdata: "/srv/appdata"})
+	if _, err := SetPaths(context.Background(), d, docker.Paths{Appdata: "/srv/appdata", Dockerdata: "/srv/pools/b/dd"}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := requirePaths()
+	if !reflect.DeepEqual(p.Previous, []string{"/srv/appdata"}) {
+		t.Fatalf("%+v", p)
+	}
+	b, _ := d.FS.ReadFile(pathsFile)
+	if !strings.Contains(string(b), `"previous"`) {
+		t.Fatalf("%s", b)
+	}
+	// Ein weiterer Wechsel hält die Liste ohne Doppelte
+	if _, err := SetPaths(context.Background(), d, docker.Paths{Appdata: "/srv/appdata", Dockerdata: "/srv/pools/c/dd"}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = requirePaths()
+	if !reflect.DeepEqual(p.Previous, []string{"/srv/pools/b/dd", "/srv/appdata"}) && !reflect.DeepEqual(p.Previous, []string{"/srv/appdata", "/srv/pools/b/dd"}) {
+		t.Fatalf("%+v", p)
+	}
+}
+
+func TestSetPathsRefusedWhileFileCorrupt(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	_ = d.FS.MkdirAll("/etc/betternas", 0o755)
+	_ = d.FS.WriteFile(pathsFile, []byte(`{x`), 0o644)
+	_ = initPaths(d)
+	if _, err := SetPaths(context.Background(), d, twoPools); code(err) != apierr.Conflict {
+		t.Fatalf("%v", err)
+	}
+	if b, _ := d.FS.ReadFile(pathsFile); string(b) != `{x` {
+		t.Fatalf("Datei überschrieben: %s", b)
+	}
+}
+
+func TestGetPathsReportsProblemAndRereadsRepairedFile(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	_ = d.FS.MkdirAll("/etc/betternas", 0o755)
+	_ = d.FS.WriteFile(pathsFile, []byte(`{x`), 0o644)
+	_ = initPaths(d)
+	info, err := GetPaths(context.Background(), d)
+	if err != nil || info.Configured || !strings.Contains(info.Problem, "paths.json") {
+		t.Fatalf("%+v %v", info, err)
+	}
+	_ = d.FS.Remove(pathsFile)
+	_ = d.FS.WriteFile(pathsFile, []byte(`{"appdata":"/srv/pools/a/cfg","dockerdata":"/srv/pools/b/dd"}`), 0o644)
+	info, err = GetPaths(context.Background(), d)
+	if err != nil || !info.Configured || info.Problem != "" {
+		t.Fatalf("%+v %v", info, err)
+	}
+}
+
+func TestInitPathsLegacyByDockerDir(t *testing.T) {
+	d, _, _ := dockerEnv(t)
+	resetPaths(t)
+	_ = d.FS.MkdirAll("/srv/appdata/docker", 0o710)
+	if err := initPaths(d); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := requirePaths(); err != nil || !samePaths(p, docker.LegacyPaths) {
+		t.Fatalf("%+v %v", p, err)
+	}
+}
+
+func TestInitPathsCleansValuesFromFile(t *testing.T) {
+	d, _, _ := dockerEnv(t)
+	resetPaths(t)
+	_ = d.FS.WriteFile(pathsFile, []byte(`{"appdata":"/srv/pools/a/cfg/","dockerdata":"/srv/pools/b//dd"}`), 0o644)
+	if err := initPaths(d); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := requirePaths(); p.Appdata != "/srv/pools/a/cfg" || p.Dockerdata != "/srv/pools/b/dd" {
+		t.Fatalf("%+v", p)
+	}
+}
+
+func TestDockerSettingsAndServiceLockedWhenNotConfigured(t *testing.T) {
+	d, _, _ := dockerEnv(t)
+	resetPaths(t)
+	c := rpcClient(t, d)
+	if err := c.Call(context.Background(), "docker.settings.set", DockerSettings{LogMaxSize: "10m", LogMaxFile: 3}, nil); code(err) != apierr.DockerNotConfigured {
+		t.Fatalf("docker.settings.set: %v", err)
+	}
+	if d.FS.Exists(dockerDaemonFile) {
+		t.Fatal("daemon.json darf nicht entstehen")
+	}
+	for _, a := range []string{"start", "restart"} {
+		if err := ServiceAction(context.Background(), d, "docker", a); code(err) != apierr.DockerNotConfigured {
+			t.Errorf("docker %s: %v", a, err)
+		}
+	}
+	if err := ServiceAction(context.Background(), d, "docker", "stop"); err != nil {
+		t.Errorf("stop muss möglich bleiben: %v", err)
+	}
+}
+
+func TestSafeBindPathPreviousRoots(t *testing.T) {
+	resetPaths(t)
+	p := docker.Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd", Previous: []string{"/srv/appdata"}}
+	curPaths.Store(&p)
+	for path, want := range map[string]bool{"/srv/appdata/emby/config": true, "/srv/appdata/stacks/x": false, "/srv/appdata/docker/volumes": false, "/srv/appdata": false} {
+		if got := safeBindPath(path); got != want {
+			t.Errorf("safeBindPath(%q) = %v", path, got)
+		}
+	}
+}
+
+func TestShQuoteEscapesSingleQuotes(t *testing.T) {
+	if got := shQuote([]string{"a'b", "c d"}); got != `'a'\''b' 'c d'` {
+		t.Fatal(got)
 	}
 }

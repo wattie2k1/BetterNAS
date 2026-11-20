@@ -2,6 +2,7 @@ package docker
 
 import (
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/betternas/betternas/internal/apierr"
@@ -13,6 +14,9 @@ import (
 type Paths struct {
 	Appdata    string `json:"appdata"`
 	Dockerdata string `json:"dockerdata"`
+	// Previous sind frühere Wurzeln. Stacks, die vor einer Änderung angelegt wurden, behalten ihre Pfade;
+	// Datensicherung und Wiederherstellung kennen deshalb auch diese Wurzeln. Wird nur vom Agenten gepflegt.
+	Previous []string `json:"previous,omitempty"`
 }
 
 // LegacyPaths ist der Zustand bestehender Installationen, bei denen alles unter /srv/appdata liegt.
@@ -41,19 +45,37 @@ func (p Paths) DataRoot() string { return p.Dockerdata + "/docker" }
 // StackDir ist das Verzeichnis eines Stacks. Der Name muss vorher mit StackNameRe geprüft sein.
 func (p Paths) StackDir(name string) string { return p.StacksDir() + "/" + name }
 
+// Roots liefert die aktuellen Wurzeln (appdata, dockerdata) gefolgt von den früheren.
+func (p Paths) Roots() []string {
+	return append([]string{p.Appdata, p.Dockerdata}, p.Previous...)
+}
+
 // Reserved sagt, ob first (erster Namensteil unterhalb von root) BetterNAS selbst gehört.
+// Frühere Wurzeln gelten vorsichtshalber mit beiden Namensmengen.
 func (p Paths) Reserved(root, first string) bool {
 	if root == p.Appdata && appdataReserved[first] {
 		return true
 	}
-	return root == p.Dockerdata && dockerdataReserved[first]
+	if root == p.Dockerdata && dockerdataReserved[first] {
+		return true
+	}
+	for _, r := range p.Previous {
+		if r == root && (appdataReserved[first] || dockerdataReserved[first]) {
+			return true
+		}
+	}
+	return false
 }
+
+// rootCharsRe sind die Zeichen eines Speicherorts: dieselben wie in den Pfadfeldern der App-Vorlagen. So landet nie
+// ein Zeichen mit Bedeutung für Shell, YAML, Compose oder Logs in einem Skript oder einer Konfiguration.
+var rootCharsRe = regexp.MustCompile(`^[A-Za-z0-9_./+@-]+$`)
 
 // CleanRoot bereinigt einen Wurzelpfad und prüft ihn rein syntaktisch: absolut, ohne „..“, unterhalb von
 // /srv/pools oder /srv/disks (bei allowLegacy auch /srv/appdata), nie diese Bereiche selbst.
 func CleanRoot(p string, allowLegacy bool) (string, error) {
-	bad := apierr.New(apierr.InvalidParams, "Ungültiger Speicherort (erlaubt: ein Ordner unterhalb von /srv/pools oder /srv/disks)")
-	if !strings.HasPrefix(p, "/") || strings.ContainsRune(p, 0) || len(p) > 4096 {
+	bad := apierr.New(apierr.InvalidParams, "Ungültiger Speicherort (erlaubt: ein Ordner unterhalb von /srv/pools oder /srv/disks; Buchstaben ohne Umlaute, Ziffern und _ . / + @ -)")
+	if !strings.HasPrefix(p, "/") || len(p) > 4096 || !rootCharsRe.MatchString(p) {
 		return "", bad
 	}
 	for _, seg := range strings.Split(p, "/") {
@@ -99,6 +121,8 @@ type PathsInfo struct {
 	Appdata    string   `json:"appdata"`
 	Dockerdata string   `json:"dockerdata"`
 	Warnings   []string `json:"warnings"`
+	// Problem erklärt, warum paths.json nicht geladen werden konnte (Docker bleibt dann gesperrt).
+	Problem string `json:"problem,omitempty"`
 	// StaleStacks zählt Stacks, deren compose.yaml Pfade außerhalb der eingerichteten Speicherorte und der Pools enthält.
 	StaleStacks int `json:"staleStacks"`
 }

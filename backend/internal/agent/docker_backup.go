@@ -73,7 +73,7 @@ func safeBindPath(p string) bool {
 	if cur == nil || path.Clean(p) != p || hasDotDot(p) || !bindPathRe.MatchString(p) {
 		return false
 	}
-	for _, root := range []string{cur.Appdata, cur.Dockerdata} {
+	for _, root := range cur.Roots() {
 		rest, ok := strings.CutPrefix(p, root+"/")
 		if !ok || !bindRestRe.MatchString(rest) {
 			continue
@@ -269,7 +269,14 @@ func StackBackupPlan(ctx context.Context, d Deps, name string) (docker.BackupPla
 	return plan, nil
 }
 
-func shQuote(a []string) string { return "'" + strings.Join(a, "' '") + "'" }
+// shQuote setzt jedes Argument in einfache Anführungszeichen (ein „'“ im Argument wird maskiert).
+func shQuote(a []string) string {
+	q := make([]string, len(a))
+	for i, s := range a {
+		q[i] = "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
+	return strings.Join(q, " ")
+}
 
 // prepareBackup legt die Beschreibung der Sicherung an und liefert den Befehl, der sie erstellt.
 func prepareBackup(d Deps, name, id string, sources []docker.BackupSource) (string, error) {

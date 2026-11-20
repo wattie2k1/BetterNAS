@@ -52,7 +52,7 @@ onMounted(async () => {
   await Promise.all([load(), dockerStore.refresh()])
   await dockerStore.loadPaths()
   // Ohne eingerichtete Speicherorte ist Docker gesperrt: die Einrichtung öffnet sich gleich.
-  if (dockerStore.status?.configured === false) showPaths.value = true
+  if (dockerStore.status?.configured === false && !dockerStore.paths?.problem) showPaths.value = true
 })
 
 async function save() {
@@ -102,12 +102,13 @@ async function restart() {
       </template>
       <template v-else>
         <Message severity="warn" :closable="false" data-test="paths-missing">Docker ist noch nicht eingerichtet. Lege fest, wo Docker seine Daten ablegt.</Message>
-        <Button data-test="paths-setup" label="Speicherorte festlegen" icon="pi pi-cog" @click="showPaths = true" />
+        <Message v-if="dockerStore.paths?.problem" severity="error" :closable="false" data-test="paths-problem">{{ dockerStore.paths.problem }}</Message>
+        <Button data-test="paths-setup" label="Speicherorte festlegen" icon="pi pi-cog" :disabled="!!dockerStore.paths?.problem" @click="showPaths = true" />
       </template>
     </section>
     <DockerPathsDialog :visible="showPaths" @update:visible="showPaths = $event" @saved="load" />
     <Message v-if="error" severity="error" :closable="false" data-test="docker-error">{{ error }}</Message>
-    <form v-if="loaded" class="grid" @submit.prevent="save">
+    <form v-if="loaded && dockerStore.configured" class="grid" @submit.prevent="save">
       <label>Daten-Verzeichnis</label>
       <code data-test="docker-dataroot">{{ loaded.dataRoot }}</code>
       <label for="d-size">Maximale Größe je Log-Datei</label>

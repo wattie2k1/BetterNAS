@@ -14,6 +14,8 @@ export interface DockerPaths {
   appdata: string
   dockerdata: string
   warnings: string[]
+  /** Warum die Speicherorte nicht geladen werden konnten (z. B. kaputte paths.json). */
+  problem?: string
   /** Stacks mit Pfaden aus einer früheren Einstellung. */
   staleStacks: number
 }

@@ -296,7 +296,7 @@ func RunStackOpts(ctx context.Context, d Deps, name, action string, opts docker.
 	unit := fmt.Sprintf("%s%s-%d", docker.RunUnitPrefix, name, nowUnix())
 	args := []string{"--unit=" + unit, "--no-block", "--description=BetterNAS Stack " + name + " (" + action + ")",
 		"--property=RemainAfterExit=yes"}
-	quote := func(a []string) string { return "'" + strings.Join(a, "' '") + "'" }
+	quote := shQuote
 	switch action {
 	case "up":
 		args = append(args, "docker")
@@ -309,7 +309,7 @@ func RunStackOpts(ctx context.Context, d Deps, name, action string, opts docker.
 			args = append(args, "sh", "-c", updateScript)
 			break
 		}
-		// Feste Zeichenfolge; der Stackname ist durch StackNameRe gesichert.
+		// Der Stackname ist durch StackNameRe gesichert, die Speicherorte durch CleanRoot; shQuote maskiert zusätzlich.
 		pull := quote(append([]string{"docker"}, composeArgs(name, "pull")...))
 		up := quote(append([]string{"docker"}, composeArgs(name, "up", "-d", "--remove-orphans")...))
 		args = append(args, "sh", "-c", pull+" && "+up)

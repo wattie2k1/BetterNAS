@@ -19,8 +19,15 @@ func TestCleanRoot(t *testing.T) {
 		{"/srv/appdata", false, "", false},
 		{"/srv/appdata", true, "/srv/appdata", true},
 		{"/srv/disks/ab/dd", false, "/srv/disks/ab/dd", true},
-		{"/srv/pools/Mein Pool/x y", false, "/srv/pools/Mein Pool/x y", true},
+		{"/srv/pools/Mein Pool/x y", false, "", false}, // Leerzeichen: Vorlagen, Proxy und Skripte kommen damit nicht zurecht
 		{"/srv/pools/a\x00b", false, "", false},
+		{"/srv/pools/t/x';touch /root/p;'", false, "", false},
+		{"/srv/pools/t/$(id)", false, "", false},
+		{"/srv/pools/t/a\nb", false, "", false},
+		{"/srv/pools/t/Daten#1", false, "", false},
+		{"/srv/pools/t/Üml", false, "", false},
+		{"/srv/pools/t/a:b", false, "", false},
+		{"/srv/pools/tank/App-Daten_1.2+x@y", false, "/srv/pools/tank/App-Daten_1.2+x@y", true},
 	}
 	for _, c := range cases {
 		got, err := CleanRoot(c.in, c.legacy)
@@ -36,14 +43,14 @@ func TestPathsValidate(t *testing.T) {
 		legacy bool
 		ok     bool
 	}{
-		{Paths{"/srv/pools/a/x", "/srv/pools/a/x"}, false, false},
-		{Paths{"/srv/pools/a", "/srv/pools/a/b"}, false, false},
-		{Paths{"/srv/pools/a/b", "/srv/pools/a"}, false, false},
+		{Paths{Appdata: "/srv/pools/a/x", Dockerdata: "/srv/pools/a/x"}, false, false},
+		{Paths{Appdata: "/srv/pools/a", Dockerdata: "/srv/pools/a/b"}, false, false},
+		{Paths{Appdata: "/srv/pools/a/b", Dockerdata: "/srv/pools/a"}, false, false},
 		{LegacyPaths, true, true},
 		{LegacyPaths, false, false},
-		{Paths{"/srv/pools/a/cfg", "/srv/pools/b/dd"}, false, true},
-		{Paths{"/srv/pools/a/cfg", "/srv/pools/a/dd"}, false, true},
-		{Paths{"", "/srv/pools/b/dd"}, false, false},
+		{Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}, false, true},
+		{Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/a/dd"}, false, true},
+		{Paths{Appdata: "", Dockerdata: "/srv/pools/b/dd"}, false, false},
 	}
 	for i, c := range cases {
 		if err := c.p.Validate(c.legacy); (err == nil) != c.ok {
@@ -53,7 +60,7 @@ func TestPathsValidate(t *testing.T) {
 }
 
 func TestPathsDirs(t *testing.T) {
-	p := Paths{"/srv/pools/a/cfg", "/srv/pools/b/dd"}
+	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
 	for got, want := range map[string]string{
 		p.StacksDir():     "/srv/pools/a/cfg/stacks",
 		p.ProxyDir():      "/srv/pools/a/cfg/reverse-proxy",
@@ -68,7 +75,7 @@ func TestPathsDirs(t *testing.T) {
 }
 
 func TestPathsReserved(t *testing.T) {
-	p := Paths{"/srv/pools/a/cfg", "/srv/pools/b/dd"}
+	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd"}
 	for _, c := range []struct {
 		root, first string
 		want        bool
@@ -86,5 +93,20 @@ func TestPathsReserved(t *testing.T) {
 		if !l.Reserved("/srv/appdata", n) {
 			t.Errorf("legacy %s", n)
 		}
+	}
+}
+
+func TestPathsReservedPreviousRoots(t *testing.T) {
+	p := Paths{Appdata: "/srv/pools/a/cfg", Dockerdata: "/srv/pools/b/dd", Previous: []string{"/srv/appdata"}}
+	for _, n := range []string{"stacks", "docker", "backups", "reverse-proxy"} {
+		if !p.Reserved("/srv/appdata", n) {
+			t.Errorf("früherer Wurzelpfad: %s muss reserviert sein", n)
+		}
+	}
+	if p.Reserved("/srv/appdata", "emby") {
+		t.Error("emby ist nicht reserviert")
+	}
+	if got := p.Roots(); len(got) != 3 || got[0] != "/srv/pools/a/cfg" || got[2] != "/srv/appdata" {
+		t.Fatalf("%v", got)
 	}
 }

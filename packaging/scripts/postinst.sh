@@ -17,10 +17,10 @@ if [ "$1" = "configure" ]; then
 	# --- docker-gate:begin
 	# Docker bleibt deaktiviert, bis unter Einstellungen → Docker die Speicherorte festgelegt sind
 	# (/etc/betternas/paths.json, vom Agenten geschrieben; dabei entstehen auch daemon.json und der data-root).
-	# Bestehende Installationen (paths.json, eigene daemon.json, Stacks oder data-root unter /srv/appdata)
-	# bleiben unverändert aktiv. R ist nur für den Test gesetzt.
+	# Bestehende Installationen (paths.json, Stacks oder /srv/appdata/docker) bleiben unverändert aktiv; die Kriterien
+	# entsprechen denen des Agenten (initPaths). R ist nur für den Test gesetzt.
 	R="${BETTERNAS_ROOT:-}"
-	if [ ! -e "$R/etc/betternas/paths.json" ] && [ ! -e "$R/etc/docker/daemon.json" ] \
+	if [ ! -e "$R/etc/betternas/paths.json" ] \
 		&& [ ! -d "$R/srv/appdata/docker" ] && ! ls "$R"/srv/appdata/stacks/*/compose.yaml >/dev/null 2>&1; then
 		if [ -d "$R/run/systemd/system" ]; then
 			systemctl disable --now docker.socket docker.service >/dev/null 2>&1 || true

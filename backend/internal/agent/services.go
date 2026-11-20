@@ -78,6 +78,12 @@ func ServiceAction(ctx context.Context, d Deps, unit, action string) error {
 	if action != "start" && action != "stop" && action != "restart" {
 		return apierr.New(apierr.InvalidParams, "Unbekannte Aktion")
 	}
+	if unit == "docker" && action != "stop" {
+		// Vor der Einrichtung der Speicherorte darf Docker nicht laufen: sein data-root läge sonst auf der Systemplatte.
+		if _, err := requirePaths(); err != nil {
+			return err
+		}
+	}
 	res, err := d.Runner.Run(ctx, nil, "systemctl", action, unit)
 	if err != nil || res.ExitCode != 0 {
 		return apierr.New(apierr.Internal, "Die Aktion ist fehlgeschlagen").With("detail", strings.TrimSpace(string(res.Stderr)))
@@ -352,6 +358,10 @@ func registerServices(s *rpc.Server, d Deps) {
 	s.Handle("docker.settings.set", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var v DockerSettings
 		if err := decode(p, &v); err != nil {
+			return nil, err
+		}
+		// Die daemon.json entsteht erst mit der Einrichtung der Speicherorte (sie braucht dann den data-root).
+		if _, err := requirePaths(); err != nil {
 			return nil, err
 		}
 		return nil, SetDockerSettings(ctx, d, v)
