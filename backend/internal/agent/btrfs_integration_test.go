@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/betternas/betternas/internal/storage"
 	"github.com/betternas/betternas/internal/sysexec"
@@ -39,6 +40,7 @@ func TestBtrfsPoolLifecycle(t *testing.T) {
 	}
 	const unit = "srv-pools-ittest.mount"
 	t.Cleanup(func() {
+		_ = exec.Command("systemctl", "disable", "--now", scrubTimer("ittest")).Run()
 		_ = exec.Command("systemctl", "stop", unit).Run()
 		_ = exec.Command("systemctl", "disable", unit).Run()
 		os.Remove("/etc/systemd/system/" + unit)
@@ -111,5 +113,53 @@ func TestBtrfsPoolLifecycle(t *testing.T) {
 	}
 	if opts := sh(t, "findmnt", "-no", "OPTIONS", storage.PoolPath("ittest")); !strings.Contains(opts, "compress=zstd:1") {
 		t.Fatalf("Kompression fehlt: %s", opts)
+	}
+
+	// Status: vollständig, RAID1, zwei Platten, keine Fehler.
+	status := func() storage.BtrfsStatus {
+		t.Helper()
+		st, err := BtrfsStatus(ctx, d, BtrfsStatusRequest{Name: "ittest", FSUUID: res.FSUUID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	bst := status()
+	if !bst.Mounted || bst.Degraded || len(bst.Devices) != 2 || bst.Errors != 0 || bst.DataProfile != "RAID1" || bst.UsableBytes == 0 || bst.FreeBytes == 0 || bst.UsableBytes > bst.RawBytes {
+		t.Fatalf("%+v", bst)
+	}
+
+	// Prüf-Timer wird eingeschaltet (die Vorlage liefert das Paket).
+	syncScrubTimers(ctx, d, []storage.Pool{pool}, nil)
+	if !shOK("systemctl", "is-enabled", scrubTimer("ittest")) {
+		t.Fatal("Timer nicht aktiv")
+	}
+
+	// Prüfung starten und auf das Ende warten.
+	if err := BtrfsScrub(ctx, d, BtrfsScrubRequest{Name: "ittest", Action: "start"}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		bst = status()
+		if bst.Scrub != nil && bst.Scrub.Result == "finished" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Prüfung nicht fertig: %+v", bst.Scrub)
+		}
+		time.Sleep(time.Second)
+	}
+	if bst.Scrub.Uncorrectable != 0 || bst.Scrub.Errors != 0 {
+		t.Fatalf("%+v", bst.Scrub)
+	}
+
+	// Platte „ziehen“: Pool aus, eine Loop-Platte weg → unvollständig.
+	sh(t, "systemctl", "stop", unit)
+	sh(t, "losetup", "-d", loops[1])
+	_ = exec.Command("btrfs", "device", "scan", "--forget").Run()
+	bst = status()
+	if bst.Mounted || !bst.Degraded || bst.Missing != 1 {
+		t.Fatalf("unvollständiger Pool nicht erkannt: %+v", bst)
 	}
 }

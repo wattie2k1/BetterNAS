@@ -244,12 +244,15 @@ func (m *Monitor) collect(ctx context.Context) (fs []Finding, unknown []string, 
 	}
 	pools, perr := m.src.ListPools(ctx)
 	if perr != nil {
-		unknown = append(unknown, "pool-unmounted:", "snapraid-sync:", "snapraid-scrub:", "snapraid-recovery:")
+		unknown = append(unknown, "pool-unmounted:", "pool-degraded:", "pool-errors:", "pool-scrub:", "snapraid-sync:", "snapraid-scrub:", "snapraid-recovery:")
 		err = errors.Join(err, fmt.Errorf("pools: %w", perr))
 	}
 	for _, p := range pools {
 		if !p.Mounted {
 			add("pool-unmounted:"+p.Name, "crit", "Pool nicht eingehängt: "+p.Name, "Der Speicherpool ist nicht verfügbar; Freigaben und Container, die ihn nutzen, funktionieren nicht.")
+		}
+		if b := p.Btrfs; b != nil {
+			fs = append(fs, btrfsFindings(p.Name, b)...)
 		}
 		st, serr := m.src.SnapraidStatus(ctx, p.Name)
 		if serr != nil {
@@ -399,4 +402,30 @@ func (m *Monitor) Run(ctx context.Context) {
 		cancel()
 		delay = 5 * time.Minute
 	}
+}
+
+// btrfsFindings prüft einen btrfs-Pool: fehlende Platten, Fehlerzähler und das Ergebnis der letzten Prüfung.
+func btrfsFindings(pool string, b *storage.BtrfsStatus) []Finding {
+	var fs []Finding
+	if b.Degraded {
+		fs = append(fs, Finding{Key: "pool-degraded:" + pool, Level: "crit", Title: "Pool unvollständig: " + pool,
+			Body: fmt.Sprintf("Es fehlen %d Platte(n). Der Pool ist nicht mehr voll geschützt oder nicht eingehängt. Schließe die Platte wieder an oder tausche sie aus.", b.Missing)})
+	}
+	if b.Errors > 0 {
+		var parts []string
+		for _, d := range b.Devices {
+			if t := d.Errors.Total(); t > 0 {
+				name := orDefault(d.DiskID, orDefault(d.Path, fmt.Sprintf("Platte %d", d.DevID)))
+				parts = append(parts, fmt.Sprintf("%s: %d", name, t))
+			}
+		}
+		fs = append(fs, Finding{Key: "pool-errors:" + pool, Level: "warn", Title: "Fehler auf Platten des Pools " + pool,
+			Body: "Das Dateisystem hat Lese-, Schreib- oder Prüfsummenfehler gezählt (" + strings.Join(parts, ", ") + "). Prüfe die SMART-Werte der betroffenen Platte."})
+	}
+	// Ein abgebrochener Lauf ist kein Fehler des Pools; gemeldet werden nur nicht reparierbare Fehler eines beendeten Laufs.
+	if s := b.Scrub; s != nil && !s.Running && s.Uncorrectable > 0 {
+		fs = append(fs, Finding{Key: "pool-scrub:" + pool, Level: "crit", Title: "Pool-Prüfung fand nicht reparierbare Fehler: " + pool,
+			Body: fmt.Sprintf("%d Fehler konnten nicht repariert werden. Betroffene Dateien sind beschädigt; stelle sie aus einem Backup wieder her.", s.Uncorrectable)})
+	}
+	return fs
 }

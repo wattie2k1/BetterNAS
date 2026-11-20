@@ -1,0 +1,10 @@
+[Unit]
+Description=BetterNAS btrfs-Prüfung %i
+ConditionPathIsMountPoint=/srv/pools/%i
+After=srv-pools-%i.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/btrfs scrub start -B /srv/pools/%i
+Nice=10
+IOSchedulingClass=idle

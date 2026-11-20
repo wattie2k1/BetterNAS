@@ -457,3 +457,36 @@ func TestAlertMentionsSpareDisk(t *testing.T) {
 		t.Errorf("Platte ohne Pool bekommt keinen Hinweis: %q", body["smart:u"])
 	}
 }
+
+func TestBtrfsPoolFindings(t *testing.T) {
+	bad := &storage.BtrfsStatus{
+		Mounted: true, Degraded: true, Missing: 1, Errors: 5,
+		Devices: []storage.BtrfsDevice{{DevID: 1, Path: "/dev/sda1", DiskID: "d1", Errors: storage.BtrfsErrors{Read: 3, Corruption: 2}}, {DevID: 2, Path: "/dev/sdb1"}},
+		Scrub:   &storage.BtrfsScrub{Result: "finished", Uncorrectable: 2},
+	}
+	src := &fakeSource{pools: []storage.PoolView{
+		{PoolInput: storage.PoolInput{Name: "tresor"}, Mounted: true, Btrfs: bad},
+		{PoolInput: storage.PoolInput{Name: "gut"}, Mounted: true, Btrfs: &storage.BtrfsStatus{Mounted: true, Scrub: &storage.BtrfsScrub{Result: "finished", Corrected: 3, Errors: 3}}},
+		{PoolInput: storage.PoolInput{Name: "laeuft"}, Mounted: true, Btrfs: &storage.BtrfsStatus{Mounted: true, Scrub: &storage.BtrfsScrub{Running: true, Result: "running", Uncorrectable: 9}}},
+	}, snap: map[string]snapraid.Status{}}
+	m, _, _ := newMon(t, src)
+	fs, err := m.Findings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := keys(fs)
+	want := map[string]notify.Level{"pool-degraded:tresor": "crit", "pool-errors:tresor": "warn", "pool-scrub:tresor": "crit"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for k, l := range want {
+		if got[k] != l {
+			t.Errorf("%s: %q statt %q", k, got[k], l)
+		}
+	}
+	for _, f := range fs {
+		if f.Key == "pool-errors:tresor" && !strings.Contains(f.Body, "d1: 5") {
+			t.Errorf("Platte fehlt im Text: %s", f.Body)
+		}
+	}
+}

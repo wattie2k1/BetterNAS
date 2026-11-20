@@ -25,6 +25,8 @@ install -D -m 0644 "$SRC/packaging/systemd/betternas-api.service" "$ROOT/usr/lib
 install -D -m 0644 "$SRC/packaging/systemd/betternas-agent.service" "$ROOT/usr/lib/systemd/system/betternas-agent.service"
 install -D -m 0644 "$SRC/packaging/systemd/betternas-snapraid-sync@.service" "$ROOT/usr/lib/systemd/system/betternas-snapraid-sync@.service"
 install -D -m 0644 "$SRC/packaging/systemd/betternas-snapraid-scrub@.service" "$ROOT/usr/lib/systemd/system/betternas-snapraid-scrub@.service"
+install -D -m 0644 "$SRC/packaging/systemd/betternas-btrfs-scrub@.service" "$ROOT/usr/lib/systemd/system/betternas-btrfs-scrub@.service"
+install -D -m 0644 "$SRC/packaging/systemd/betternas-btrfs-scrub@.timer" "$ROOT/usr/lib/systemd/system/betternas-btrfs-scrub@.timer"
 
 mkdir -p "$ROOT/DEBIAN"
 install -m 0755 "$SRC/packaging/scripts/postinst.sh" "$ROOT/DEBIAN/postinst"

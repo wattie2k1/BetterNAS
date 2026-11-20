@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/betternas/betternas/internal/apierr"
 )
 
 func btrfsState() State {
@@ -223,5 +225,68 @@ func TestDeleteBtrfsPoolReleasesDisks(t *testing.T) {
 		if d.ID == "d1" && (d.Role != "unassigned" || d.Pool != "") {
 			t.Fatalf("%+v", d)
 		}
+	}
+}
+
+func TestBtrfsStatusEnrichesAndDetectsMissing(t *testing.T) {
+	e := newEnv(t)
+	jid, err := e.m.CreatePool(e.ctx, "anna", e.btrfsInput(t, "raid1"))
+	e.mustSucceed(t, jid, err)
+
+	// d1 hat die Partition /dev/sda1, d2 ist im Status nicht mehr aufgeführt.
+	e.agent.disks[1].Partitions = []Partition{{Device: "/dev/sda1", FSType: "btrfs", Mountpoints: []string{}}}
+	e.agent.btrfsStatus = &BtrfsStatus{Mounted: true, Devices: []BtrfsDevice{{DevID: 1, Path: "/dev/sda1", SizeBytes: 100}}, UsableBytes: 50, FreeBytes: 40, Errors: 2}
+	st, err := e.m.BtrfsStatus(e.ctx, "tresor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Devices[0].DiskID != "d1" || st.Missing != 1 || !st.Degraded {
+		t.Fatalf("%+v", st)
+	}
+	pools, _ := e.m.ListPools(e.ctx)
+	if pools[0].Btrfs == nil || !pools[0].Btrfs.Degraded || pools[0].SizeBytes != 50 || pools[0].FreeBytes != 40 {
+		t.Fatalf("%+v", pools[0])
+	}
+
+	// Antwortet der Agent nicht, bleibt die Pool-Liste nutzbar.
+	e.agent.btrfsStatus = nil
+	pools, err = e.m.ListPools(e.ctx)
+	if err != nil || len(pools) != 1 || pools[0].Btrfs != nil {
+		t.Fatalf("%v %+v", err, pools)
+	}
+	if _, err := e.m.BtrfsStatus(e.ctx, "gibtsnicht"); codeOf(err) != "not_found" {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestBtrfsScrubOnlyForBtrfsPools(t *testing.T) {
+	e := newEnv(t)
+	e.formatDisk(t, "d3", "SER3")
+	jid, err := e.m.CreatePool(e.ctx, "anna", PoolInput{Name: "media", Branches: []string{"d3"}})
+	e.mustSucceed(t, jid, err)
+	if err := e.m.BtrfsScrub(e.ctx, "anna", "media", "start"); codeOf(err) != "conflict" {
+		t.Fatalf("mergerfs: %v", err)
+	}
+	if _, err := e.m.BtrfsStatus(e.ctx, "media"); codeOf(err) != "conflict" {
+		t.Fatalf("mergerfs: %v", err)
+	}
+	if len(e.agent.scrubCalls) != 0 {
+		t.Fatal("Agent darf nicht gefragt werden")
+	}
+}
+
+func TestBtrfsScrubStartAndError(t *testing.T) {
+	e := newEnv(t)
+	jid, err := e.m.CreatePool(e.ctx, "anna", e.btrfsInput(t, "raid1"))
+	e.mustSucceed(t, jid, err)
+	if err := e.m.BtrfsScrub(e.ctx, "anna", "tresor", "start"); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.agent.scrubCalls) != 1 || e.agent.scrubCalls[0] != "start:tresor" {
+		t.Fatalf("%v", e.agent.scrubCalls)
+	}
+	e.agent.scrubErr = apierr.New(apierr.Conflict, "läuft bereits")
+	if err := e.m.BtrfsScrub(e.ctx, "anna", "tresor", "start"); codeOf(err) != "conflict" {
+		t.Fatalf("%v", err)
 	}
 }
