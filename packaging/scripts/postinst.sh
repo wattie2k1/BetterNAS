@@ -9,21 +9,26 @@ if [ "$1" = "configure" ]; then
 	getent group betternas-admin >/dev/null || addgroup --quiet --system betternas-admin
 
 	install -d -o betternas -g betternas -m 0750 /etc/betternas/tls /var/lib/betternas
-	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/appdata /srv/vms /srv/vms/disks
+	install -d -m 0755 /srv/disks /srv/parity /srv/pools /srv/vms /srv/vms/disks
 	# ISO-Upload schreibt die API (Benutzer betternas) direkt hierher; libvirt/qemu liest nur.
 	install -d -o betternas -g betternas -m 0775 /srv/vms/iso
 	install -d -m 0755 /etc/betternas/snapraid /var/lib/betternas/snapraid
-	install -d -m 0700 /srv/appdata/stacks
-	install -d -m 0710 /srv/appdata/docker
 
-	# Docker: data-root auf /srv/appdata (nicht mergerfs). Eine vorhandene eigene daemon.json bleibt unangetastet.
-	install -d -m 0755 /etc/docker
-	if [ ! -e /etc/docker/daemon.json ]; then
-		install -m 0644 /usr/share/betternas/docker-daemon.json /etc/docker/daemon.json
-		if [ -d /run/systemd/system ]; then
-			systemctl try-restart docker.service || true
+	# --- docker-gate:begin
+	# Docker bleibt deaktiviert, bis unter Einstellungen → Docker die Speicherorte festgelegt sind
+	# (/etc/betternas/paths.json, vom Agenten geschrieben; dabei entstehen auch daemon.json und der data-root).
+	# Bestehende Installationen (paths.json, eigene daemon.json, Stacks oder data-root unter /srv/appdata)
+	# bleiben unverändert aktiv. R ist nur für den Test gesetzt.
+	R="${BETTERNAS_ROOT:-}"
+	if [ ! -e "$R/etc/betternas/paths.json" ] && [ ! -e "$R/etc/docker/daemon.json" ] \
+		&& [ ! -d "$R/srv/appdata/docker" ] && ! ls "$R"/srv/appdata/stacks/*/compose.yaml >/dev/null 2>&1; then
+		if [ -d "$R/run/systemd/system" ]; then
+			systemctl disable --now docker.socket docker.service >/dev/null 2>&1 || true
+		else
+			systemctl disable docker.socket docker.service >/dev/null 2>&1 || true
 		fi
 	fi
+	# --- docker-gate:end
 
 	# libvirt: Standard-NAT-Netz `default` aktivieren (VMs ohne eigene Bridge). Im chroot ohne systemd übersprungen.
 	if [ -d /run/systemd/system ] && command -v virsh >/dev/null 2>&1; then
