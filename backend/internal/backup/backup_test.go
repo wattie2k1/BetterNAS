@@ -16,6 +16,7 @@ import (
 
 	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/db"
+	"time"
 )
 
 func testDB(t *testing.T) *sql.DB {
@@ -370,5 +371,56 @@ func TestListDeletePrune(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "fremd.txt")); err != nil {
 		t.Fatal("Prune/Delete haben fremde Datei berührt")
+	}
+}
+
+func TestListMixesKindsAndPrunesPerKind(t *testing.T) {
+	dir := t.TempDir()
+	for i := 1; i <= 4; i++ {
+		name := fmt.Sprintf("betternas-backup-2026110%d-020000.tar.gz", i)
+		m := fmt.Sprintf(`{"format":1,"createdAt":"2026-11-0%dT02:00:00Z","version":"v%d","schemaVersion":5,"host":"nas","counts":{}}`, i, i)
+		os.WriteFile(filepath.Join(dir, name), buildArchive(t, entry{name: "manifest.json", data: []byte(m)}, entry{name: "betternas.db", data: []byte("x")}), 0o600)
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("betternas-appdata-2026110%d-023000.tar.gz", i)), []byte("tar"), 0o600)
+	}
+	os.WriteFile(filepath.Join(dir, "betternas-appdata-20261101-023000.tar.gz.part"), []byte("halb"), 0o600)
+	l, err := List(dir)
+	if err != nil || len(l) != 8 {
+		t.Fatalf("%d %v", len(l), err)
+	}
+	if l[0].Kind != KindAppdata || l[0].Name != "betternas-appdata-20261104-023000.tar.gz" || l[1].Kind != KindConfig {
+		t.Fatalf("Reihenfolge/Art: %+v", l[:2])
+	}
+	if got := l[0].Manifest.CreatedAt; !got.Equal(time.Date(2026, 11, 4, 2, 30, 0, 0, time.UTC)) {
+		t.Fatalf("Zeit aus dem Namen: %v", got)
+	}
+	if err := Prune(dir, 2); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = List(dir)
+	if len(l) != 4 {
+		t.Fatalf("%d nach Prune", len(l))
+	}
+	kinds := map[string]int{}
+	for _, i := range l {
+		kinds[i.Kind]++
+	}
+	if kinds[KindConfig] != 2 || kinds[KindAppdata] != 2 {
+		t.Fatalf("je Art zwei: %v", kinds)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "betternas-appdata-20261101-023000.tar.gz.part")); err != nil {
+		t.Fatal("Prune hat eine unfertige Datei berührt")
+	}
+	if err := Delete(dir, l[0].Name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppdataNameAndKind(t *testing.T) {
+	n := AppdataName(time.Date(2026, 11, 20, 4, 5, 6, 0, time.UTC))
+	if n != "betternas-appdata-20261120-040506.tar.gz" || KindOf(n) != KindAppdata {
+		t.Fatal(n)
+	}
+	if KindOf("betternas-backup-20261120-040506.tar.gz") != KindConfig || KindOf("x.tar.gz") != "" {
+		t.Fatal("Art")
 	}
 }

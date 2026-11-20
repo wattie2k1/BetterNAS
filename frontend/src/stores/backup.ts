@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { backupApi, type BackupConfig, type BackupInfo, type RestorePreview } from '@/api/backup'
+import { backupApi, type BackupConfig, type BackupInfo, type BackupStatus, type RestorePreview } from '@/api/backup'
+import { useJobsStore } from '@/stores/jobs'
 import type { EventMessage } from '@/api/ws'
 
 export const RESTART_POLL_MS = 2000
@@ -28,7 +29,16 @@ export const useBackupStore = defineStore('backup', () => {
     }
   }
 
-  const config = ref<BackupConfig>({ enabled: true, time: '02:30', keep: 7 })
+  const config = ref<BackupConfig>({ enabled: true, time: '02:30', keep: 7, dir: '', appdata: false })
+  const status = ref<BackupStatus | null>(null)
+
+  async function loadStatus() {
+    try {
+      status.value = await backupApi.status()
+    } catch (e) {
+      error.value = message(e)
+    }
+  }
 
   async function loadConfig() {
     try {
@@ -40,6 +50,13 @@ export const useBackupStore = defineStore('backup', () => {
 
   async function saveConfig(c: BackupConfig) {
     config.value = await backupApi.setConfig(c)
+    await Promise.all([load(), loadStatus()])
+  }
+
+  /** Sichert appdata als Auftrag und wartet auf das Ende. */
+  async function createAppdata() {
+    const { jobId } = await backupApi.createAppdata()
+    await useJobsStore().track(jobId)
     await load()
   }
 
@@ -77,5 +94,5 @@ export const useBackupStore = defineStore('backup', () => {
     if (m.type === 'backups.changed') void load()
   }
 
-  return { backups, config, loading, error, restarting, load, loadConfig, saveConfig, create, remove, previewUpload, previewStored, restore, handleEvent }
+  return { backups, config, status, loading, error, restarting, load, loadConfig, loadStatus, saveConfig, create, createAppdata, remove, previewUpload, previewStored, restore, handleEvent }
 })

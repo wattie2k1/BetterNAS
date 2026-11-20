@@ -32,8 +32,36 @@ const (
 	maxMeta      = 1 << 20
 )
 
-// NameRe beschreibt gültige Backup-Dateinamen.
-var NameRe = regexp.MustCompile(`^betternas-backup-\d{8}-\d{6}\.tar\.gz$`)
+// Arten von Sicherungen.
+const (
+	KindConfig  = "config"  // BetterNAS-Konfiguration (DB-Schnappschuss)
+	KindAppdata = "appdata" // Einstellungen der Docker-Apps (Ordner appdata)
+)
+
+var (
+	// NameRe beschreibt gültige Dateinamen von Konfigurations-Sicherungen.
+	NameRe = regexp.MustCompile(`^betternas-backup-\d{8}-\d{6}\.tar\.gz$`)
+	// AppdataNameRe beschreibt gültige Dateinamen von appdata-Sicherungen.
+	AppdataNameRe = regexp.MustCompile(`^betternas-appdata-(\d{8}-\d{6})\.tar\.gz$`)
+)
+
+const stampLayout = "20060102-150405"
+
+// KindOf liefert die Art einer Sicherung anhand des Dateinamens ("" = keine Sicherung von BetterNAS).
+func KindOf(name string) string {
+	switch {
+	case NameRe.MatchString(name):
+		return KindConfig
+	case AppdataNameRe.MatchString(name):
+		return KindAppdata
+	}
+	return ""
+}
+
+// AppdataName liefert den Dateinamen einer appdata-Sicherung zum Zeitpunkt t (UTC).
+func AppdataName(t time.Time) string {
+	return "betternas-appdata-" + t.UTC().Format(stampLayout) + ".tar.gz"
+}
 
 // Manifest beschreibt den Inhalt eines Archivs.
 type Manifest struct {
@@ -48,6 +76,7 @@ type Manifest struct {
 // Info beschreibt eine abgelegte Sicherung.
 type Info struct {
 	Name     string   `json:"name"`
+	Kind     string   `json:"kind"` // config | appdata
 	Size     int64    `json:"size"`
 	Manifest Manifest `json:"manifest"`
 }
@@ -70,8 +99,9 @@ func countRows(c *sql.DB, table string) int {
 }
 
 // Create schreibt eine neue Sicherung nach dir. Die DB wird per VACUUM INTO konsistent kopiert;
-// Sitzungen und Aufträge bleiben draußen.
-func Create(ctx context.Context, d *sql.DB, dir, version string) (Info, error) {
+// Sitzungen und Aufträge bleiben draußen. Der Name wird so gewählt, dass er weder in dir noch in einem der
+// Ordner also schon vorkommt (Archive, die später dorthin verschoben werden).
+func Create(ctx context.Context, d *sql.DB, dir, version string, also ...string) (Info, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Info{}, err
 	}
@@ -119,7 +149,13 @@ func Create(ctx context.Context, d *sql.DB, dir, version string) (Info, error) {
 	for ts := now; ; ts = ts.Add(time.Second) {
 		name = "betternas-backup-" + ts.Format("20060102-150405") + ".tar.gz"
 		final = filepath.Join(dir, name)
-		if _, err := os.Stat(final); errors.Is(err, os.ErrNotExist) {
+		free := true
+		for _, o := range append([]string{dir}, also...) {
+			if _, err := os.Stat(filepath.Join(o, name)); !errors.Is(err, os.ErrNotExist) {
+				free = false
+			}
+		}
+		if free {
 			break
 		}
 	}
@@ -134,7 +170,7 @@ func Create(ctx context.Context, d *sql.DB, dir, version string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	return Info{Name: name, Size: st.Size(), Manifest: m}, nil
+	return Info{Name: name, Kind: KindConfig, Size: st.Size(), Manifest: m}, nil
 }
 
 func writeArchive(path string, manifest []byte, dbPath string) error {
@@ -387,7 +423,8 @@ func readManifest(path string) (Manifest, error) {
 	}
 }
 
-func names(dir string) ([]string, error) {
+// names liefert die Dateinamen der Art kind im Ordner, neueste zuerst. Die Namen enthalten den Zeitstempel (UTC).
+func names(dir, kind string) ([]string, error) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -397,7 +434,7 @@ func names(dir string) ([]string, error) {
 	}
 	var out []string
 	for _, e := range ents {
-		if e.Type().IsRegular() && NameRe.MatchString(e.Name()) {
+		if e.Type().IsRegular() && KindOf(e.Name()) == kind {
 			out = append(out, e.Name())
 		}
 	}
@@ -405,27 +442,42 @@ func names(dir string) ([]string, error) {
 	return out, nil
 }
 
-// List liefert die abgelegten Sicherungen, neueste zuerst.
+func stampOf(name string) string {
+	if m := AppdataNameRe.FindStringSubmatch(name); m != nil {
+		return m[1]
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(name, "betternas-backup-"), ".tar.gz")
+}
+
+// List liefert die abgelegten Sicherungen beider Arten, neueste zuerst.
 func List(dir string) ([]Info, error) {
-	ns, err := names(dir)
-	if err != nil {
-		return nil, err
-	}
 	out := []Info{}
-	for _, n := range ns {
-		st, err := os.Stat(filepath.Join(dir, n))
+	for _, kind := range []string{KindConfig, KindAppdata} {
+		ns, err := names(dir, kind)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		m, _ := readManifest(filepath.Join(dir, n)) // unlesbares Manifest: Eintrag bleibt sichtbar
-		out = append(out, Info{Name: n, Size: st.Size(), Manifest: m})
+		for _, n := range ns {
+			st, err := os.Stat(filepath.Join(dir, n))
+			if err != nil {
+				continue
+			}
+			info := Info{Name: n, Kind: kind, Size: st.Size()}
+			if kind == KindConfig {
+				info.Manifest, _ = readManifest(filepath.Join(dir, n)) // unlesbares Manifest: Eintrag bleibt sichtbar
+			} else if t, err := time.Parse(stampLayout, stampOf(n)); err == nil {
+				info.Manifest = Manifest{CreatedAt: t.UTC()}
+			}
+			out = append(out, info)
+		}
 	}
+	sort.SliceStable(out, func(i, j int) bool { return stampOf(out[i].Name) > stampOf(out[j].Name) })
 	return out, nil
 }
 
 // Delete löscht eine Sicherung (nur gültige Namen).
 func Delete(dir, name string) error {
-	if !NameRe.MatchString(name) {
+	if KindOf(name) == "" {
 		return invalid("Ungültiger Backup-Name.")
 	}
 	if err := os.Remove(filepath.Join(dir, name)); err != nil {
@@ -437,16 +489,37 @@ func Delete(dir, name string) error {
 	return nil
 }
 
-// Prune behält nur die keep neuesten Sicherungen.
+// Prune behält je Art nur die keep neuesten Sicherungen.
 func Prune(dir string, keep int) error {
-	ns, err := names(dir)
-	if err != nil {
-		return err
-	}
-	for i := keep; i < len(ns); i++ {
-		if err := os.Remove(filepath.Join(dir, ns[i])); err != nil {
+	for _, kind := range []string{KindConfig, KindAppdata} {
+		ns, err := names(dir, kind)
+		if err != nil {
 			return err
+		}
+		for i := keep; i < len(ns); i++ {
+			if err := os.Remove(filepath.Join(dir, ns[i])); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// Stale liefert aus den Dateinamen die Sicherungen, die bei keep je Art wegfallen (die ältesten).
+// Fremde Namen werden ignoriert.
+func Stale(files []string, keep int) []string {
+	var out []string
+	for _, kind := range []string{KindConfig, KindAppdata} {
+		var ns []string
+		for _, n := range files {
+			if KindOf(n) == kind {
+				ns = append(ns, n)
+			}
+		}
+		sort.Sort(sort.Reverse(sort.StringSlice(ns)))
+		if len(ns) > keep {
+			out = append(out, ns[keep:]...)
+		}
+	}
+	return out
 }

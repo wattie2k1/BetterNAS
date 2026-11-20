@@ -158,3 +158,24 @@ func TestRunRunsWhenTimerFires(t *testing.T) {
 	}
 	t.Fatal("kein Backup nach Timer")
 }
+
+func TestConfigDirAndAppdataValidate(t *testing.T) {
+	ok := []Config{
+		{Time: "02:30", Keep: 7},
+		{Time: "02:30", Keep: 7, Dir: "/mnt/ssd/sicherung", Appdata: true},
+		{Time: "02:30", Keep: 7, Dir: "/srv/pools/daten/backups"},
+	}
+	for _, c := range ok {
+		if err := c.Validate(); err != nil {
+			t.Errorf("%+v: %v", c, err)
+		}
+	}
+	for _, d := range []string{"relativ/pfad", "/etc/backup", "/mnt", "/srv/pools", "/mnt/a b", "/mnt/../etc/x", "/mnt/x\ny", "/var/lib/betternas/x"} {
+		if err := (Config{Time: "02:30", Keep: 7, Dir: d}).Validate(); err == nil {
+			t.Errorf("%q akzeptiert", d)
+		}
+	}
+	if err := (Config{Time: "02:30", Keep: 7, Dir: "/mnt/ssd/b/"}).Validate(); err != nil {
+		t.Errorf("abschließender Schrägstrich: %v", err)
+	}
+}

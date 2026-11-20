@@ -114,3 +114,40 @@ func TestRestorePreviewTooLarge(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+func TestBackupStatusAndAppdataRoutes(t *testing.T) {
+	s := newStorageAPI(t)
+	if w := s.do("GET", "/api/v1/backups/status", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"default":true`) {
+		t.Fatalf("status %d %s", w.Code, w.Body)
+	}
+	w := s.do("POST", "/api/v1/backups/appdata", "")
+	if w.Code != 202 {
+		t.Fatalf("appdata %d %s", w.Code, w.Body)
+	}
+	s.waitJob(t, w.Body.Bytes())
+	found := false
+	for _, c := range s.bk.calls {
+		found = found || c == "backup.appdata"
+	}
+	if !found {
+		t.Fatalf("Agent nicht gerufen: %v", s.bk.calls)
+	}
+}
+
+func TestBackupConfigWithDirAndAppdata(t *testing.T) {
+	s := newStorageAPI(t)
+	w := s.do("GET", "/api/v1/backups/config", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"dir":""`) || !strings.Contains(w.Body.String(), `"appdata":false`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/backups/config", `{"enabled":true,"time":"02:30","keep":7,"dir":"/etc/x"}`); w.Code != 400 {
+		t.Fatalf("Systemordner: %d %s", w.Code, w.Body)
+	}
+	// appdata braucht eingerichtetes Docker (der Test-Agent meldet keinen appdata-Ordner)
+	if w := s.do("PUT", "/api/v1/backups/config", `{"enabled":true,"time":"02:30","keep":7,"appdata":true}`); w.Code != 409 {
+		t.Fatalf("appdata ohne Docker: %d %s", w.Code, w.Body)
+	}
+	if w := s.do("PUT", "/api/v1/backups/config", `{"enabled":true,"time":"03:00","keep":5}`); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
