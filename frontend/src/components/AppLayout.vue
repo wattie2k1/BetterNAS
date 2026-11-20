@@ -152,7 +152,7 @@ const userItems = [
     <NewDiskNotice />
     <PowerOverlay />
     <Drawer v-model:visible="showJobs" header="Aufträge" position="right" class="jobs-drawer">
-      <JobsPanel />
+      <JobsPanel @reboot="((showJobs = false), (powerAction = 'reboot'))" />
     </Drawer>
   </div>
 </template>

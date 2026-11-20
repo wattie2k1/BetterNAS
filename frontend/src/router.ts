@@ -13,7 +13,6 @@ import BackupView from '@/views/system/BackupView.vue'
 import SettingsView from '@/views/settings/SettingsView.vue'
 import GeneralSettings from '@/views/settings/GeneralSettings.vue'
 import WebAccessSettings from '@/views/settings/WebAccessSettings.vue'
-import PowerSettings from '@/views/settings/PowerSettings.vue'
 import ServicesSettings from '@/views/settings/ServicesSettings.vue'
 import FileServicesSettings from '@/views/settings/FileServicesSettings.vue'
 import DockerSettings from '@/views/settings/DockerSettings.vue'
@@ -61,7 +60,7 @@ export const router = createRouter({
             { path: '', redirect: { name: 'settings-general' } },
             { path: 'allgemein', name: 'settings-general', component: GeneralSettings, meta: { title: 'Einstellungen · Allgemein' } },
             { path: 'webzugriff', name: 'settings-web', component: WebAccessSettings, meta: { title: 'Einstellungen · Webzugriff' } },
-            { path: 'energie', name: 'settings-power', component: PowerSettings, meta: { title: 'Einstellungen · Energie' } },
+            { path: 'energie', redirect: { name: 'settings-general' } },
             { path: 'netzwerk', name: 'settings-network', component: NetworkSettings, meta: { title: 'Einstellungen · Netzwerk' } },
             { path: 'dienste', name: 'settings-services', component: ServicesSettings, meta: { title: 'Einstellungen · Dienste' } },
             { path: 'dateidienste', name: 'settings-fileservices', component: FileServicesSettings, meta: { title: 'Einstellungen · Dateidienste' } },

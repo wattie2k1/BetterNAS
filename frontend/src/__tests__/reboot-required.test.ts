@@ -14,7 +14,7 @@ function stub(body: unknown) {
 }
 
 async function mountPanel() {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/einstellungen/energie', component: { template: '<div/>' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }] })
   const pinia = createPinia()
   setActivePinia(pinia)
   const store = useRebootStore()
@@ -35,7 +35,7 @@ describe('Neustart erforderlich', () => {
     expect(card.text()).toContain('Neustart erforderlich')
     expect(card.text()).toContain('6.12.48')
     expect(card.text()).toContain('libc6')
-    expect(card.find('a').attributes('href')).toBe('/einstellungen/energie')
+    expect(card.find('[data-test="reboot-now"]').exists()).toBe(true)
   })
 
   it('zeigt nichts, wenn kein Neustart nötig ist', async () => {

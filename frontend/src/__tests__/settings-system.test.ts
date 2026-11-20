@@ -5,7 +5,7 @@ import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import GeneralSettings from '@/views/settings/GeneralSettings.vue'
 import WebAccessSettings from '@/views/settings/WebAccessSettings.vue'
-import PowerSettings from '@/views/settings/PowerSettings.vue'
+import PowerDialog from '@/components/PowerDialog.vue'
 import { systemApi } from '@/api/system'
 import { usePowerStore } from '@/stores/power'
 
@@ -67,12 +67,11 @@ describe('WebAccessSettings', () => {
   })
 })
 
-describe('PowerSettings', () => {
+describe('PowerDialog', () => {
   it('verlangt das Bestätigungswort', async () => {
     vi.mocked(systemApi.power).mockResolvedValue()
     setActivePinia(pinia)
-    const w = mount(PowerSettings, { global: { plugins }, attachTo: document.body })
-    await w.find('[data-test="power-reboot"]').trigger('click')
+    const w = mount(PowerDialog, { props: { modelValue: 'reboot' }, global: { plugins }, attachTo: document.body })
     await flushPromises()
     const confirm = () => document.querySelector<HTMLButtonElement>('[data-test="power-confirm"]')!
     expect(confirm().disabled).toBe(true)
@@ -84,7 +83,7 @@ describe('PowerSettings', () => {
     confirm().click()
     await flushPromises()
     expect(systemApi.power).toHaveBeenCalledWith('reboot', 'NEUSTARTEN')
-    expect(w.find('[data-test="power-done"]').exists()).toBe(true)
+    expect(w.emitted('done')?.[0]).toEqual(['reboot'])
     expect(usePowerStore().phase).toBe('rebooting')
     usePowerStore().stop()
     w.unmount()

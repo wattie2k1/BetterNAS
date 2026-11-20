@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import ProgressBar from 'primevue/progressbar'
 import Tag from 'primevue/tag'
-import { RouterLink } from 'vue-router'
+import Button from 'primevue/button'
 import { useJobsStore } from '@/stores/jobs'
 import { useRebootStore } from '@/stores/reboot'
 
+defineEmits<{ reboot: [] }>()
 const jobs = useJobsStore()
 const reboot = useRebootStore()
 
@@ -28,7 +29,7 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle:
     </div>
     <p class="why">{{ reboot.status.reason || 'Ein Update verlangt einen Neustart des Servers.' }}</p>
     <p v-if="reboot.status.packages.length" class="meta">Betroffen: {{ reboot.status.packages.join(', ') }}</p>
-    <RouterLink to="/einstellungen/energie">Zu Energie &amp; Neustart</RouterLink>
+    <Button data-test="reboot-now" label="Jetzt neu starten" icon="pi pi-refresh" size="small" severity="warn" @click="$emit('reboot')" />
   </div>
   <p v-if="!jobs.jobs.length" class="empty">Noch keine Aufträge.</p>
   <ul class="jobs">

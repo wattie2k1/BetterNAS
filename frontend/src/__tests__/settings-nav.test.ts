@@ -21,7 +21,7 @@ describe('SettingsView', () => {
     const w = mount(SettingsView, { global: { plugins: [pinia, router, PrimeVue, ToastService] } })
     await flushPromises()
     const nav = w.find('[data-test="settings-nav"]').text()
-    for (const l of ['Allgemein', 'Netzwerk', 'Webzugriff', 'Energie', 'Dienste', 'Dateidienste', 'Docker', 'Anmeldung', 'Firewall', 'SSH', 'Benachrichtigungen', 'Sicherung', 'Updates', 'Protokolle', 'Über']) expect(nav).toContain(l)
+    for (const l of ['Allgemein', 'Netzwerk', 'Webzugriff', 'Dienste', 'Dateidienste', 'Docker', 'Anmeldung', 'Firewall', 'SSH', 'Benachrichtigungen', 'Sicherung', 'Updates', 'Protokolle', 'Über']) expect(nav).toContain(l)
     expect(w.find('[data-test="settings-network"]').exists()).toBe(true)
     vi.unstubAllGlobals()
   })
