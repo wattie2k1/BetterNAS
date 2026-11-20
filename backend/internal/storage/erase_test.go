@@ -33,6 +33,7 @@ func TestEraseRequiresConfirmationAndRuns(t *testing.T) {
 	e := newEnv(t)
 	e.m.erasePoll = 5 * time.Millisecond
 	e.agent.eraseResult = "done"
+	e.agent.eraseHold.Store(true) // der Agent meldet „läuft“, bis der Test ihn freigibt
 	tok := previewToken(t, e, "d1")
 	if codeOf(e.m.StartErase(e.ctx, "admin", "d1", EraseRequest{Method: "zero", ConfirmSerial: "falsch", ConfirmToken: tok})) != "invalid_params" {
 		t.Fatal("falsche Seriennummer")
@@ -56,6 +57,7 @@ func TestEraseRequiresConfirmationAndRuns(t *testing.T) {
 	if codeOf(e.m.StartErase(e.ctx, "admin", "d1", EraseRequest{Method: "zero", ConfirmSerial: "SER1", ConfirmToken: tok})) != "conflict" {
 		t.Fatal("Token nur einmal")
 	}
+	e.agent.eraseHold.Store(false)
 	waitFor(t, func() bool { x := eraseOf(t, e, "d1"); return x != nil && !x.Running })
 	if x := eraseOf(t, e, "d1"); x.Result != "done" {
 		t.Fatalf("%+v", x)

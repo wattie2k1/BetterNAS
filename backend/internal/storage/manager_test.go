@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ type fakeAgent struct {
 	selfTestFail bool
 
 	erases           []string
-	eraseStatusCalls int
+	eraseHold        atomic.Bool // solange true, meldet disk.erase.status „läuft noch“ (macht den Test unabhängig vom Timing)
 	eraseResult      string
 	eraseError       string
 	benchCalls    int
@@ -121,8 +122,7 @@ func (f *fakeAgent) Call(_ context.Context, method string, params, result any) e
 		f.erases = append(f.erases, req["device"].(string)+":"+req["method"].(string))
 		out = map[string]bool{"ok": true}
 	case "disk.erase.status":
-		f.eraseStatusCalls++
-		out = map[string]any{"known": true, "running": f.eraseStatusCalls < 2, "writtenBytes": 1000, "totalBytes": 4e12, "result": f.eraseResult, "error": f.eraseError}
+		out = map[string]any{"known": true, "running": f.eraseHold.Load(), "writtenBytes": 1000, "totalBytes": 4e12, "result": f.eraseResult, "error": f.eraseError}
 	case "disk.erase.abort":
 		f.erases = append(f.erases, "abort")
 		out = map[string]bool{"ok": true}
