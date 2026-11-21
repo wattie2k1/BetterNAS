@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
@@ -33,19 +33,48 @@ describe('netRates', () => {
 })
 
 describe('NetTile', () => {
-  it('zeigt Raten, Verlauf und Schnittstellen mit Geschwindigkeit', () => {
+  it('zeigt Raten und Verlauf ohne Schnittstellenliste', () => {
     const current = netRates({ at: 0, net: [eth(0, 0), eth(0, 0, { name: 'eno2', up: false, speedMbps: 0 })] }, { at: 1000, net: [eth(5_000_000, 1_000_000), eth(0, 0, { name: 'eno2', up: false, speedMbps: 0 })] })
     const w = mount(NetTile, { props: { current, rx: [0, 5e6], tx: [0, 1e6] } })
     expect(w.find('[data-test="net-rx"]').text()).toBe('5,0 MB/s')
     expect(w.find('[data-test="net-tx"]').text()).toBe('1,0 MB/s')
     expect(w.find('[data-test="net-history"] svg').exists()).toBe(true)
-    expect(w.find('[data-test="net-ifaces"]').text()).toContain('1 GBit/s')
-    expect(w.find('[data-test="net-ifaces"]').text()).not.toContain('eno2') // getrennt und ohne Verkehr
+    expect(w.find('[data-test="net-ifaces"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('eno1')
   })
   it('zeigt vor der zweiten Messung Platzhalter', () => {
     const w = mount(NetTile, { props: { current: null, rx: [], tx: [] } })
     expect(w.find('[data-test="net-rx"]').text()).toBe('–')
     expect(w.find('[data-test="net-history"] svg').exists()).toBe(false)
+  })
+})
+
+describe('NetTile: Datenmengen', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it('zeigt Tage, Monate und Jahre mit kB/MB/GB/TB', async () => {
+    const traffic = {
+      days: [{ key: '2026-11-20', rx: 2_000_000_000, tx: 500_000 }, { key: '2026-11-21', rx: 3_500_000_000_000, tx: 1500 }],
+      months: [{ key: '2026-11', rx: 5e9, tx: 1e6 }],
+      years: [{ key: '2026', rx: 5e9, tx: 1e6 }],
+    }
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify(traffic), { status: 200 })))
+    const w = mount(NetTile, { props: { current: null, rx: [], tx: [] } })
+    await flushPromises()
+    const rows = w.find('[data-test="net-traffic-rows"]').text()
+    expect(rows).toContain('21.11.2026')
+    expect(rows).toContain('3,5 TB')
+    expect(rows).toContain('1,5 kB')
+    expect(rows.indexOf('21.11.2026')).toBeLessThan(rows.indexOf('20.11.2026')) // neueste zuerst
+    await w.find('[data-test="net-period-months"]').trigger('click')
+    expect(w.find('[data-test="net-traffic-rows"]').text()).toContain('11/2026')
+    await w.find('[data-test="net-period-years"]').trigger('click')
+    expect(w.find('[data-test="net-traffic-rows"]').text()).toContain('2026')
+  })
+  it('meldet eine leere Statistik', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('[]', { status: 200 })))
+    const w = mount(NetTile, { props: { current: null, rx: [], tx: [] } })
+    await flushPromises()
+    expect(w.find('[data-test="net-traffic-empty"]').exists()).toBe(true)
   })
 })
 

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue'
-import { formatRate, ifaceLoad, type NetRates } from '@/utils/netRate'
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { api } from '@/api/client'
+import { formatBytes } from '@/utils/format'
+import { formatRate, type NetRates } from '@/utils/netRate'
 
-/** Inhalt der Netzwerk-Kachel: aktuelle Rate, Verlauf von Empfang und Senden, Auslastung je Schnittstelle. */
+/** Inhalt der Netzwerk-Kachel: aktuelle Rate, Verlauf von Empfang und Senden, Datenmengen je Tag, Monat und Jahr. */
 const props = defineProps<{
   current: NetRates | null
   /** Raten der letzten Messungen in Byte/s, älteste zuerst. */
@@ -20,7 +22,51 @@ const path = (vals: number[]) =>
 const rxLine = computed(() => path(props.rx))
 const txLine = computed(() => path(props.tx))
 const rxArea = computed(() => (rxLine.value ? `${rxLine.value} L${W} ${H} L0 ${H} Z` : ''))
-const ifaces = computed(() => (props.current?.ifaces ?? []).filter((i) => i.up || i.rx > 0 || i.tx > 0))
+
+interface TrafficEntry {
+  key: string
+  rx: number
+  tx: number
+}
+interface Traffic {
+  days: TrafficEntry[]
+  months: TrafficEntry[]
+  years: TrafficEntry[]
+}
+const PERIODS = [
+  { id: 'days', label: 'Tag' },
+  { id: 'months', label: 'Monat' },
+  { id: 'years', label: 'Jahr' },
+] as const
+const period = ref<(typeof PERIODS)[number]['id']>('days')
+const traffic = ref<Traffic>({ days: [], months: [], years: [] })
+/** Neueste zuerst, Balken relativ zum größten Wert des Zeitraums. */
+const rows = computed(() => {
+  const list = [...(traffic.value[period.value] ?? [])].reverse()
+  const max = Math.max(1, ...list.map((e) => e.rx + e.tx))
+  return list.map((e) => ({ ...e, label: periodLabel(e.key), rxPct: (e.rx / max) * 100, txPct: (e.tx / max) * 100 }))
+})
+const total = computed(() => rows.value.reduce((a, r) => ({ rx: a.rx + r.rx, tx: a.tx + r.tx }), { rx: 0, tx: 0 }))
+function periodLabel(key: string): string {
+  const [y, m, d] = key.split('-')
+  if (d) return `${d}.${m}.${y}`
+  if (m) return `${m}/${y}`
+  return y
+}
+async function loadTraffic() {
+  try {
+    const t = await api.get<Partial<Traffic>>('/api/v1/system/traffic')
+    traffic.value = { days: t?.days ?? [], months: t?.months ?? [], years: t?.years ?? [] }
+  } catch {
+    /* Statistik ist optional */
+  }
+}
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  void loadTraffic()
+  timer = setInterval(loadTraffic, 60_000)
+})
+onBeforeUnmount(() => clearInterval(timer))
 const peakRx = computed(() => Math.max(0, ...props.rx))
 const peakTx = computed(() => Math.max(0, ...props.tx))
 </script>
@@ -57,21 +103,31 @@ const peakTx = computed(() => Math.max(0, ...props.tx))
       <figcaption v-if="rx.length >= 2"><span>früher</span><span>Skala bis {{ formatRate(peak) }}</span><span>jetzt</span></figcaption>
     </figure>
 
-    <ul v-if="ifaces.length" class="ifaces" data-test="net-ifaces">
-      <li v-for="i in ifaces" :key="i.name">
-        <div class="row">
-          <strong>{{ i.name }}</strong>
-          <span class="soft">
-            <template v-if="!i.up">getrennt</template>
-            <template v-else-if="i.speedMbps">{{ i.speedMbps >= 1000 ? `${i.speedMbps / 1000} GBit/s` : `${i.speedMbps} MBit/s` }}</template>
-            <template v-else>verbunden</template>
-          </span>
+    <section class="traffic" data-test="net-traffic">
+      <header>
+        <strong>Datenmenge</strong>
+        <div class="tabs" role="tablist">
+          <button v-for="p in PERIODS" :key="p.id" type="button" role="tab" :aria-selected="period === p.id" :class="{ on: period === p.id }" :data-test="`net-period-${p.id}`" @click="period = p.id">{{ p.label }}</button>
         </div>
-        <div v-if="ifaceLoad(i) !== null" class="bar" :title="`${Math.round(ifaceLoad(i)!)} % der Leitungsgeschwindigkeit`">
-          <span :style="{ width: `${Math.max(1, ifaceLoad(i)!)}%` }" />
-        </div>
-      </li>
-    </ul>
+      </header>
+      <p v-if="!rows.length" class="empty" data-test="net-traffic-empty">Die Statistik füllt sich ab jetzt; Messungen vor dem Update fehlen.</p>
+      <template v-else>
+        <p class="sum soft" data-test="net-traffic-total">
+          Summe: <i class="pi pi-arrow-down" /> {{ formatBytes(total.rx) }} · <i class="pi pi-arrow-up" /> {{ formatBytes(total.tx) }}
+        </p>
+        <ul class="vol" data-test="net-traffic-rows">
+          <li v-for="r in rows" :key="r.key">
+            <span class="lbl">{{ r.label }}</span>
+            <span class="stack" :title="`Empfangen ${formatBytes(r.rx)}, Gesendet ${formatBytes(r.tx)}`">
+              <span class="b rx" :style="{ width: `${r.rxPct}%` }" />
+              <span class="b tx" :style="{ width: `${r.txPct}%` }" />
+            </span>
+            <span class="val"><i class="pi pi-arrow-down" /> {{ formatBytes(r.rx) }}</span>
+            <span class="val"><i class="pi pi-arrow-up" /> {{ formatBytes(r.tx) }}</span>
+          </li>
+        </ul>
+      </template>
+    </section>
   </div>
 </template>
 
@@ -145,35 +201,83 @@ figcaption {
   font-size: 0.85rem;
   color: var(--bn-text-soft);
 }
-.ifaces {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.row {
+.traffic header {
   display: flex;
   justify-content: space-between;
-  font-size: 0.9rem;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 99px;
+  background: var(--bn-border-soft);
+}
+.tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--bn-text-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 2px 10px;
+  border-radius: 99px;
+  cursor: pointer;
+}
+.tabs button.on {
+  background: var(--bn-accent-2);
+  color: #fff;
+}
+.sum {
+  margin: 0 0 6px;
 }
 .soft {
   color: var(--bn-text-soft);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
-.bar {
-  height: 6px;
-  border-radius: 99px;
-  background: var(--bn-border-soft);
-  margin-top: 4px;
-  overflow: hidden;
+.vol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.bar span {
+.vol li {
+  display: grid;
+  grid-template-columns: 5.2rem 1fr 5.6rem 5.6rem;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.78rem;
+}
+.lbl {
+  color: var(--bn-text-soft);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.b {
   display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #22d3ee, #6366f1);
-  transition: width 0.6s ease;
+  height: 4px;
+  border-radius: 99px;
+  min-width: 1px;
+}
+.b.rx {
+  background: #22d3ee;
+}
+.b.tx {
+  background: #e879f9;
+}
+.val {
+  text-align: right;
+  white-space: nowrap;
+}
+.val i {
+  font-size: 0.65rem;
+  color: var(--bn-text-soft);
 }
 </style>

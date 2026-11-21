@@ -168,6 +168,7 @@ func main() {
 		}
 	}()
 	sampler := system.NewSampler()
+	sampler.SetStore(d)
 	go sampler.Run(ctx, agent)
 	go sm.RunHistory(ctx)
 	go sm.RunPower(ctx)

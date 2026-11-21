@@ -28,6 +28,20 @@ func (s *server) systemSamples(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// systemTraffic liefert die Datenmengen der Netzwerkkarten je Tag, Monat und Jahr.
+func (s *server) systemTraffic(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Sampler == nil {
+		writeJSON(w, http.StatusOK, system.Traffic{Days: []system.TrafficEntry{}, Months: []system.TrafficEntry{}, Years: []system.TrafficEntry{}})
+		return
+	}
+	t, err := s.deps.Sampler.Traffic(r.Context())
+	if err != nil {
+		apierr.Write(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
+}
+
 // rebootRequired meldet, ob der Server nach Updates (z. B. neuer Kernel) neu gestartet werden muss.
 func (s *server) rebootRequired(w http.ResponseWriter, r *http.Request) {
 	checker := s.deps.RebootChecker

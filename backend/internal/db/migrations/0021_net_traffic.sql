@@ -1,0 +1,5 @@
+CREATE TABLE net_traffic(
+    day      TEXT    NOT NULL PRIMARY KEY,
+    rx_bytes INTEGER NOT NULL DEFAULT 0,
+    tx_bytes INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;

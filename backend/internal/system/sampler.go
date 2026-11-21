@@ -2,6 +2,8 @@ package system
 
 import (
 	"context"
+	"database/sql"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -34,6 +36,9 @@ type Caller interface {
 type Sampler struct {
 	mu      sync.Mutex
 	samples []Sample
+	db      *sql.DB
+	now     func() time.Time
+	prevNet map[string][2]uint64
 }
 
 func NewSampler() *Sampler { return &Sampler{} }
@@ -64,6 +69,9 @@ func (s *Sampler) Run(ctx context.Context, c Caller) {
 		err := c.Call(cctx, "system.info", nil, &info)
 		cancel()
 		if err == nil {
+			if aerr := s.account(ctx, info.Net); aerr != nil {
+				slog.Warn("datenmenge speichern", "err", aerr)
+			}
 			s.add(Sample{At: time.Now().UnixMilli(), CPUTotalTicks: info.CPUTotalTicks, CPUIdleTicks: info.CPUIdleTicks,
 				MemTotalBytes: info.MemTotalBytes, MemAvailableBytes: info.MemAvailableBytes, Net: info.Net})
 		}

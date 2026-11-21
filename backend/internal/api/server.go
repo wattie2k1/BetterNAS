@@ -90,6 +90,7 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	api.HandleFunc("GET /api/v1/auth/me", deps.Auth.Me)
 	api.HandleFunc("GET /api/v1/system/info", s.systemInfo)
 	api.HandleFunc("GET /api/v1/system/samples", s.systemSamples)
+	api.HandleFunc("GET /api/v1/system/traffic", s.systemTraffic)
 	api.HandleFunc("GET /api/v1/system/reboot-required", s.rebootRequired)
 	api.HandleFunc("GET /api/v1/jobs", s.listJobs)
 	api.HandleFunc("GET /api/v1/jobs/{id}", s.getJob)
