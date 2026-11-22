@@ -6,7 +6,7 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import FolderPicker from '@/components/docker/FolderPicker.vue'
 import { dockerApi, type HostDevice, type StackFiles } from '@/api/docker'
-import { APP_TEMPLATES, defaultValues, containerNameError, fieldError, groupTemplates, randomSecret, renderTemplate, stackNameError, type AppTemplate } from '@/utils/appTemplates'
+import { APP_TEMPLATES, defaultValues, containerNameError, fieldError, groupTemplates, randomSecret, renderTemplate, rootsState, setRoots, stackNameError, type AppTemplate } from '@/utils/appTemplates'
 
 const props = defineProps<{ visible: boolean; existing: string[]; containers?: string[] }>()
 const emit = defineEmits<{ 'update:visible': [boolean]; create: [files: StackFiles] }>()
@@ -28,6 +28,12 @@ watch(
     if (v) {
       picked.value = null
       query.value = ''
+      // Konnten die Speicherorte noch nicht geladen werden, jetzt erneut versuchen (sonst gelten nur Platzhalter-Pfade).
+      if (!rootsState.known) {
+        Promise.resolve(dockerApi.paths()).then((r) => {
+          if (r?.configured) setRoots(r)
+        }, () => {})
+      }
     }
   },
 )
@@ -130,6 +136,9 @@ function submit() {
         <small v-else-if="!deviceOptions.length" class="hint">Kein passendes Gerät gefunden.</small>
         <small v-else-if="picked.device.hint" class="hint">{{ picked.device.hint }}</small>
       </div>
+      <Message v-if="!rootsState.known && picked.fields.some((f) => f.kind === 'path')" severity="warn" :closable="false" data-test="tpl-roots-unknown">
+        Die Speicherorte für Docker konnten nicht geladen werden. Die vorgeschlagenen Pfade sind nur Platzhalter; prüfe sie oder wähle die Ordner selbst.
+      </Message>
       <Message v-if="picked.notice" severity="warn" :closable="false" data-test="tpl-notice">{{ picked.notice }}</Message>
       <Message severity="info" :closable="false">
         Die Eingaben werden in der .env gespeichert (nur für Administratoren lesbar). Im nächsten Schritt kannst du alles noch ändern, bevor der Stack angelegt wird.

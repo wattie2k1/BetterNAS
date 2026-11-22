@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/storage"
 )
@@ -117,5 +118,20 @@ func TestNoDockerSourceNoFindings(t *testing.T) {
 	m, _, _ := newMon(t, &fakeSource{disks: []storage.DiskView{healthyDisk("a")}})
 	if fs, err := m.Findings(context.Background()); err != nil || len(fs) != 0 {
 		t.Fatalf("%v %v", fs, err)
+	}
+}
+
+// Läuft Docker, ist aber noch nicht eingerichtet (docker_not_configured), ist das kein Fehler des Monitors.
+func TestDockerNotConfiguredIsNoError(t *testing.T) {
+	fd := &fakeDocker{status: up, err: apierr.New(apierr.DockerNotConfigured, "Docker ist noch nicht eingerichtet.")}
+	m, n := monWithDocker(t, fd)
+	if _, err := m.Findings(context.Background()); err != nil {
+		t.Fatalf("Findings: %v", err)
+	}
+	if err := m.Check(context.Background()); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if n.count() != 0 {
+		t.Fatalf("es darf nichts gemeldet werden: %+v", n.sent)
 	}
 }

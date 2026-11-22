@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/betternas/betternas/internal/apierr"
 	"github.com/betternas/betternas/internal/docker"
 	"github.com/betternas/betternas/internal/events"
 	"github.com/betternas/betternas/internal/notify"
@@ -107,6 +108,10 @@ func (m *Monitor) dockerFindings(ctx context.Context) (fs []Finding, unknown []s
 	}
 	list, lerr := m.docker.ListContainers(ctx)
 	if lerr != nil {
+		if errors.As(lerr, new(*apierr.Error)) && apierr.From(lerr).Code == apierr.DockerNotConfigured {
+			// Docker läuft, ist aber noch nicht eingerichtet: nichts zu beurteilen, kein Fehler.
+			return nil, []string{"container-"}, nil
+		}
 		return nil, []string{"container-"}, fmt.Errorf("container: %w", lerr)
 	}
 	for _, c := range list {

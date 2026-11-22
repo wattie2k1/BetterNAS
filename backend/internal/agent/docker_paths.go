@@ -184,6 +184,10 @@ func countStaleStacks(d Deps, p docker.Paths) int {
 		if err != nil {
 			continue
 		}
+		// App-Vorlagen legen die Pfade in die .env (die compose.yaml nutzt nur ${VAR}), also dort mitsuchen.
+		if env, err := d.FS.ReadFile(path.Join(path.Dir(f), docker.EnvFile)); err == nil {
+			b = append(b, append([]byte("\n"), env...)...)
+		}
 		for _, m := range srvPathRe.FindAllString(string(b), -1) {
 			if !underAny(roots, path.Clean(m)) {
 				n++

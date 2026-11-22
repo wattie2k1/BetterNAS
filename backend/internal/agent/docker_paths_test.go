@@ -392,6 +392,25 @@ func TestGetPathsStaleStacks(t *testing.T) {
 	}
 }
 
+// Vorlagen legen die Pfade in die .env (compose.yaml nutzt nur ${VAR}); auch dort gefundene alte Pfade zählen.
+func TestGetPathsStaleStacksCountsEnvFile(t *testing.T) {
+	d, _ := pathsEnv(t, &pathsFake{})
+	if _, err := SetPaths(context.Background(), d, twoPools); err != nil {
+		t.Fatal(err)
+	}
+	compose := []byte("services:\n  a:\n    volumes:\n      - ${CONFIG_DIR}:/config\n")
+	_ = d.FS.MkdirAll("/srv/pools/b/dd/stacks/alt", 0o700)
+	_ = d.FS.WriteFile("/srv/pools/b/dd/stacks/alt/compose.yaml", compose, 0o600)
+	_ = d.FS.WriteFile("/srv/pools/b/dd/stacks/alt/.env", []byte("CONFIG_DIR=/srv/appdata/alt/config\n"), 0o600)
+	_ = d.FS.MkdirAll("/srv/pools/b/dd/stacks/neu", 0o700)
+	_ = d.FS.WriteFile("/srv/pools/b/dd/stacks/neu/compose.yaml", compose, 0o600)
+	_ = d.FS.WriteFile("/srv/pools/b/dd/stacks/neu/.env", []byte("CONFIG_DIR=/srv/pools/a/cfg/neu\n"), 0o600)
+	info, err := GetPaths(context.Background(), d)
+	if err != nil || info.StaleStacks != 1 {
+		t.Fatalf("%+v %v", info, err)
+	}
+}
+
 func TestDockerStatusReportsConfigured(t *testing.T) {
 	d, _ := pathsEnv(t, &pathsFake{})
 	if st, _ := DockerStatus(context.Background(), d); st.Configured {

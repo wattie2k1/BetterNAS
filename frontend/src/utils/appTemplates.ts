@@ -1,5 +1,6 @@
 // App-Vorlagen für Docker-Stacks: Eingaben (Ports, Pfade, Geheimnisse) landen in der .env,
 // die compose.yaml verweist darauf per ${VARIABLE}. Der Stack bleibt danach frei editierbar.
+import { reactive } from 'vue'
 import { STACK_NAME_RE, type HostDevice, type StackFiles } from '@/api/docker'
 import { deviceSnippet } from '@/utils/deviceSnippet'
 
@@ -64,9 +65,12 @@ export interface AppTemplate {
 
 /** Speicherorte für Docker-Daten. Der Store setzt sie nach dem Laden von /api/v1/docker/paths (setRoots). */
 export const roots = { appdata: '/srv/appdata', dockerdata: '/srv/dockerdata' }
+/** known: die Speicherorte stammen vom Server. Davor (oder nach einem Ladefehler) sind die Pfade in roots nur Platzhalter. */
+export const rootsState = reactive({ known: false })
 export function setRoots(r: { appdata: string; dockerdata: string }) {
   if (r.appdata) roots.appdata = r.appdata
   if (r.dockerdata) roots.dockerdata = r.dockerdata
+  if (r.appdata && r.dockerdata) rootsState.known = true
 }
 /** Einstellungen der App (klein): unter appdata. */
 const appdata = (sub: string) => (s: string) => `${roots.appdata}/${s}/${sub}`
@@ -1028,6 +1032,7 @@ volumes:
     environment:
       USER_UID: "1000"
       USER_GID: "1000"
+      GITEA__server__SSH_PORT: "\${SSH_PORT}"
     ports:
       - "\${PORT}:3000"
       - "\${SSH_PORT}:22"
@@ -1117,6 +1122,7 @@ volumes:
       { key: 'CONFIG_DIR', label: 'Ordner für Einstellungen', kind: 'path', def: appdata('config') },
       { key: 'SOURCE_DIR', label: 'Zu sichernder Ordner (nur lesen)', kind: 'path', def: () => '/srv/pools', hint: 'Duplicati sieht ihn als /source.' },
       { key: 'BACKUP_DIR', label: 'Ordner für die Sicherungen', kind: 'path', pool: true, def: () => '/srv/pools', hint: 'Besser auf einem anderen Pool als die Originale. Duplicati sieht ihn als /backups.' },
+      { key: 'SETTINGS_ENCRYPTION_KEY', label: 'Schlüssel für die Einstellungen', kind: 'secret', hint: 'Verschlüsselt Duplicatis Einstellungsdatenbank (darin liegen die Zugangsdaten zu den Sicherungszielen). Bewahre ihn zusätzlich an einem sicheren Ort auf: Ohne ihn lassen sich die Einstellungen nicht mehr lesen.' },
       ...idFields,
     ],
     compose: `services:
@@ -1128,6 +1134,7 @@ volumes:
       PGID: "\${PGID}"
       UMASK: "002"
       TZ: Europe/Berlin
+      SETTINGS_ENCRYPTION_KEY: "\${SETTINGS_ENCRYPTION_KEY}"
     ports:
       - "\${PORT}:8200"
     volumes:
@@ -1475,6 +1482,7 @@ volumes:
     environment:
       USER_UID: "1000"
       USER_GID: "1000"
+      FORGEJO__server__SSH_PORT: "\${SSH_PORT}"
     ports:
       - "\${PORT}:3000"
       - "\${SSH_PORT}:22"
@@ -2055,7 +2063,7 @@ volumes:
 /** Vorlagen nach Kategorie gruppiert (in der Reihenfolge von TEMPLATE_CATEGORIES), gefiltert nach Titel, ID und Beschreibung. */
 export function groupTemplates(list: AppTemplate[], query: string): { category: TemplateCategory; items: AppTemplate[] }[] {
   const q = query.trim().toLowerCase()
-  const hit = (t: AppTemplate) => !q || [t.title, t.id, t.description].some((x) => x.toLowerCase().includes(q))
+  const hit = (t: AppTemplate) => !q || [t.title, t.id, t.description, t.category].some((x) => x.toLowerCase().includes(q))
   return TEMPLATE_CATEGORIES.map((category) => ({ category, items: list.filter((t) => t.category === category && hit(t)) })).filter((g) => g.items.length > 0)
 }
 

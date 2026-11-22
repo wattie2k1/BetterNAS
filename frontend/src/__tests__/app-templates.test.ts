@@ -137,6 +137,32 @@ describe('Vorlagen: Regeln für alle', () => {
   })
 })
 
+describe('Suche und Duplicati', () => {
+  it('die Suche findet auch über den Kategorienamen', () => {
+    const ids = groupTemplates(APP_TEMPLATES, 'verwaltung').flatMap((g) => g.items.map((t) => t.id))
+    expect(ids).toContain('duplicati')
+    expect(ids).not.toContain('jellyfin')
+  })
+
+  it('Duplicati bekommt einen erzeugten Schlüssel für die Einstellungsdatenbank', () => {
+    const { t, files, env } = tpl('duplicati')
+    const f = t.fields.find((x) => x.key === 'SETTINGS_ENCRYPTION_KEY')!
+    expect(f.kind).toBe('secret')
+    expect(files.compose).toContain('SETTINGS_ENCRYPTION_KEY: "${SETTINGS_ENCRYPTION_KEY}"')
+    expect(env).toMatch(/SETTINGS_ENCRYPTION_KEY=[A-Za-z0-9]{24}\n/)
+  })
+})
+
+describe('Git-Server zeigen den SSH-Port in der Klon-URL', () => {
+  for (const [id, pre] of [['gitea', 'GITEA'], ['forgejo', 'FORGEJO']]) {
+    it(`${id} setzt ${pre}__server__SSH_PORT auf den gewählten Port`, () => {
+      const { files, env } = tpl(id)
+      expect(files.compose).toContain(`${pre}__server__SSH_PORT: "\${SSH_PORT}"`)
+      expect(env).toMatch(/SSH_PORT=\d+\n/)
+    })
+  }
+})
+
 describe('TemplateDialog', () => {
   const mountIt = () => mount(TemplateDialog, { props: { visible: true, existing: ['jellyfin'] }, global: { plugins: [PrimeVue] }, attachTo: document.body })
 
