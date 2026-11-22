@@ -42,3 +42,17 @@ export const formatRate = (bytesPerSec: number): string => {
   }
   return `${v.toLocaleString('de-DE', { minimumFractionDigits: i ? 1 : 0, maximumFractionDigits: i ? 1 : 0 })} ${units[i]}`
 }
+
+/** Eine gemeinsame Einheit für eine ganze Skala (nach dem größten Wert gewählt) und eine kompakte Zahlenschreibweise. */
+export const rateScale = (peak: number): { unit: string; format: (bytesPerSec: number) => string } => {
+  const units = ['B/s', 'kB/s', 'MB/s', 'GB/s']
+  let div = 1
+  let i = 0
+  while (peak / div >= 1000 && i < units.length - 1) {
+    div *= 1000
+    i++
+  }
+  const format = (v: number) =>
+    (v / div).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: v / div < 10 ? 1 : 0 })
+  return { unit: units[i], format }
+}

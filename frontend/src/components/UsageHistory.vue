@@ -4,6 +4,9 @@ import { computed, useId } from 'vue'
 /** Flächendiagramm der letzten Messungen (0–100 %), älteste zuerst. */
 const props = defineProps<{ history: number[]; from: string; to: string }>()
 
+/** Beschriftung der Skala links, oben nach unten. */
+const ticks = ['100', '50', '0']
+
 const uid = useId()
 const W = 300
 const H = 80
@@ -18,7 +21,9 @@ const label = computed(() => `Verlauf der letzten Minuten: von ${Math.round(Math
 
 <template>
   <figure class="history">
-    <svg v-if="history.length >= 2" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" :aria-label="label">
+    <div v-if="history.length >= 2" class="plot">
+      <div class="axis" aria-hidden="true" data-test="history-axis"><span v-for="t in ticks" :key="t">{{ t }}</span></div>
+      <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" :aria-label="label">
       <defs>
         <linearGradient :id="`fill-${uid}`" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" :stop-color="from" stop-opacity="0.45" />
@@ -32,13 +37,35 @@ const label = computed(() => `Verlauf der letzten Minuten: von ${Math.round(Math
       <line v-for="g in [0, 50, 100]" :key="g" x1="0" x2="300" :y1="H - (g / 100) * H" :y2="H - (g / 100) * H" class="grid" vector-effect="non-scaling-stroke" />
       <path :d="area" :fill="`url(#fill-${uid})`" />
       <path :d="line" fill="none" :stroke="`url(#stroke-${uid})`" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-    </svg>
+      </svg>
+    </div>
     <p v-else class="empty">Der Verlauf füllt sich mit den nächsten Messungen.</p>
-    <figcaption v-if="history.length >= 2"><span>früher</span><span>100 %</span><span>jetzt</span></figcaption>
+    <figcaption v-if="history.length >= 2"><span>früher</span><span data-test="history-unit">%</span><span>jetzt</span></figcaption>
   </figure>
 </template>
 
 <style scoped>
+.plot {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 5rem;
+  flex: none;
+  text-align: right;
+  font-size: 0.62rem;
+  line-height: 1;
+  color: var(--bn-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.plot svg {
+  flex: 1;
+  min-width: 0;
+}
 .history {
   margin: 0;
 }

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { api } from '@/api/client'
 import { formatBytes } from '@/utils/format'
-import { formatRate, type NetRates } from '@/utils/netRate'
+import { formatRate, rateScale, type NetRates } from '@/utils/netRate'
 
 /** Inhalt der Netzwerk-Kachel: aktuelle Rate, Verlauf von Empfang und Senden, Datenmengen je Tag, Monat und Jahr. */
 const props = defineProps<{
@@ -19,6 +19,7 @@ const H = 80
 const peak = computed(() => Math.max(1e6, ...props.rx, ...props.tx))
 const path = (vals: number[]) =>
   vals.map((v, i) => `${i ? 'L' : 'M'}${((i / Math.max(1, vals.length - 1)) * W).toFixed(1)} ${(H - (v / peak.value) * H).toFixed(1)}`).join(' ')
+const scale = computed(() => rateScale(peak.value))
 const rxLine = computed(() => path(props.rx))
 const txLine = computed(() => path(props.tx))
 const rxArea = computed(() => (rxLine.value ? `${rxLine.value} L${W} ${H} L0 ${H} Z` : ''))
@@ -87,7 +88,11 @@ const peakTx = computed(() => Math.max(0, ...props.tx))
     </div>
 
     <figure class="history" data-test="net-history">
-      <svg v-if="rx.length >= 2" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" aria-label="Verlauf der Datenrate: Empfangen und Senden">
+      <div v-if="rx.length >= 2" class="plot">
+        <div class="axis" aria-hidden="true" data-test="net-axis">
+          <span>{{ scale.format(peak) }}</span><span>{{ scale.format(peak / 2) }}</span><span>0</span>
+        </div>
+        <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" aria-label="Verlauf der Datenrate: Empfangen und Senden">
         <defs>
           <linearGradient :id="`fill-${uid}`" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.4" />
@@ -98,9 +103,10 @@ const peakTx = computed(() => Math.max(0, ...props.tx))
         <path :d="rxArea" :fill="`url(#fill-${uid})`" />
         <path :d="rxLine" class="line rx" vector-effect="non-scaling-stroke" />
         <path :d="txLine" class="line tx" vector-effect="non-scaling-stroke" />
-      </svg>
+        </svg>
+      </div>
       <p v-else class="empty">Der Verlauf füllt sich mit den nächsten Messungen.</p>
-      <figcaption v-if="rx.length >= 2"><span>früher</span><span>Skala bis {{ formatRate(peak) }}</span><span>jetzt</span></figcaption>
+      <figcaption v-if="rx.length >= 2"><span>früher</span><span data-test="net-unit">{{ scale.unit }}</span><span>jetzt</span></figcaption>
     </figure>
 
     <section class="traffic" data-test="net-traffic">
@@ -165,6 +171,27 @@ const peakTx = computed(() => Math.max(0, ...props.tx))
 }
 .history {
   margin: 0;
+}
+.plot {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 5rem;
+  flex: none;
+  text-align: right;
+  font-size: 0.62rem;
+  line-height: 1;
+  color: var(--bn-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.plot svg {
+  flex: 1;
+  min-width: 0;
 }
 svg {
   width: 100%;
