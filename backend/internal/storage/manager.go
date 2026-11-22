@@ -369,27 +369,67 @@ func (m *Manager) smartFor(ctx context.Context, device string) *SmartInfo {
 	return res
 }
 
-// usageOf liefert die Belegung einer eingehängten Daten-/Paritätsplatte (System: Wurzeldateisystem); nil, wenn sie nicht ermittelbar ist.
-func (m *Manager) usageOf(system bool, role, id string) *Usage {
-	path := ""
+// containerFS sind Partitionen, die nur andere Dateisysteme enthalten (LUKS, LVM, RAID); ihr Inhalt erscheint als eigene Partition.
+var containerFS = map[string]bool{"crypto_LUKS": true, "LVM2_member": true, "linux_raid_member": true}
+
+// usageOf liefert die Belegung der ganzen Platte: Größe der Platte, belegt = Summe der belegten Bereiche aller
+// Partitionen (eingehängte nach Dateisystem, nicht eingehängte und Swap vollständig); nicht aufgeteilter Platz zählt als frei.
+// Nur für eingehängte Daten-/Paritätsplatten und die Systemplatte; sonst nil.
+func (m *Manager) usageOf(d Disk, role string) *Usage {
+	managed := ""
 	switch {
-	case system:
-		path = "/"
+	case d.System:
+		managed = "/"
 	case role == RoleData:
-		path = DiskPath(id)
+		managed = DiskPath(d.ID)
 	case role == RoleParity:
-		path = ParityPath(id)
+		managed = ParityPath(d.ID)
 	default:
 		return nil
 	}
-	if !system && !m.mounted(path) {
+	if !d.System && !m.mounted(managed) {
 		return nil
 	}
-	size, free, err := m.statfs(path)
-	if err != nil || size == 0 {
-		return nil
+	var used, parts uint64
+	managedSeen := false
+	for _, p := range d.Partitions {
+		if containerFS[p.FSType] {
+			continue
+		}
+		parts += p.SizeBytes
+		mp := ""
+		for _, c := range p.Mountpoints {
+			if c == managed {
+				mp, managedSeen = c, true
+				break
+			}
+			if mp == "" && strings.HasPrefix(c, "/") {
+				mp = c
+			}
+		}
+		if mp == "" {
+			used += p.SizeBytes // nicht eingehängt oder Swap: Inhalt unbekannt, der Platz ist jedenfalls nicht frei
+			continue
+		}
+		size, free, err := m.statfs(mp)
+		if err != nil || size == 0 {
+			used += p.SizeBytes
+			continue
+		}
+		total := max(p.SizeBytes, size) // Dateisystem-Overhead zählt als belegt
+		used += total - min(free, total)
 	}
-	return &Usage{SizeBytes: size, UsedBytes: size - min(free, size), FreeBytes: free}
+	if !managedSeen {
+		// Die Partitionsliste kennt den Einhängepunkt nicht (z. B. LVM-Volume): nur das verwaltete Dateisystem messen.
+		size, free, err := m.statfs(managed)
+		if err != nil || size == 0 {
+			return nil
+		}
+		return &Usage{SizeBytes: size, UsedBytes: size - min(free, size), FreeBytes: free}
+	}
+	size := max(d.SizeBytes, parts)
+	used = min(used, size)
+	return &Usage{SizeBytes: size, UsedBytes: used, FreeBytes: size - used}
 }
 
 // ListDisks führt erkannte Datenträger mit dem gespeicherten Zustand zusammen.
@@ -432,7 +472,7 @@ func (m *Manager) ListDisks(ctx context.Context) ([]DiskView, error) {
 			v.FSType = d.Partitions[0].FSType
 		}
 		v.Smart = m.smartFor(ctx, d.Device)
-		v.Usage = m.usageOf(d.System, v.Role, d.ID)
+		v.Usage = m.usageOf(d, v.Role)
 		v.Identifying = m.isIdentifying(d.ID)
 		v.FsCheck = fsc[d.ID]
 		v.Bench = bench[d.ID]

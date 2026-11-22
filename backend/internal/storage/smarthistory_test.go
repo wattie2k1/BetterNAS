@@ -108,3 +108,36 @@ func TestDiskUsage(t *testing.T) {
 		t.Fatal("System: Wurzeldateisystem erwartet")
 	}
 }
+
+// Die Belegung bezieht sich auf die ganze Platte, nicht nur auf die eine eingehängte Partition.
+func TestDiskUsageCoversAllPartitions(t *testing.T) {
+	e := newEnv(t)
+	e.agent.disks = []Disk{{ID: "sys", Device: "/dev/nvme0n1", System: true, SizeBytes: 500e9, Partitions: []Partition{
+		{Device: "/dev/nvme0n1p1", FSType: "vfat", SizeBytes: 1e9, Mountpoints: []string{"/boot/efi"}},
+		{Device: "/dev/nvme0n1p2", FSType: "ext4", SizeBytes: 400e9, Mountpoints: []string{"/"}},
+		{Device: "/dev/nvme0n1p3", FSType: "swap", SizeBytes: 8e9, Mountpoints: []string{"[SWAP]"}},
+		{Device: "/dev/nvme0n1p4", FSType: "LVM2_member", SizeBytes: 50e9, Mountpoints: []string{}},
+		{Device: "/dev/mapper/vg-data", FSType: "ext4", SizeBytes: 40e9, Mountpoints: []string{"/srv/appdata"}},
+	}}}
+	e.m.statfs = func(p string) (uint64, uint64, error) {
+		switch p {
+		case "/boot/efi":
+			return 1e9, 9e8, nil // 100 MB belegt
+		case "/":
+			return 400e9, 300e9, nil // 100 GB belegt
+		case "/srv/appdata":
+			return 40e9, 30e9, nil // 10 GB belegt
+		}
+		t.Fatalf("unerwarteter Pfad %s", p)
+		return 0, 0, nil
+	}
+	ds, err := e.m.ListDisks(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := ds[0].Usage
+	// belegt: 0,1 + 100 + 8 (Swap vollständig) + 10 GB; Größe = ganze Platte (500 GB)
+	if u == nil || u.SizeBytes != 500e9 || u.UsedBytes != 118.1e9 || u.FreeBytes != 500e9-118.1e9 {
+		t.Fatalf("%+v", u)
+	}
+}
