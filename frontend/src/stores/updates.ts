@@ -12,7 +12,7 @@ export const MAX_UNREACHABLE_MS = 15 * 60_000
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export const useUpdatesStore = defineStore('updates', () => {
-  const overview = ref<UpdateOverview>({ packages: [], checkedAt: '', run: { state: 'none', log: '' }, channel: '' })
+  const overview = ref<UpdateOverview>({ packages: [], checkedAt: '', run: { state: 'none', log: '' }, channel: '', auto: { enabled: false, lastRun: null } })
   const loading = ref(false)
   const checking = ref(false)
   const installing = ref(false)
@@ -22,6 +22,7 @@ export const useUpdatesStore = defineStore('updates', () => {
   const reloadNeeded = ref(false)
   const error = ref('')
   const changingChannel = ref(false)
+  const changingAuto = ref(false)
   let polling = false
   /** Version der laufenden Oberfläche; wird beim Start der Installation gemerkt. */
   let startVersion = ''
@@ -112,5 +113,16 @@ export const useUpdatesStore = defineStore('updates', () => {
     }
   }
 
-  return { overview, loading, checking, installing, restarting, reloadNeeded, error, changingChannel, load, check, install, setChannel }
+  /** Schaltet die automatischen Updates ein oder aus und lädt die Übersicht neu. Fehler werden geworfen. */
+  async function setAuto(enabled: boolean) {
+    changingAuto.value = true
+    try {
+      await updatesApi.setAuto(enabled)
+    } finally {
+      changingAuto.value = false
+      await load()
+    }
+  }
+
+  return { overview, loading, checking, installing, restarting, reloadNeeded, error, changingChannel, changingAuto, setAuto, load, check, install, setChannel }
 })

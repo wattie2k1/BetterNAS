@@ -21,6 +21,7 @@ import (
 type updatesAgent struct {
 	installErr error
 	channel    string
+	auto       bool
 	setCalls   []string
 }
 
@@ -42,6 +43,13 @@ func (a *updatesAgent) Call(_ context.Context, method string, params, result any
 		_ = json.Unmarshal(b, &p)
 		a.channel = p.Channel
 		a.setCalls = append(a.setCalls, p.Channel)
+	case "updates.auto":
+		out = system.Auto{Enabled: a.auto, LastRun: &system.AutoRun{At: "2026-11-22T05:15:48Z", Packages: []string{"sudo"}, Result: "ok"}}
+	case "updates.setauto":
+		b, _ := json.Marshal(params)
+		var p struct{ Enabled bool }
+		_ = json.Unmarshal(b, &p)
+		a.auto = p.Enabled
 	case "updates.status":
 		out = system.Run{State: "succeeded", Log: "fertig"}
 	}
@@ -137,6 +145,12 @@ func TestUpdatesChannelRoute(t *testing.T) {
 
 	if w := do("GET", "/api/v1/updates", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"channel":"stable"`) {
 		t.Fatalf("GET: %d %s", w.Code, w.Body)
+	}
+	if w := do("PUT", "/api/v1/updates/auto", `{"enabled":true}`); w.Code != 204 || !ag.auto {
+		t.Fatalf("auto: %d %s", w.Code, w.Body)
+	}
+	if w := do("GET", "/api/v1/updates", ""); !strings.Contains(w.Body.String(), `"auto":{"enabled":true,"lastRun":{"at":"2026-11-22T05:15:48Z"`) {
+		t.Fatalf("auto im GET: %s", w.Body)
 	}
 	if w := do("PUT", "/api/v1/updates/channel", `{"channel":"testing"}`); w.Code != 204 {
 		t.Fatalf("PUT: %d %s", w.Code, w.Body)

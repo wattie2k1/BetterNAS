@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useUpdatesStore } from '@/stores/updates'
+import { useRebootStore } from '@/stores/reboot'
 import type { UpdateChannel } from '@/api/updates'
 
 const store = useUpdatesStore()
+const reboot = useRebootStore()
 const toast = useToast()
 const confirm = ref(false)
 
-onMounted(() => store.load())
+onMounted(() => {
+  void store.load()
+  void reboot.load()
+})
 
 // Nach einem Update von BetterNAS selbst läuft die Oberfläche in der alten Version: neu laden.
 watch(
@@ -50,6 +56,23 @@ async function changeChannel(channel: UpdateChannel) {
     toast.add({ severity: 'success', summary: 'Update-Kanal geändert', detail: 'Bitte jetzt erneut nach Updates suchen.', life: 6000 })
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Kanalwechsel fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
+  }
+}
+
+const auto = computed(() => store.overview.auto ?? { enabled: false, lastRun: null })
+const lastRun = computed(() => auto.value.lastRun)
+const lastRunOpen = ref(false)
+
+async function changeAuto(enabled: boolean) {
+  try {
+    await store.setAuto(enabled)
+    toast.add({
+      severity: 'success',
+      summary: enabled ? 'Automatische Updates eingeschaltet' : 'Automatische Updates ausgeschaltet',
+      life: 4000,
+    })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Umschalten fehlgeschlagen', detail: e instanceof Error ? e.message : String(e), life: 10000 })
   }
 }
 
@@ -110,6 +133,43 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
       seiner Version, bis Stabil sie einholt.
     </p>
   </div>
+  <section class="auto" data-test="updates-auto">
+    <div class="auto-head">
+      <ToggleSwitch
+        input-id="auto-updates"
+        :model-value="auto.enabled"
+        :disabled="store.installing || store.changingAuto"
+        data-test="updates-auto-switch"
+        @update:model-value="changeAuto"
+      />
+      <label for="auto-updates" class="channel-label">Updates automatisch installieren</label>
+    </div>
+    <p class="sub channel-hint">
+      Debian-Updates, auch Sicherheitsupdates, werden täglich im Hintergrund installiert. Neue Kernel und Updates von
+      BetterNAS selbst bleiben bewusst ausgenommen und erscheinen weiter in der Liste unten.
+    </p>
+    <div v-if="lastRun" class="auto-last" data-test="updates-auto-last">
+      <i v-if="lastRun.result === 'failed'" class="pi pi-times-circle bad" />
+      <i v-else class="pi pi-check-circle okc" />
+      <span>
+        Zuletzt automatisch aktualisiert: {{ when(lastRun.at) }} –
+        {{ lastRun.packages.length }} {{ lastRun.packages.length === 1 ? 'Paket' : 'Pakete' }}
+        <template v-if="lastRun.result === 'failed'"> (fehlgeschlagen)</template>
+      </span>
+      <Button
+        :label="lastRunOpen ? 'Pakete ausblenden' : 'Pakete anzeigen'"
+        text
+        size="small"
+        data-test="updates-auto-toggle"
+        @click="lastRunOpen = !lastRunOpen"
+      />
+    </div>
+    <p v-else-if="auto.enabled" class="sub channel-hint" data-test="updates-auto-none">Bisher wurde noch nichts automatisch installiert.</p>
+    <p v-if="lastRun && lastRunOpen" class="auto-pkgs" data-test="updates-auto-pkgs">{{ lastRun.packages.join(', ') }}</p>
+    <Message v-if="reboot.status.required" severity="warn" :closable="false" data-test="updates-auto-reboot">
+      Ein Neustart wird empfohlen, damit alle Updates wirksam werden.
+    </Message>
+  </section>
   <Message v-if="store.error" severity="error" :closable="false">{{ store.error }}</Message>
 
   <Message v-if="store.restarting" severity="info" :closable="false" data-test="updates-restarting">
@@ -186,6 +246,31 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString('de-DE') : '')
   flex-basis: 100%;
   margin: 0;
   font-size: 0.85rem;
+}
+.auto {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.auto-head,
+.auto-last {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.auto-pkgs {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+  color: var(--bn-text-soft);
+}
+.okc {
+  color: var(--bn-ok);
+}
+.bad {
+  color: var(--p-red-500);
 }
 .ok {
   display: flex;

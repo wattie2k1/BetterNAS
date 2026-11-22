@@ -44,6 +44,19 @@ func (s *server) registerUpdates(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("PUT /api/v1/updates/auto", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Enabled bool `json:"enabled"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := m.SetAuto(r.Context(), actor(r), in.Enabled); err != nil {
+			apierr.Write(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/v1/updates/install", func(w http.ResponseWriter, r *http.Request) {
 		unit, err := m.Install(r.Context(), actor(r))
 		if err != nil {

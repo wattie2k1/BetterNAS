@@ -201,3 +201,39 @@ describe('UpdatesView: Update-Kanal', () => {
     expect(w.find('[data-test="updates-channel"] [aria-pressed]').attributes('aria-disabled') ?? w.find('[data-test="updates-channel"] [aria-pressed]').attributes('disabled')).toBeDefined()
   })
 })
+
+describe('UpdatesView: automatische Updates', () => {
+  const mountView = () => mount(UpdatesView, { global: { plugins: [createPinia(), PrimeVue, ToastService] } })
+  const withAuto = (auto: unknown) => ({ ...overview('none', [], '', 'stable'), auto })
+  const lastRun = { at: '2026-11-22T05:15:48Z', packages: ['libc6', 'sudo'], result: 'ok' }
+
+  it('zeigt den letzten automatischen Lauf mit Paketliste und Neustart-Hinweis', async () => {
+    script({
+      '/api/v1/updates': [ok(withAuto({ enabled: true, lastRun }))],
+      '/api/v1/system/reboot-required': [ok({ required: true, packages: ['linux-image'] })],
+    })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="updates-auto-last"]').text()).toContain('2 Pakete')
+    expect(w.find('[data-test="updates-auto-pkgs"]').exists()).toBe(false)
+    await w.find('[data-test="updates-auto-toggle"]').trigger('click')
+    expect(w.find('[data-test="updates-auto-pkgs"]').text()).toBe('libc6, sudo')
+    expect(w.find('[data-test="updates-auto-reboot"]').exists()).toBe(true)
+  })
+
+  it('schaltet per PUT um und lädt neu', async () => {
+    const fn = script({
+      '/api/v1/updates': [ok(withAuto({ enabled: true, lastRun: null })), ok(withAuto({ enabled: false, lastRun: null }))],
+      '/api/v1/updates/auto': [() => new Response(null, { status: 204 })],
+    })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="updates-auto-none"]').exists()).toBe(true)
+    await w.find('[data-test="updates-auto-switch"] input').setValue(false)
+    await flushPromises()
+    const put = fn.mock.calls.find((c) => c[0] === '/api/v1/updates/auto')
+    expect(put?.[1]?.method).toBe('PUT')
+    expect(JSON.parse(put?.[1]?.body as string)).toEqual({ enabled: false })
+    expect(useUpdatesStore().overview.auto.enabled).toBe(false)
+  })
+})

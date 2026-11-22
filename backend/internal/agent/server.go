@@ -281,6 +281,18 @@ func Register(s *rpc.Server, d Deps) {
 		}
 		return struct{}{}, SetUpdateChannel(ctx, d, req.Channel)
 	})
+	s.Handle("updates.auto", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return GetAutoUpdates(ctx, d)
+	})
+	s.Handle("updates.setauto", func(ctx context.Context, p json.RawMessage) (any, error) {
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := decode(p, &req); err != nil {
+			return nil, err
+		}
+		return struct{}{}, SetAutoUpdates(ctx, d, req.Enabled)
+	})
 	s.Handle("snapraid.apply", func(ctx context.Context, p json.RawMessage) (any, error) {
 		var st snapraid.State
 		if err := decode(p, &st); err != nil {

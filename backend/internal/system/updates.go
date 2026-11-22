@@ -32,6 +32,19 @@ type Run struct {
 	Log   string `json:"log"`
 }
 
+// AutoRun ist der letzte Lauf der automatischen Updates.
+type AutoRun struct {
+	At       string   `json:"at"`
+	Packages []string `json:"packages"`
+	Result   string   `json:"result"` // ok | failed | unknown
+}
+
+// Auto ist der Zustand der automatischen Updates (unattended-upgrades).
+type Auto struct {
+	Enabled bool     `json:"enabled"`
+	LastRun *AutoRun `json:"lastRun"`
+}
+
 // Overview ist die Antwort für die Updates-Seite.
 type Overview struct {
 	Packages  []Package `json:"packages"`
@@ -39,6 +52,8 @@ type Overview struct {
 	Run       Run       `json:"run"`
 	// Channel ist der Update-Kanal der BetterNAS-Paketquelle (stable | testing); leer = keine Quelle oder unbekannt.
 	Channel string `json:"channel"`
+	// Auto ist der Zustand der automatischen Updates.
+	Auto Auto `json:"auto"`
 }
 
 const (
@@ -83,6 +98,9 @@ func (u *Updates) Get(ctx context.Context) (Overview, error) {
 	}
 	if err := u.agent.Call(ctx, "updates.channel", nil, &ch); err == nil {
 		o.Channel = ch.Channel
+	}
+	if err := u.agent.Call(ctx, "updates.auto", nil, &o.Auto); err != nil {
+		o.Auto = Auto{}
 	}
 	raw, err := u.get(ctx, keyPackages)
 	if err != nil {
@@ -187,6 +205,25 @@ func (u *Updates) SetChannel(ctx context.Context, actor, channel string) error {
 		return err
 	}
 	_ = u.set(ctx, keyPackages, "[]")
+	u.hub.Publish(events.Message{Type: "updates.changed"})
+	return nil
+}
+
+// SetAuto schaltet die automatischen Updates ein oder aus.
+func (u *Updates) SetAuto(ctx context.Context, actor string, enabled bool) error {
+	err := u.agent.Call(ctx, "updates.setauto", map[string]bool{"enabled": enabled}, nil)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	target := "aus"
+	if enabled {
+		target = "ein"
+	}
+	_ = audit.Record(ctx, u.db, audit.Entry{Actor: actor, Action: "updates.setauto", Target: target, Result: result})
+	if err != nil {
+		return err
+	}
 	u.hub.Publish(events.Message{Type: "updates.changed"})
 	return nil
 }
