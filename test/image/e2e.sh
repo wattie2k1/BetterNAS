@@ -188,6 +188,11 @@ step "Einrichtung abschließen" test "$(cat "$WORK/status")" = 204
 step "Einrichtung gespeichert" test "$(api GET /api/v1/setup | jget 'd["completed"]')" = True
 
 # Phase 4–6: Docker, VMs, Backup, 2FA-Status, Benachrichtigungen (ohne Netzwerkzugriff auf Registries)
+# Docker bleibt gesperrt, bis die Speicherorte eingerichtet sind (docker_not_configured): zuerst Ordner anlegen und setzen.
+check "Docker-Ordner anlegen" "echo $PASSWORD | sudo -S sh -c 'mkdir -p /srv/appdata/apps /srv/appdata/dockerdata && chmod 755 /srv/appdata/apps /srv/appdata/dockerdata'"
+api PUT /api/v1/docker/paths '{"appdata":"/srv/appdata/apps","dockerdata":"/srv/appdata/dockerdata"}' >/dev/null
+step "Docker-Speicherorte"   test "$(cat "$WORK/status")" = 200
+for _ in $(seq 1 30); do [ "$(api GET /api/v1/docker/status | jget 'd["active"]')" = True ] && break; sleep 2; done
 step "Docker läuft"          test "$(api GET /api/v1/docker/status | jget 'd["installed"] and d["active"]')" = True
 api POST /api/v1/stacks '{"name":"e2estack","compose":"services:\n  web:\n    image: nginx:stable\n","env":"A=1\n"}' >/dev/null
 step "Stack anlegen"         test "$(cat "$WORK/status")" = 201
