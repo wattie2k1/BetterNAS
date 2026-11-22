@@ -1,0 +1,85 @@
+Package: betternas
+Architecture: amd64
+Version: 0.7.0
+Priority: optional
+Section: admin
+Maintainer: BetterNAS <betternas@localhost>
+Installed-Size: 22580
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, nfs-kernel-server, mergerfs, snapraid, docker.io, docker-cli, docker-compose, libvirt-daemon-system, libvirt-daemon-config-network, libvirt-clients, qemu-system-x86, qemu-utils, virtinst, ovmf, swtpm, swtpm-tools, smartmontools, hdparm, gdisk, parted, e2fsprogs, xfsprogs
+Filename: pool/stable/main/b/betternas/betternas_0.7.0_amd64.deb
+Size: 6262744
+MD5sum: 326621d261d5e45b0ef378159073c4a8
+SHA1: 93da4a7716a7214b42248d4005bbe84a23be07e5
+SHA256: 509a1145687ad82ac2c3b83137416ed3f4d76a8dadb517ca3d4dd6e3b3a6fe1a
+SHA512: 7850e4bca9bb16271cd0a0e1b12ae38dee229d367c3674b8ff6dcbc92ab149d98fa46dd4ff9d27077d100ea1016b82b6e1bf6d7e32247275218798cc577456dc
+Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
+ Weboberfläche (betternas-api) und privilegierter Systemdienst (betternas-agent).
+
+Package: betternas
+Architecture: amd64
+Version: 0.7.1
+Priority: optional
+Section: admin
+Maintainer: BetterNAS <betternas@localhost>
+Installed-Size: 22992
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, nfs-kernel-server, mergerfs, snapraid, docker.io, docker-cli, docker-compose, libvirt-daemon-system, libvirt-daemon-config-network, libvirt-clients, qemu-system-x86, qemu-utils, virtinst, ovmf, swtpm, swtpm-tools, nftables, openssh-server, smartmontools, hdparm, gdisk, parted, e2fsprogs, xfsprogs
+Filename: pool/stable/main/b/betternas/betternas_0.7.1_amd64.deb
+Size: 6410028
+MD5sum: 531cba5854cdeb0b79592e8f10d9b79d
+SHA1: 035396878014a35312ffe722ffa512bc864c3958
+SHA256: d0d3aab6cb5bedfe9a028857364350bf1a1d8b1a4271caa6d10392fe2680c8c6
+SHA512: c8561791ae9b3d7fc7fcad2e87bde756c3015b787c6362c439cafb79702953c238e63a31a1f4708c3bf579b3a0424061299a0ff096e9dde3ea16ff34e7bbc6f5
+Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
+ Weboberfläche (betternas-api) und privilegierter Systemdienst (betternas-agent).
+
+Package: betternas
+Architecture: amd64
+Version: 0.7.2
+Priority: optional
+Section: admin
+Maintainer: BetterNAS <betternas@localhost>
+Installed-Size: 26376
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, nfs-kernel-server, mergerfs, snapraid, docker.io, docker-cli, docker-compose, libvirt-daemon-system, libvirt-daemon-config-network, libvirt-clients, qemu-system-x86, qemu-utils, virtiofsd, virtinst, ovmf, swtpm, swtpm-tools, nftables, openssh-server, smartmontools, hdparm, gdisk, parted, e2fsprogs, xfsprogs
+Filename: pool/stable/main/b/betternas/betternas_0.7.2_amd64.deb
+Size: 7531396
+MD5sum: 0de8f9edea1e2328aaacdcf002423c20
+SHA1: 91a4fa8f39e6c26542bbac9c299124cdb9d41663
+SHA256: 76217c61c22f9c6619252bec93b28cfe8ec1853549131fb82d4610b10a3b9420
+SHA512: a78e514fe44f23d9bb6fd4472be4788ad77db44f728149c056f7b08b81329c9b995d15aa6b0f9adb6b26a2f2746d73db403a6f3d85c27060a86cef5316a1bddc
+Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
+ Weboberfläche (betternas-api) und privilegierter Systemdienst (betternas-agent).
+
+Package: betternas
+Architecture: amd64
+Version: 0.7.3
+Priority: optional
+Section: admin
+Maintainer: BetterNAS <betternas@localhost>
+Installed-Size: 26444
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, nfs-kernel-server, mergerfs, snapraid, docker.io, docker-cli, docker-compose, libvirt-daemon-system, libvirt-daemon-config-network, libvirt-clients, qemu-system-x86, qemu-utils, virtiofsd, virtinst, ovmf, swtpm, swtpm-tools, nftables, openssh-server, smartmontools, hdparm, gdisk, parted, e2fsprogs, xfsprogs
+Filename: pool/stable/main/b/betternas/betternas_0.7.3_amd64.deb
+Size: 7538660
+MD5sum: 975c17af81107ad5ce8762afb2e1587b
+SHA1: 2b969a9db92dc08cc5020b57cd9de88f79f47107
+SHA256: 3c09cd4b34c9001119cd5b32036dc6282f1eff37e1cb905d890c91776782f627
+SHA512: 87a8d60825837995d61c429d3b8105486ca7c8dde7d4395c5f08f90a5b61e730e262bb3bddcc887073fdec091271643fc87a0b113dc9afe5464403a8cd44b627
+Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
+ Weboberfläche (betternas-api) und privilegierter Systemdienst (betternas-agent).
+
+Package: betternas
+Architecture: amd64
+Version: 0.7.4
+Priority: optional
+Section: admin
+Maintainer: BetterNAS <betternas@localhost>
+Installed-Size: 30264
+Depends: adduser, systemd, udev, util-linux, libpam-modules-bin, passwd, samba, nfs-kernel-server, mergerfs, snapraid, docker.io, docker-cli, docker-compose, libvirt-daemon-system, libvirt-daemon-config-network, libvirt-clients, qemu-system-x86, qemu-utils, virtiofsd, virtinst, ovmf, swtpm, swtpm-tools, nftables, openssh-server, smartmontools, hdparm, gdisk, parted, e2fsprogs, xfsprogs, btrfs-progs
+Filename: pool/stable/main/b/betternas/betternas_0.7.4_amd64.deb
+Size: 9347412
+MD5sum: f2f0080fea216f4d3d3d9b11b0b72e89
+SHA1: 25090cf6b5402fb4e93e01e201e1b37dc4c069b0
+SHA256: 6b7108b977b057bcbf9682de53c43c300e78389f9af765b0554953cdb141d606
+SHA512: a0c07b914bb2641bc3cc7a30f2fbda092dc7176e0d89c6a01769d87c2abf2edb9711c93e7e54e7f008ed6b3d618e5da8839dd35a0bed96eddd471445d70b1efc
+Description: BetterNAS – NAS-, Docker- und KVM-Verwaltung
+ Weboberfläche (betternas-api) und privilegierter Systemdienst (betternas-agent).
+
